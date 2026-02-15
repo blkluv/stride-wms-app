@@ -148,6 +148,13 @@
 - Explicit answer/decision:
   - Use Option B: child split item codes should be parent-derived (example pattern similar to `PARENT-1`, `PARENT-2`) for visual traceability.
 
+### QA-2026-02-15-022
+- Question/context: Parent end-state and split guardrails.
+- Explicit answer/decision:
+  - If parent record reaches zero state, use archive/inactive behavior (not delete).
+  - Split operation must never allow splitting the last remaining unit; at least one unit must stay attached to original parent item code.
+  - All split operations must be recorded in activity/history audit trail.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.

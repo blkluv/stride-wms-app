@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `5` (`QA-2026-02-15-017..021`)
+- Q&A items extracted: `6` (`QA-2026-02-15-017..022`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-030`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-033`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -27,6 +27,9 @@
 | DL-2026-02-15-028 | Split/relabel uses partial split model retaining grouped parent for remaining quantity | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-019` | - | - |
 | DL-2026-02-15-029 | Split/relabel allows repeatable partial splits from 1..remaining quantity | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-020` | - | - |
 | DL-2026-02-15-030 | Split child labels use parent-derived code format for traceability | Intake Labeling | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-021` | - | - |
+| DL-2026-02-15-031 | Parent grouped record lifecycle uses archive/inactive, never hard delete | Intake Lifecycle | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
+| DL-2026-02-15-032 | Split operation must preserve at least one unit on original parent code | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
+| DL-2026-02-15-033 | Every split/relabel action must be recorded in activity/history audit trail | Audit/Traceability | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
 
 ## Detailed Decision Entries
 
@@ -167,6 +170,63 @@ Parent-derived labels improve floor usability and audit readability during stage
 - Preserve both parent reference field and visible code linkage.
 - Update label-printing templates to render parent-derived child codes.
 
+### DL-2026-02-15-031: Parent grouped record lifecycle uses archive/inactive, never hard delete
+- Domain: Intake Lifecycle
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+If parent grouped records reach zero-state lifecycle, they must be archived/inactivated for history retention and never hard deleted.
+
+#### Why
+Audit continuity requires parent record preservation even when no longer operationally active.
+
+#### Implementation impact
+- Use soft-status transitions (`inactive`/archived) instead of destructive deletes.
+- Keep parent-child lineage visible in historical views.
+
+### DL-2026-02-15-032: Split operation must preserve at least one unit on original parent code
+- Domain: Intake Operations
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+Split/relabel action must not allow splitting the final remaining parent unit; at least one unit always remains attached to the original parent code.
+
+#### Why
+The original parent code must persist as anchor identity for grouped lineage.
+
+#### Implementation impact
+- Enforce validation: `split_qty <= remaining_qty - 1`.
+- Disable/guard split action when remaining quantity is 1.
+
+### DL-2026-02-15-033: Every split/relabel action must be recorded in activity/history audit trail
+- Domain: Audit/Traceability
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+All split/relabel operations must produce immutable activity/history audit records.
+
+#### Why
+Split history is operationally sensitive and must remain reconstructable for investigations and reconciliation.
+
+#### Implementation impact
+- Log actor, timestamp, parent code, split quantity, child codes, before/after quantities.
+- Surface split events in item/container/location history timelines.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
@@ -176,3 +236,6 @@ Parent-derived labels improve floor usability and audit readability during stage
 | DLE-2026-02-15-033 | 2026-02-15 | DL-2026-02-15-028 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured partial split model decision retaining parent grouped code for remaining quantity. |
 | DLE-2026-02-15-034 | 2026-02-15 | DL-2026-02-15-029 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured repeatable partial split allowance (1..remaining qty). |
 | DLE-2026-02-15-035 | 2026-02-15 | DL-2026-02-15-030 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured parent-derived split child-code format requirement for label traceability. |
+| DLE-2026-02-15-036 | 2026-02-15 | DL-2026-02-15-031 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured archive-not-delete lifecycle policy for parent grouped records. |
+| DLE-2026-02-15-037 | 2026-02-15 | DL-2026-02-15-032 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured rule that split cannot consume final remaining parent unit. |
+| DLE-2026-02-15-038 | 2026-02-15 | DL-2026-02-15-033 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured mandatory split activity/history audit logging requirement. |
