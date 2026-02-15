@@ -118,6 +118,21 @@
 - Explicit answer/decision:
   - Existing locations need to be editable.
 
+### QA-2026-02-15-017
+- Question/context: Intake behavior when one physical box contains multiple units.
+- Explicit answer/decision:
+  - User has two intake options:
+    - Enter one line with quantity (example qty 4) and keep it as one grouped line with one item code.
+    - Enter four separate lines and apply four labels to the same box.
+  - Container label may be created later by user if needed.
+  - Container creation/labeling should not be automated in this intake scenario.
+
+### QA-2026-02-15-018
+- Question/context: Grouped intake semantics and follow-up workflow.
+- Explicit answer/decision:
+  - For grouped single-line intake, use grouped inventory semantics (Option A): one item code representing quantity N.
+  - A split-and-relabel workflow is required for later conversion from grouped to individual labels.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.
