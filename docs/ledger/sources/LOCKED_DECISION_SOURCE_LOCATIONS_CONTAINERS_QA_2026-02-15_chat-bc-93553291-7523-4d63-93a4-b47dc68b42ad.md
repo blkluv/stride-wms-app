@@ -155,6 +155,11 @@
   - Split operation must never allow splitting the last remaining unit; at least one unit must stay attached to original parent item code.
   - All split operations must be recorded in activity/history audit trail.
 
+### QA-2026-02-15-023
+- Question/context: Label-print timing after split/relabel.
+- Explicit answer/decision:
+  - Use Option A: auto-print all newly generated child labels immediately after split.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.

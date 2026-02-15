@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `6` (`QA-2026-02-15-017..022`)
+- Q&A items extracted: `7` (`QA-2026-02-15-017..023`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-033`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-034`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -30,6 +30,7 @@
 | DL-2026-02-15-031 | Parent grouped record lifecycle uses archive/inactive, never hard delete | Intake Lifecycle | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
 | DL-2026-02-15-032 | Split operation must preserve at least one unit on original parent code | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
 | DL-2026-02-15-033 | Every split/relabel action must be recorded in activity/history audit trail | Audit/Traceability | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
+| DL-2026-02-15-034 | Split workflow auto-prints all generated child labels immediately | Intake Label Printing | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-023` | - | - |
 
 ## Detailed Decision Entries
 
@@ -227,6 +228,26 @@ Split history is operationally sensitive and must remain reconstructable for inv
 - Log actor, timestamp, parent code, split quantity, child codes, before/after quantities.
 - Surface split events in item/container/location history timelines.
 
+### DL-2026-02-15-034: Split workflow auto-prints all generated child labels immediately
+- Domain: Intake Label Printing
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-023`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+Immediately after a split/relabel action succeeds, the system should auto-print all newly generated child labels.
+
+#### Why
+Automatic print at split time minimizes missed labels and keeps physical workflow synchronized with digital state.
+
+#### Implementation impact
+- Trigger print job automatically on successful split completion.
+- Include retry/error UX if printer unavailable while keeping split transaction committed.
+- Mark printed status in audit event metadata when available.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
@@ -239,3 +260,4 @@ Split history is operationally sensitive and must remain reconstructable for inv
 | DLE-2026-02-15-036 | 2026-02-15 | DL-2026-02-15-031 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured archive-not-delete lifecycle policy for parent grouped records. |
 | DLE-2026-02-15-037 | 2026-02-15 | DL-2026-02-15-032 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured rule that split cannot consume final remaining parent unit. |
 | DLE-2026-02-15-038 | 2026-02-15 | DL-2026-02-15-033 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured mandatory split activity/history audit logging requirement. |
+| DLE-2026-02-15-039 | 2026-02-15 | DL-2026-02-15-034 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured auto-print-on-split behavior for all newly generated child labels. |
