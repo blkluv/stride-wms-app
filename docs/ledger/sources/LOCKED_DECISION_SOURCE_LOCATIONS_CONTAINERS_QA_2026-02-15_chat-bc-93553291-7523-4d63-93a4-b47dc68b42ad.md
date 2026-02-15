@@ -138,6 +138,11 @@
 - Explicit answer/decision:
   - Use Option B (partial split model): keep original grouped code for remaining quantity and generate new individual codes only for split quantity.
 
+### QA-2026-02-15-020
+- Question/context: Allowed split amount behavior.
+- Explicit answer/decision:
+  - Use Option A: allow split quantity from 1..remaining quantity and permit repeated partial splits over time.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.

@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `3` (`QA-2026-02-15-017..019`)
+- Q&A items extracted: `4` (`QA-2026-02-15-017..020`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-028`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-029`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -25,6 +25,7 @@
 | DL-2026-02-15-026 | Container labeling for this intake flow is manual and not auto-generated | Intake Containers | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-017` | - | - |
 | DL-2026-02-15-027 | System must provide split-and-relabel workflow for grouped intake records | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-018` | - | - |
 | DL-2026-02-15-028 | Split/relabel uses partial split model retaining grouped parent for remaining quantity | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-019` | - | - |
+| DL-2026-02-15-029 | Split/relabel allows repeatable partial splits from 1..remaining quantity | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-020` | - | - |
 
 ## Detailed Decision Entries
 
@@ -125,6 +126,26 @@ This preserves continuity on the original record while enabling incremental conv
 - Parent grouped record quantity decreases by split quantity and remains active when remainder exists.
 - Child split records receive new labels/codes and maintain parent linkage for audit traceability.
 
+### DL-2026-02-15-029: Split/relabel allows repeatable partial splits from 1..remaining quantity
+- Domain: Intake Operations
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-020`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+Users may split any quantity between 1 and current remaining grouped quantity, and may repeat this process multiple times.
+
+#### Why
+Operational workflows often require staged breakdown of grouped cartons instead of one-time full decomposition.
+
+#### Implementation impact
+- Split modal must validate `1 <= split_qty <= remaining_qty`.
+- Keep split action available while grouped remainder is greater than zero.
+- Maintain cumulative split history for audit and reconciliation.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
@@ -132,3 +153,4 @@ This preserves continuity on the original record while enabling incremental conv
 | DLE-2026-02-15-031 | 2026-02-15 | DL-2026-02-15-026 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured manual-only container labeling rule for this intake scenario. |
 | DLE-2026-02-15-032 | 2026-02-15 | DL-2026-02-15-027 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured required split-and-relabel workflow requirement for grouped records. |
 | DLE-2026-02-15-033 | 2026-02-15 | DL-2026-02-15-028 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured partial split model decision retaining parent grouped code for remaining quantity. |
+| DLE-2026-02-15-034 | 2026-02-15 | DL-2026-02-15-029 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured repeatable partial split allowance (1..remaining qty). |
