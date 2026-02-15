@@ -143,6 +143,11 @@
 - Explicit answer/decision:
   - Use Option A: allow split quantity from 1..remaining quantity and permit repeated partial splits over time.
 
+### QA-2026-02-15-021
+- Question/context: Child code format for split/relabel output.
+- Explicit answer/decision:
+  - Use Option B: child split item codes should be parent-derived (example pattern similar to `PARENT-1`, `PARENT-2`) for visual traceability.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.
