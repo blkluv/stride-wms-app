@@ -160,6 +160,11 @@
 - Explicit answer/decision:
   - Use Option A: auto-print all newly generated child labels immediately after split.
 
+### QA-2026-02-15-024
+- Question/context: Child-code suffix style for parent-derived split labels.
+- Explicit answer/decision:
+  - Use Option B: simple non-padded suffix sequence (example: `PARENT-1`, `PARENT-2`).
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.

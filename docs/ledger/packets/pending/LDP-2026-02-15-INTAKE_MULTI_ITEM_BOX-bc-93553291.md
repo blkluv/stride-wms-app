@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `7` (`QA-2026-02-15-017..023`)
+- Q&A items extracted: `8` (`QA-2026-02-15-017..024`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-034`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-035`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -31,6 +31,7 @@
 | DL-2026-02-15-032 | Split operation must preserve at least one unit on original parent code | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
 | DL-2026-02-15-033 | Every split/relabel action must be recorded in activity/history audit trail | Audit/Traceability | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
 | DL-2026-02-15-034 | Split workflow auto-prints all generated child labels immediately | Intake Label Printing | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-023` | - | - |
+| DL-2026-02-15-035 | Parent-derived split child codes use simple non-padded numeric suffixes | Intake Labeling | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-024` | - | - |
 
 ## Detailed Decision Entries
 
@@ -248,6 +249,26 @@ Automatic print at split time minimizes missed labels and keeps physical workflo
 - Include retry/error UX if printer unavailable while keeping split transaction committed.
 - Mark printed status in audit event metadata when available.
 
+### DL-2026-02-15-035: Parent-derived split child codes use simple non-padded numeric suffixes
+- Domain: Intake Labeling
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-024`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+Use a simple non-padded numeric suffix for parent-derived split child codes (for example: `PARENT-1`, `PARENT-2`, continuing sequentially on later splits).
+
+#### Why
+Simple suffixing is easier for floor teams to read and communicate while preserving parent-child visual linkage.
+
+#### Implementation impact
+- Child-code generator must issue sequential non-padded suffixes per parent code.
+- Suffix allocator must continue sequence across multiple split sessions for the same parent.
+- Validation must prevent duplicate child codes when concurrent split operations occur.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
@@ -261,3 +282,4 @@ Automatic print at split time minimizes missed labels and keeps physical workflo
 | DLE-2026-02-15-037 | 2026-02-15 | DL-2026-02-15-032 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured rule that split cannot consume final remaining parent unit. |
 | DLE-2026-02-15-038 | 2026-02-15 | DL-2026-02-15-033 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured mandatory split activity/history audit logging requirement. |
 | DLE-2026-02-15-039 | 2026-02-15 | DL-2026-02-15-034 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured auto-print-on-split behavior for all newly generated child labels. |
+| DLE-2026-02-15-040 | 2026-02-15 | DL-2026-02-15-035 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured child-code suffix standard as simple non-padded numeric sequence. |
