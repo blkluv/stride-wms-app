@@ -133,6 +133,11 @@
   - For grouped single-line intake, use grouped inventory semantics (Option A): one item code representing quantity N.
   - A split-and-relabel workflow is required for later conversion from grouped to individual labels.
 
+### QA-2026-02-15-019
+- Question/context: Split/relabel behavior for original grouped code.
+- Explicit answer/decision:
+  - Use Option B (partial split model): keep original grouped code for remaining quantity and generate new individual codes only for split quantity.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.

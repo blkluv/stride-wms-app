@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `2` (`QA-2026-02-15-017..018`)
+- Q&A items extracted: `3` (`QA-2026-02-15-017..019`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-027`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-028`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -24,6 +24,7 @@
 | DL-2026-02-15-025 | Grouped single-line intake uses one item code with quantity N semantics | Intake Inventory Model | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-018` | - | - |
 | DL-2026-02-15-026 | Container labeling for this intake flow is manual and not auto-generated | Intake Containers | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-017` | - | - |
 | DL-2026-02-15-027 | System must provide split-and-relabel workflow for grouped intake records | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-018` | - | - |
+| DL-2026-02-15-028 | Split/relabel uses partial split model retaining grouped parent for remaining quantity | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-019` | - | - |
 
 ## Detailed Decision Entries
 
@@ -104,9 +105,30 @@ Teams need simple intake first, while preserving an on-demand path to individual
 - Generate and print new labels for resulting individual units.
 - Preserve audit linkage between original grouped code and split child records.
 
+### DL-2026-02-15-028: Split/relabel uses partial split model retaining grouped parent for remaining quantity
+- Domain: Intake Operations
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-019`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+Split/relabel must follow partial split behavior (Option B): preserve the original grouped code for any remaining quantity and mint new individual codes only for the split-out quantity.
+
+#### Why
+This preserves continuity on the original record while enabling incremental conversion to individual tracking as needed.
+
+#### Implementation impact
+- Split UI must allow selecting split quantity less than or equal to remaining grouped quantity.
+- Parent grouped record quantity decreases by split quantity and remains active when remainder exists.
+- Child split records receive new labels/codes and maintain parent linkage for audit traceability.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
 | DLE-2026-02-15-030 | 2026-02-15 | DL-2026-02-15-025 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured grouped single-line intake semantics as one code with quantity N. |
 | DLE-2026-02-15-031 | 2026-02-15 | DL-2026-02-15-026 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured manual-only container labeling rule for this intake scenario. |
 | DLE-2026-02-15-032 | 2026-02-15 | DL-2026-02-15-027 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured required split-and-relabel workflow requirement for grouped records. |
+| DLE-2026-02-15-033 | 2026-02-15 | DL-2026-02-15-028 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured partial split model decision retaining parent grouped code for remaining quantity. |
