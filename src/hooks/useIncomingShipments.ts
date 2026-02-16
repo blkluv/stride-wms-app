@@ -25,9 +25,24 @@ export function useIncomingShipments(filters: IncomingFilters) {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const includesSearchTerm = (value: string | null | undefined, term: string): boolean => {
-    if (!value) return false;
-    return value.toLowerCase().includes(term);
+  const includesAnyPrimitiveField = (record: Record<string, unknown>, term: string): boolean => {
+    for (const value of Object.values(record)) {
+      if (value == null) continue;
+      if (typeof value === 'string') {
+        if (value.toLowerCase().includes(term)) return true;
+        continue;
+      }
+      if (typeof value === 'number') {
+        if (String(value).includes(term)) return true;
+        continue;
+      }
+      if (typeof value === 'boolean') {
+        if ((value ? 'true' : 'false').includes(term)) return true;
+        continue;
+      }
+      // Skip objects/arrays/JSON blobs for performance.
+    }
+    return false;
   };
 
   const fetchShipments = useCallback(async () => {
@@ -71,22 +86,26 @@ export function useIncomingShipments(filters: IncomingFilters) {
 
         // Shipment-level matches
         for (const shipment of mappedShipments) {
-          if (
-            includesSearchTerm(shipment.shipment_number, searchTerm) ||
-            includesSearchTerm(shipment.vendor_name, searchTerm) ||
-            includesSearchTerm(shipment.tracking_number, searchTerm) ||
-            includesSearchTerm(shipment.notes, searchTerm) ||
-            includesSearchTerm(shipment.account_name || null, searchTerm) ||
-            includesSearchTerm(shipment.status, searchTerm) ||
-            includesSearchTerm(shipment.inbound_status, searchTerm)
-          ) {
+          if (includesAnyPrimitiveField(shipment as unknown as Record<string, unknown>, searchTerm)) {
             matchedShipmentIds.add(shipment.id);
           }
         }
 
         const [shipmentItemsRes, externalRefsRes] = await Promise.all([
           (supabase.from('shipment_items') as any)
-            .select('shipment_id, expected_vendor, expected_description, expected_sidemark, room, notes')
+            .select(`
+              shipment_id,
+              status,
+              expected_quantity,
+              actual_quantity,
+              expected_vendor,
+              expected_description,
+              expected_sidemark,
+              room,
+              notes,
+              item_id,
+              item:item_id(item_code, description, vendor, sidemark)
+            `)
             .in('shipment_id', shipmentIds),
           (supabase.from('shipment_external_refs') as any)
             .select('shipment_id, value')
@@ -94,28 +113,26 @@ export function useIncomingShipments(filters: IncomingFilters) {
         ]);
 
         if (!shipmentItemsRes.error && Array.isArray(shipmentItemsRes.data)) {
-          for (const row of shipmentItemsRes.data as Array<Record<string, string | null>>) {
-            const shipmentId = row.shipment_id as string | null;
+          for (const row of shipmentItemsRes.data as Array<Record<string, unknown>>) {
+            const shipmentId = row.shipment_id as string | null | undefined;
             if (!shipmentId) continue;
 
-            if (
-              includesSearchTerm(row.expected_vendor, searchTerm) ||
-              includesSearchTerm(row.expected_description, searchTerm) ||
-              includesSearchTerm(row.expected_sidemark, searchTerm) ||
-              includesSearchTerm(row.room, searchTerm) ||
-              includesSearchTerm(row.notes, searchTerm)
-            ) {
+            const rowMatch = includesAnyPrimitiveField(row, searchTerm);
+            const item = row.item as Record<string, unknown> | null | undefined;
+            const itemMatch = item ? includesAnyPrimitiveField(item, searchTerm) : false;
+
+            if (rowMatch || itemMatch) {
               matchedShipmentIds.add(shipmentId);
             }
           }
         }
 
         if (!externalRefsRes.error && Array.isArray(externalRefsRes.data)) {
-          for (const row of externalRefsRes.data as Array<Record<string, string | null>>) {
-            const shipmentId = row.shipment_id as string | null;
+          for (const row of externalRefsRes.data as Array<Record<string, unknown>>) {
+            const shipmentId = row.shipment_id as string | null | undefined;
             if (!shipmentId) continue;
 
-            if (includesSearchTerm(row.value, searchTerm)) {
+            if (includesAnyPrimitiveField(row, searchTerm)) {
               matchedShipmentIds.add(shipmentId);
             }
           }

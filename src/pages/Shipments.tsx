@@ -350,20 +350,22 @@ export default function Shipments() {
             accentText="Console"
             description="Manage incoming and outbound shipments"
           />
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={handleStartDockIntake}
-              disabled={creatingIntake}
-              className="gap-2"
-            >
-              {creatingIntake ? (
-                <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-              ) : (
-                <MaterialIcon name="add" size="sm" />
-              )}
-              Start Dock Intake
-            </Button>
-          </div>
+          {(activeTab === 'hub' || activeTab === 'incoming') && (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleStartDockIntake}
+                disabled={creatingIntake}
+                className="gap-2"
+              >
+                {creatingIntake ? (
+                  <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                ) : (
+                  <MaterialIcon name="add" size="sm" />
+                )}
+                Start Dock Intake
+              </Button>
+            </div>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => {
