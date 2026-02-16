@@ -28,7 +28,6 @@ import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentException
 import { AccountSelect } from '@/components/ui/account-select';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
-import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
 import {
   Dialog,
   DialogContent,
@@ -41,13 +40,8 @@ type ExceptionChip = 'NO_EXCEPTIONS' | ShipmentExceptionCode;
 
 const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string; requiresNote?: boolean }[] = [
   { value: 'NO_EXCEPTIONS', label: 'No Exceptions', icon: 'check_circle' },
-  { value: 'PIECES_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.PIECES_MISMATCH },
-  { value: 'VENDOR_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.VENDOR_MISMATCH },
-  { value: 'DESCRIPTION_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.DESCRIPTION_MISMATCH },
-  { value: 'SIDEMARK_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.SIDEMARK_MISMATCH },
-  { value: 'SHIPPER_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.SHIPPER_MISMATCH },
-  { value: 'TRACKING_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.TRACKING_MISMATCH },
-  { value: 'REFERENCE_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.REFERENCE_MISMATCH },
+  // Dock intake exceptions are condition/paperwork observations at the dock.
+  // Matching/discrepancy flags (vendor/description/sidemark/etc) are handled automatically by matching logic.
   { value: 'DAMAGE', ...SHIPMENT_EXCEPTION_CODE_META.DAMAGE },
   { value: 'WET', ...SHIPMENT_EXCEPTION_CODE_META.WET },
   { value: 'OPEN', ...SHIPMENT_EXCEPTION_CODE_META.OPEN },
@@ -58,7 +52,6 @@ const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string; re
 ];
 
 export interface MatchingParamsUpdate {
-  vendorName: string;
   pieces: number;
   accountId: string | null;
 }
@@ -99,9 +92,7 @@ export function Stage1DockIntake({
   const { toast } = useToast();
 
   // Form state
-  const { unidentifiedAccountId, ensureUnidentifiedAccount, ensuring: ensuringUnidentified } = useUnidentifiedAccount();
   const [accountId, setAccountId] = useState<string>(shipment.account_id || '');
-  const [vendorName, setVendorName] = useState(shipment.vendor_name || '');
   const [carrierName, setCarrierName] = useState((shipment as any).carrier || '');
   const [trackingNumber, setTrackingNumber] = useState((shipment as any).tracking_number || '');
   const [poNumber, setPoNumber] = useState((shipment as any).po_number || '');
@@ -149,11 +140,10 @@ export function Stage1DockIntake({
   // Emit matching params whenever relevant fields change
   useEffect(() => {
     onMatchingParamsChange?.({
-      vendorName,
       pieces: signedPieces,
       accountId: accountId || null,
     });
-  }, [vendorName, signedPieces, accountId, onMatchingParamsChange]);
+  }, [signedPieces, accountId, onMatchingParamsChange]);
 
   useEffect(() => {
     setAccountId(shipment.account_id || '');
@@ -181,11 +171,6 @@ export function Stage1DockIntake({
   const handleAccountChange = (value: string) => {
     setAccountId(value);
     autosave.saveField('account_id', value || null);
-  };
-
-  const handleVendorNameChange = (value: string) => {
-    setVendorName(value);
-    autosave.saveField('vendor_name', value);
   };
 
   const handleCarrierNameChange = (value: string) => {
@@ -439,7 +424,7 @@ export function Stage1DockIntake({
   // Validation
   const validate = (): string[] => {
     const errors: string[] = [];
-    if (!accountId) errors.push('Account is required (or use UNIDENTIFIED SHIPMENT)');
+    if (!accountId) errors.push('Account is required');
     if (signedPieces <= 0) errors.push('Signed pieces must be greater than 0');
     if (exceptions.length === 0) errors.push('At least one exception selection is required');
     if (exceptions.includes('REFUSED') && !exceptionNotes.REFUSED?.trim()) {
@@ -475,7 +460,6 @@ export function Stage1DockIntake({
       const updateData: Record<string, unknown> = {
         inbound_status: 'stage1_complete',
         account_id: accountId || null,
-        vendor_name: vendorName,
         signed_pieces: signedPieces,
         notes: notes || null,
         dock_intake_breakdown: breakdown,
@@ -518,7 +502,7 @@ export function Stage1DockIntake({
               <CardTitle className="flex items-center gap-2">
                 <MaterialIcon name="local_shipping" size="md" className="text-primary" />
                 Stage 1 — Dock Intake
-                <Badge variant="outline">{shipmentNumber}</Badge>
+                <Badge variant="outline" className="font-mono whitespace-nowrap">{shipmentNumber}</Badge>
                 <ShipmentExceptionBadge
                   shipmentId={shipmentId}
                   onClick={onOpenExceptions}
@@ -538,7 +522,7 @@ export function Stage1DockIntake({
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <MaterialIcon name="business" size="sm" />
-            Shipment Details + Summary
+            Shipment Summary
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -546,52 +530,12 @@ export function Stage1DockIntake({
             <Label>
               Account <span className="text-red-500">*</span>
             </Label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <AccountSelect
-                value={accountId}
-                onChange={handleAccountChange}
-                placeholder="Select account..."
-                clearable={false}
-                className="w-full"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={async () => {
-                  const ensuredId = unidentifiedAccountId || await ensureUnidentifiedAccount(profile?.tenant_id);
-                  if (ensuredId) {
-                    handleAccountChange(ensuredId);
-                    return;
-                  }
-                  toast({
-                    variant: 'destructive',
-                    title: 'Unidentified account unavailable',
-                    description: 'Could not resolve UNIDENTIFIED SHIPMENT account.',
-                  });
-                }}
-                disabled={ensuringUnidentified}
-              >
-                {ensuringUnidentified ? (
-                  <MaterialIcon name="progress_activity" size="sm" className="mr-1 animate-spin" />
-                ) : (
-                  <MaterialIcon name="help_outline" size="sm" className="mr-1" />
-                )}
-                Use UNIDENTIFIED
-              </Button>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label htmlFor="vendor_name">
-              Vendor Name
-            </Label>
-            <Input
-              id="vendor_name"
-              placeholder="Enter vendor name"
-              value={vendorName}
-              onChange={(e) => handleVendorNameChange(e.target.value)}
+            <AccountSelect
+              value={accountId}
+              onChange={handleAccountChange}
+              placeholder="Select account..."
+              clearable={false}
+              className="w-full"
             />
           </div>
 
