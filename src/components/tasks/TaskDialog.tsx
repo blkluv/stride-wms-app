@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -30,7 +31,6 @@ import {
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -93,6 +93,8 @@ export function TaskDialog({
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [loadingItems, setLoadingItems] = useState(false);
   const [itemDropdownOpen, setItemDropdownOpen] = useState(false);
+  const itemSearchAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [itemDropdownWidth, setItemDropdownWidth] = useState<number | undefined>(undefined);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
 
@@ -114,6 +116,15 @@ export function TaskDialog({
   // Check if we're creating from inventory (items pre-selected)
   const isFromInventory = selectedItemIds.length > 0;
 
+  // Will Call is handled as an outbound shipment (not a task) going forward.
+  const DEPRECATED_TASK_TYPES = useMemo(() => new Set(['Will Call']), []);
+
+  const selectableTaskTypes = useMemo(() => {
+    // If we're editing an existing task, keep its type available for display/editing.
+    if (task) return taskTypes;
+    return taskTypes.filter((t) => !DEPRECATED_TASK_TYPES.has(t.name));
+  }, [task, taskTypes, DEPRECATED_TASK_TYPES]);
+
   useEffect(() => {
     if (open) {
       fetchAccounts();
@@ -130,6 +141,7 @@ export function TaskDialog({
   useEffect(() => {
     if (!open) {
       initializedRef.current = false;
+      setItemDropdownOpen(false);
       return;
     }
 
@@ -156,11 +168,13 @@ export function TaskDialog({
     } else {
       // Reset form and apply preSelectedTaskType if provided
       const initialTaskType = preSelectedTaskType || '';
-      const dueDate = initialTaskType ? getDueDateForTaskType(initialTaskType) : null;
+      const isWillCall = initialTaskType === 'Will Call';
+      const safeInitialTaskType = isWillCall ? '' : initialTaskType;
+      const dueDate = safeInitialTaskType ? getDueDateForTaskType(safeInitialTaskType) : null;
 
       setFormData({
         description: '',
-        task_type: initialTaskType,
+        task_type: safeInitialTaskType,
         task_type_id: null,
         priority: 'normal',
         due_date: dueDate,
@@ -172,9 +186,16 @@ export function TaskDialog({
         bill_to_customer_name: '',
         bill_to_customer_email: '',
       });
+      if (isWillCall) {
+        toast({
+          title: 'Will Call moved to Outbound Shipments',
+          description: 'Create Will Calls via Shipments → Outbound (not Tasks).',
+        });
+      }
       setSelectedItems([]);
       setAccountItems([]);
       setItemSearchQuery('');
+      setItemDropdownOpen(false);
     }
 
     initializedRef.current = true;
@@ -228,8 +249,23 @@ export function TaskDialog({
       fetchAccountItems(formData.account_id);
     } else if (!isFromInventory) {
       setAccountItems([]);
+      setItemDropdownOpen(false);
     }
   }, [formData.account_id, isFromInventory]);
+
+  // Keep popover width synced to the anchor input (mobile Safari can be picky about CSS var sizing without a Trigger)
+  useEffect(() => {
+    if (!itemDropdownOpen) return;
+
+    const updateWidth = () => {
+      const width = itemSearchAnchorRef.current?.getBoundingClientRect().width;
+      if (width && Number.isFinite(width)) setItemDropdownWidth(width);
+    };
+
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [itemDropdownOpen]);
 
   const fetchAccounts = async () => {
     const { data } = await supabase
@@ -254,7 +290,6 @@ export function TaskDialog({
   };
 
   const fetchAccountItems = async (accountId: string) => {
-    console.log('[TaskDialog] fetchAccountItems called for account:', accountId);
     setLoadingItems(true);
     try {
       const { data, error } = await (supabase
@@ -265,8 +300,6 @@ export function TaskDialog({
         .neq('status', 'disposed')
         .is('deleted_at', null)
         .order('item_code');
-
-      console.log('[TaskDialog] fetchAccountItems result:', { count: data?.length, error });
 
       if (error) throw error;
 
@@ -288,6 +321,13 @@ export function TaskDialog({
       setShowNewTaskType(true);
       return;
     }
+    if (value === 'Will Call') {
+      toast({
+        title: 'Will Call moved to Outbound Shipments',
+        description: 'Create Will Calls via Shipments → Outbound (not Tasks).',
+      });
+      return;
+    }
 
     // Resolve task_type_id from the selected task type
     const matchedType = taskTypes.find(tt => tt.name === value);
@@ -302,6 +342,14 @@ export function TaskDialog({
 
   const handleCreateTaskType = async () => {
     if (!newTaskTypeName.trim()) return;
+    if (newTaskTypeName.trim().toLowerCase() === 'will call') {
+      toast({
+        variant: 'destructive',
+        title: 'Not allowed',
+        description: 'Will Call is now handled as an Outbound Shipment (not a Task type).',
+      });
+      return;
+    }
 
     const newType = await createTaskType(newTaskTypeName);
     if (newType) {
@@ -322,6 +370,7 @@ export function TaskDialog({
     if (!isFromInventory) {
       setSelectedItems([]);
       setItemSearchQuery('');
+      setItemDropdownOpen(false);
     }
   };
 
@@ -550,7 +599,11 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent
+        className="max-w-2xl max-h-[90dvh] overflow-hidden"
+        // Ensure the DialogBody is the only scroll container (nested scroll areas are unreliable on iOS Safari)
+        style={{ overflowY: 'hidden' }}
+      >
         <DialogHeader>
           <DialogTitle>{task ? 'Edit Task' : 'Create Task'}</DialogTitle>
           <DialogDescription>
@@ -562,8 +615,8 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
-          <div className="space-y-4">
+        <DialogBody>
+          <div className="space-y-4 py-1">
             {/* Task Type */}
             <div className="space-y-2">
               <Label>Task Type *</Label>
@@ -587,7 +640,7 @@ export function TaskDialog({
                     <SelectValue placeholder="Select task type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {taskTypes.map(type => (
+                    {selectableTaskTypes.map(type => (
                       <SelectItem key={type.id} value={type.name}>
                         {type.name}
                       </SelectItem>
@@ -629,10 +682,19 @@ export function TaskDialog({
             {/* Item Search and Selection - shown when account is selected */}
             {!isFromInventory && formData.account_id !== 'none' && (
               <div className="space-y-3">
-                <Label>Select Items</Label>
+                <Label className="flex items-center gap-2">
+                  Select Items
+                  {selectedItems.length > 0 && (
+                    <Badge variant="secondary">{selectedItems.length} selected</Badge>
+                  )}
+                </Label>
                 <Popover open={itemDropdownOpen} onOpenChange={setItemDropdownOpen}>
                   <PopoverAnchor asChild>
-                    <div className="relative">
+                    <div
+                      ref={itemSearchAnchorRef}
+                      className="relative"
+                      data-item-search-anchor
+                    >
                       <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search by item code, description, vendor, sidemark..."
@@ -642,13 +704,25 @@ export function TaskDialog({
                           if (!itemDropdownOpen) setItemDropdownOpen(true);
                         }}
                         onFocus={() => setItemDropdownOpen(true)}
+                        onClick={() => setItemDropdownOpen(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setItemDropdownOpen(false);
+                          }
+                          if ((e.key === 'ArrowDown' || e.key === 'Enter') && !itemDropdownOpen) {
+                            e.preventDefault();
+                            setItemDropdownOpen(true);
+                          }
+                        }}
                         className="pl-9"
                       />
                     </div>
                   </PopoverAnchor>
                   <PopoverContent
-                    className="w-[--radix-popover-trigger-width] p-0 z-50 bg-popover border shadow-md"
+                    className="p-0 bg-popover border shadow-md"
                     align="start"
+                    sideOffset={4}
+                    style={{ width: itemDropdownWidth, zIndex: 100 }}
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
                       // Allow clicking inside the anchor input without closing
@@ -658,28 +732,29 @@ export function TaskDialog({
                       }
                     }}
                   >
-                    <div className="max-h-60 overflow-y-auto">
+                    <div
+                      className="max-h-64 overflow-y-auto overscroll-contain"
+                      style={{ WebkitOverflowScrolling: 'touch' } as CSSProperties}
+                    >
                       {loadingItems ? (
                         <div className="flex items-center justify-center py-4">
                           <MaterialIcon name="progress_activity" size="md" className="animate-spin text-muted-foreground" />
                         </div>
                       ) : filteredItems.length > 0 ? (
-                        filteredItems.slice(0, 20).map(item => {
+                        filteredItems.map(item => {
                           const isSelected = selectedItems.some(i => i.id === item.id);
                           return (
-                            <div
+                            <button
                               key={item.id}
-                              className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                              type="button"
+                              className={cn(
+                                "w-full flex items-center gap-3 p-2 text-left border-b last:border-b-0",
+                                "hover:bg-muted/50",
+                                isSelected && "bg-muted/30"
+                              )}
                               onClick={() => toggleItemSelection(item)}
-                              role="button"
-                              tabIndex={0}
                             >
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => toggleItemSelection(item)}
-                                />
-                              </div>
+                              <Checkbox checked={isSelected} className="pointer-events-none" />
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium text-sm">{item.item_code}</div>
                                 <div className="text-xs text-muted-foreground truncate">
@@ -688,7 +763,7 @@ export function TaskDialog({
                                     .join(' • ')}
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           );
                         })
                       ) : accountItems.length === 0 ? (
@@ -900,7 +975,7 @@ export function TaskDialog({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

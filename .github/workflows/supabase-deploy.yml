@@ -1,0 +1,157 @@
+name: Supabase Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_db_push:
+        description: "Run supabase db push"
+        type: boolean
+        required: false
+        default: true
+      deploy_functions:
+        description: "Deploy changed Supabase functions"
+        type: boolean
+        required: false
+        default: true
+      deploy_mode:
+        description: "Function deployment mode"
+        type: choice
+        required: false
+        default: changed
+        options:
+          - changed
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Supabase migrations and functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Verify required secrets
+        run: |
+          MISSING=""
+          [ -z "$SUPABASE_ACCESS_TOKEN" ] && MISSING="$MISSING SUPABASE_ACCESS_TOKEN"
+          [ -z "$SUPABASE_PROJECT_REF" ] && MISSING="$MISSING SUPABASE_PROJECT_REF"
+          [ -z "$SUPABASE_DB_PASSWORD" ] && MISSING="$MISSING SUPABASE_DB_PASSWORD"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required GitHub Actions secrets:$MISSING"
+            echo "Set them in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Link Supabase project
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Detect migration changes
+        id: detect_migrations
+        if: github.event_name == 'push'
+        run: |
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="$(git rev-parse HEAD~1)"
+          fi
+
+          if git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | grep -q '^supabase/migrations/'; then
+            echo "has_migrations=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_migrations=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare encoded database URL (for migration fetch)
+        if: (github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_db_push == 'true')
+        run: |
+          # Supabase CLI db push can fail if the remote migration history includes versions
+          # not present locally. Fetching the remote history creates local stub files so
+          # the CLI can proceed safely.
+          DB_URL_ENC="$(node -e "const ref=process.env.SUPABASE_PROJECT_REF; const pw=process.env.SUPABASE_DB_PASSWORD; const pwEnc=encodeURIComponent(pw); const conn=\`postgresql://postgres:\${pwEnc}@db.\${ref}.supabase.co:5432/postgres\`; process.stdout.write(conn);")"
+          echo "SUPABASE_DB_URL_ENCODED=$DB_URL_ENC" >> "$GITHUB_ENV"
+
+      - name: Fetch remote migration history stubs
+        if: (github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_db_push == 'true')
+        run: npx supabase migration fetch --db-url "$SUPABASE_DB_URL_ENCODED"
+
+      - name: Apply database migrations
+        if: (github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_db_push == 'true')
+        run: npx supabase db push --linked --yes -p "$SUPABASE_DB_PASSWORD"
+
+      - name: No database migrations detected
+        if: github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations != 'true'
+        run: echo "No migration changes detected in this push. Skipping db push."
+
+      - name: Detect functions to deploy
+        id: detect_functions
+        if: github.event_name == 'push' || inputs.deploy_functions == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.deploy_mode }}" = "all" ]; then
+            shopt -s nullglob
+            mapfile -t FUNCTIONS < <(
+              for d in supabase/functions/*/; do
+                FUNCTION_NAME="$(basename "$d")"
+                case "$FUNCTION_NAME" in
+                  _*) continue ;;
+                esac
+                printf "%s\n" "$FUNCTION_NAME"
+              done | sort -u
+            )
+          else
+            BEFORE_SHA="${{ github.event.before }}"
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE_SHA="$(git rev-parse HEAD~1)"
+            fi
+            mapfile -t FUNCTIONS < <(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | awk -F/ '/^supabase\/functions\/[^/]+\// { if ($3 !~ /^_/) print $3 }' | sort -u)
+          fi
+
+          if [ "${#FUNCTIONS[@]}" -eq 0 ]; then
+            echo "function_list=" >> "$GITHUB_OUTPUT"
+            echo "No functions selected for deploy."
+            exit 0
+          fi
+
+          {
+            echo "function_list<<EOF"
+            printf "%s\n" "${FUNCTIONS[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Supabase functions
+        if: (github.event_name == 'push' || inputs.deploy_functions == 'true') && steps.detect_functions.outputs.function_list != ''
+        env:
+          FUNCTION_LIST: ${{ steps.detect_functions.outputs.function_list }}
+        run: |
+          echo "Deploying functions:"
+          echo "$FUNCTION_LIST"
+          while IFS= read -r FUNCTION_NAME; do
+            [ -z "$FUNCTION_NAME" ] && continue
+            npx supabase functions deploy "$FUNCTION_NAME" --project-ref "$SUPABASE_PROJECT_REF"
+          done <<< "$FUNCTION_LIST"
+
+      - name: No function deployment needed
+        if: (github.event_name == 'push' || inputs.deploy_functions == 'true') && steps.detect_functions.outputs.function_list == ''
+        run: echo "No changed functions detected."
