@@ -1896,10 +1896,15 @@ export default function ShipmentDetail() {
                   if (isOutbound) {
                     updates.release_type = editReleaseType || null;
                     updates.released_to = editReleasedTo || null;
-                    updates.customer_authorized = editCustomerAuthorized;
-                    if (editCustomerAuthorized) {
+                    const wasCustomerAuthorized = Boolean(shipment.customer_authorized);
+                    const isCustomerAuthorized = Boolean(editCustomerAuthorized);
+                    updates.customer_authorized = isCustomerAuthorized;
+                    if (isCustomerAuthorized && !wasCustomerAuthorized) {
                       updates.customer_authorized_at = new Date().toISOString();
                       updates.customer_authorized_by = profile?.id || null;
+                    } else if (!isCustomerAuthorized && wasCustomerAuthorized) {
+                      updates.customer_authorized_at = null;
+                      updates.customer_authorized_by = null;
                     }
                   }
                   const { error } = await supabase
@@ -2005,13 +2010,13 @@ export default function ShipmentDetail() {
               {isOutbound && (
                 <div>
                   <Label className="text-muted-foreground">Customer Authorized</Label>
-                  <p className="font-medium">
+                  <div className="font-medium">
                     {shipment.customer_authorized ? (
                       <Badge variant="outline" className="text-green-600 border-green-300">Authorized</Badge>
                     ) : (
                       <Badge variant="outline" className="text-yellow-600 border-yellow-300">Not Authorized</Badge>
                     )}
-                  </p>
+                  </div>
                 </div>
               )}
             </div>
