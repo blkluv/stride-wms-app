@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -28,9 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -548,10 +547,34 @@ export function TaskDialog({
     setSelectedItems(prev => prev.filter(item => item.id !== itemId));
   };
 
+  // Close item dropdown when clicking outside the search container
+  const itemSearchContainerRef = useRef<HTMLDivElement>(null);
+  const itemSearchInputRef = useRef<HTMLInputElement>(null);
+
+  const handleClickOutsideItemSearch = useCallback((e: MouseEvent) => {
+    if (
+      itemSearchContainerRef.current &&
+      !itemSearchContainerRef.current.contains(e.target as Node)
+    ) {
+      setItemDropdownOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (itemDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutsideItemSearch);
+      document.addEventListener('touchstart', handleClickOutsideItemSearch as unknown as EventListener);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideItemSearch);
+      document.removeEventListener('touchstart', handleClickOutsideItemSearch as unknown as EventListener);
+    };
+  }, [itemDropdownOpen, handleClickOutsideItemSearch]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{task ? 'Edit Task' : 'Create Task'}</DialogTitle>
           <DialogDescription>
             {task
@@ -562,8 +585,8 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
-          <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+          <div className="space-y-4 pb-2">
             {/* Task Type */}
             <div className="space-y-2">
               <Label>Task Type *</Label>
@@ -630,79 +653,99 @@ export function TaskDialog({
             {!isFromInventory && formData.account_id !== 'none' && (
               <div className="space-y-3">
                 <Label>Select Items</Label>
-                <Popover open={itemDropdownOpen} onOpenChange={setItemDropdownOpen}>
-                  <PopoverAnchor asChild>
-                    <div className="relative">
-                      <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Search by item code, description, vendor, sidemark..."
-                        value={itemSearchQuery}
-                        onChange={(e) => {
-                          setItemSearchQuery(e.target.value);
-                          if (!itemDropdownOpen) setItemDropdownOpen(true);
+                <div ref={itemSearchContainerRef} className="relative">
+                  <div className="relative">
+                    <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
+                    <Input
+                      ref={itemSearchInputRef}
+                      placeholder="Search by item code, description, vendor, sidemark..."
+                      value={itemSearchQuery}
+                      onChange={(e) => {
+                        setItemSearchQuery(e.target.value);
+                        if (!itemDropdownOpen) setItemDropdownOpen(true);
+                      }}
+                      onFocus={() => setItemDropdownOpen(true)}
+                      className="pl-9"
+                    />
+                    {itemDropdownOpen && (
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setItemDropdownOpen(false);
+                          setItemSearchQuery('');
                         }}
-                        onFocus={() => setItemDropdownOpen(true)}
-                        className="pl-9"
-                      />
-                    </div>
-                  </PopoverAnchor>
-                  <PopoverContent
-                    className="w-[--radix-popover-trigger-width] p-0 z-50 bg-popover border shadow-md"
-                    align="start"
-                    onOpenAutoFocus={(e) => e.preventDefault()}
-                    onInteractOutside={(e) => {
-                      // Allow clicking inside the anchor input without closing
-                      const target = e.target as HTMLElement;
-                      if (target.closest('[data-item-search-anchor]')) {
-                        e.preventDefault();
-                      }
-                    }}
-                  >
-                    <div className="max-h-60 overflow-y-auto">
-                      {loadingItems ? (
-                        <div className="flex items-center justify-center py-4">
-                          <MaterialIcon name="progress_activity" size="md" className="animate-spin text-muted-foreground" />
-                        </div>
-                      ) : filteredItems.length > 0 ? (
-                        filteredItems.slice(0, 20).map(item => {
-                          const isSelected = selectedItems.some(i => i.id === item.id);
-                          return (
-                            <div
-                              key={item.id}
-                              className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
-                              onClick={() => toggleItemSelection(item)}
-                              role="button"
-                              tabIndex={0}
-                            >
-                              <div onClick={(e) => e.stopPropagation()}>
+                      >
+                        <MaterialIcon name="close" size="sm" />
+                      </button>
+                    )}
+                  </div>
+                  {itemDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg">
+                      <div className="max-h-60 overflow-y-auto overscroll-contain">
+                        {loadingItems ? (
+                          <div className="flex items-center justify-center py-4">
+                            <MaterialIcon name="progress_activity" size="md" className="animate-spin text-muted-foreground" />
+                          </div>
+                        ) : filteredItems.length > 0 ? (
+                          filteredItems.map(item => {
+                            const isSelected = selectedItems.some(i => i.id === item.id);
+                            return (
+                              <div
+                                key={item.id}
+                                className={cn(
+                                  "flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b last:border-b-0 transition-colors",
+                                  isSelected ? "bg-accent/50" : "hover:bg-muted/50"
+                                )}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  toggleItemSelection(item);
+                                }}
+                                onTouchEnd={(e) => {
+                                  e.preventDefault();
+                                  toggleItemSelection(item);
+                                }}
+                                role="option"
+                                aria-selected={isSelected}
+                              >
                                 <Checkbox
                                   checked={isSelected}
-                                  onCheckedChange={() => toggleItemSelection(item)}
+                                  tabIndex={-1}
+                                  className="pointer-events-none"
                                 />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm">{item.item_code}</div>
-                                <div className="text-xs text-muted-foreground truncate">
-                                  {[item.description, item.vendor, item.sidemark]
-                                    .filter(Boolean)
-                                    .join(' • ')}
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm">{item.item_code}</div>
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {[item.description, item.vendor, item.sidemark]
+                                      .filter(Boolean)
+                                      .join(' \u2022 ')}
+                                  </div>
                                 </div>
+                                {isSelected && (
+                                  <MaterialIcon name="check_circle" size="sm" className="text-primary flex-shrink-0" />
+                                )}
                               </div>
-                            </div>
-                          );
-                        })
-                      ) : accountItems.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No items found for this account
-                        </p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No items match your search
-                        </p>
+                            );
+                          })
+                        ) : accountItems.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No items found for this account
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No items match your search
+                          </p>
+                        )}
+                      </div>
+                      {filteredItems.length > 0 && (
+                        <div className="border-t px-3 py-1.5 text-xs text-muted-foreground bg-muted/30">
+                          {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} available
+                          {selectedItems.length > 0 && ` \u2022 ${selectedItems.length} selected`}
+                        </div>
                       )}
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  )}
+                </div>
               </div>
             )}
 
@@ -710,12 +753,16 @@ export function TaskDialog({
             {selectedItems.length > 0 && (
               <div className="space-y-2">
                 <Label>Selected Items ({selectedItems.length})</Label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
                   {selectedItems.map(item => (
                     <Badge key={item.id} variant="secondary" className="flex items-center gap-1">
                       {item.item_code}
                       {!isFromInventory && (
-                        <button onClick={() => removeItem(item.id)}>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="ml-0.5 hover:text-destructive"
+                        >
                           <MaterialIcon name="close" className="h-3 w-3" />
                         </button>
                       )}
@@ -794,7 +841,6 @@ export function TaskDialog({
                 <Select
                   value={formData.priority}
                   onValueChange={(value) => {
-                    // When urgent is selected, auto-set due date to today
                     if (value === 'urgent') {
                       setFormData(prev => ({ 
                         ...prev, 
@@ -900,9 +946,9 @@ export function TaskDialog({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
