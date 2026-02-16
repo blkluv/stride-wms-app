@@ -90,7 +90,7 @@ jobs:
           # Supabase CLI db push can fail if the remote migration history includes versions
           # not present locally. Fetching the remote history creates local stub files so
           # the CLI can proceed safely.
-          DB_URL_ENC="$(node -e "const ref=process.env.SUPABASE_PROJECT_REF; const pw=process.env.SUPABASE_DB_PASSWORD; const pwEnc=encodeURIComponent(pw); const conn=\`postgresql://postgres:\${pwEnc}@db.\${ref}.supabase.co:5432/postgres\`; process.stdout.write(encodeURIComponent(conn));")"
+          DB_URL_ENC="$(node -e "const ref=process.env.SUPABASE_PROJECT_REF; const pw=process.env.SUPABASE_DB_PASSWORD; const pwEnc=encodeURIComponent(pw); const conn=\`postgresql://postgres:\${pwEnc}@db.\${ref}.supabase.co:5432/postgres\`; process.stdout.write(conn);")"
           echo "SUPABASE_DB_URL_ENCODED=$DB_URL_ENC" >> "$GITHUB_ENV"
 
       - name: Fetch remote migration history stubs
