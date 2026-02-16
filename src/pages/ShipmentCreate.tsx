@@ -53,6 +53,14 @@ export default function ShipmentCreate() {
 
   // Determine shipment type from route
   const isReturn = location.pathname.includes("/return/");
+  const inboundKind = useMemo(() => {
+    if (isReturn) return null;
+    if (location.pathname.startsWith("/incoming/manifest")) return "manifest" as const;
+    if (location.pathname.startsWith("/incoming/expected")) return "expected" as const;
+    return "expected" as const;
+  }, [isReturn, location.pathname]);
+  const isManifest = inboundKind === "manifest";
+  const isIncomingCreate = !isReturn && location.pathname.startsWith("/incoming/");
 
   // Form state
   const [loading, setLoading] = useState(false);
@@ -73,6 +81,9 @@ export default function ShipmentCreate() {
   const [poNumber, setPoNumber] = useState("");
   const [expectedArrivalDate, setExpectedArrivalDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [notesTouched, setNotesTouched] = useState(false);
+  const [accountDefaultShipmentNotes, setAccountDefaultShipmentNotes] = useState<string | null>(null);
+  const [accountHighlightShipmentNotes, setAccountHighlightShipmentNotes] = useState(false);
 
   // Fetch account sidemarks for autocomplete suggestions
   const { sidemarks: accountSidemarks, addSidemark: addAccountSidemark } = useAccountSidemarks(accountId || undefined);
@@ -179,6 +190,49 @@ export default function ShipmentCreate() {
 
     fetchData();
   }, [profile?.tenant_id]);
+
+  // Pull default shipment notes from Account Settings (accounts.default_shipment_notes)
+  useEffect(() => {
+    if (!profile?.tenant_id || !accountId) {
+      setAccountDefaultShipmentNotes(null);
+      setAccountHighlightShipmentNotes(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await (supabase.from("accounts") as any)
+        .select("default_shipment_notes, highlight_shipment_notes")
+        .eq("tenant_id", profile.tenant_id)
+        .eq("id", accountId)
+        .single();
+
+      if (cancelled) return;
+      if (error) {
+        console.warn("[ShipmentCreate] Failed to load account default shipment notes:", error.message);
+        setAccountDefaultShipmentNotes(null);
+        setAccountHighlightShipmentNotes(false);
+        return;
+      }
+
+      setAccountDefaultShipmentNotes((data?.default_shipment_notes as string | null) ?? null);
+      setAccountHighlightShipmentNotes(!!data?.highlight_shipment_notes);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.tenant_id, accountId]);
+
+  // Prefill notes if blank and user hasn't typed anything yet
+  useEffect(() => {
+    if (!accountId) return;
+    if (notesTouched) return;
+    if (notes.trim()) return;
+    if (!accountDefaultShipmentNotes?.trim()) return;
+    setNotes(accountDefaultShipmentNotes);
+  }, [accountId, notesTouched, notes, accountDefaultShipmentNotes]);
 
   // ------------------------------------------
   // Item management
@@ -318,8 +372,8 @@ export default function ShipmentCreate() {
         sidemark: sidemark.trim() || null,
         shipment_type: isReturn ? "return" : "inbound",
         // Align inbound shipments created here with the receiving/inbound planning layer.
-        // This ensures the DB prefix trigger can generate EXP-##### numbers for expected shipments.
-        inbound_kind: isReturn ? null : "expected",
+        // This ensures the DB prefix trigger can generate EXP-##### / MAN-##### numbers.
+        inbound_kind: isReturn ? null : inboundKind,
         inbound_status: isReturn ? null : "draft",
         status: "expected" as const,
         carrier: carrier || null,
@@ -395,7 +449,11 @@ export default function ShipmentCreate() {
       });
 
       toast({ title: "Success", description: "Shipment created successfully" });
-      navigate(`/shipments/${shipment.id}`);
+      if (isIncomingCreate && inboundKind) {
+        navigate(inboundKind === "manifest" ? `/incoming/manifest/${shipment.id}` : `/incoming/expected/${shipment.id}`);
+      } else {
+        navigate(`/shipments/${shipment.id}`);
+      }
     } catch (err: any) {
       console.error("[ShipmentCreate] submit error:", err);
       const isRlsError =
@@ -436,7 +494,7 @@ export default function ShipmentCreate() {
           </Button>
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold truncate">
-              {isReturn ? "Create Return Shipment" : "Create Inbound Shipment"}
+              {isReturn ? "Create Return Shipment" : isManifest ? "Create Manifest" : "Create Expected Shipment"}
             </h1>
             <p className="text-sm text-muted-foreground">Enter shipment details and expected items</p>
           </div>
@@ -539,12 +597,21 @@ export default function ShipmentCreate() {
               </div>
 
               {/* Notes */}
+              {accountHighlightShipmentNotes && accountDefaultShipmentNotes?.trim() && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <div className="font-medium mb-1">Default Shipment Notes</div>
+                  <p className="whitespace-pre-wrap">{accountDefaultShipmentNotes}</p>
+                </div>
+              )}
               <FormField
                 label="Notes"
                 name="notes"
                 type="textarea"
                 value={notes}
-                onChange={setNotes}
+                onChange={(value) => {
+                  setNotesTouched(true);
+                  setNotes(value);
+                }}
                 placeholder="Additional notes about this shipment..."
                 minRows={2}
                 maxRows={4}

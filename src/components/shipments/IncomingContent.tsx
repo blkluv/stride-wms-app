@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -27,11 +28,7 @@ import { useIncomingShipments, type InboundKind, type IncomingShipment } from '@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
-import { useAccounts } from '@/hooks/useAccounts';
 import { DraftQueueList } from '@/components/receiving/DraftQueueList';
-import { SearchableSelect, type SelectOption } from '@/components/ui/searchable-select';
-import { AutocompleteSearchInput, type AutocompleteSuggestion } from '@/components/ui/autocomplete-search';
 
 type TabValue = 'manifests' | 'expected' | 'dock_intakes';
 
@@ -76,27 +73,6 @@ function formatStatus(status: string | null | undefined): string {
   return status.replace(/_/g, ' ');
 }
 
-type SortDirection = 'asc' | 'desc';
-
-function SortIndicator({ active, direction }: { active: boolean; direction: SortDirection }) {
-  if (!active) return null;
-  return <span className="ml-1">{direction === 'asc' ? '▲' : '▼'}</span>;
-}
-
-function compareNullableString(a: string | null | undefined, b: string | null | undefined): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return 1;
-  if (b == null) return -1;
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-}
-
-function compareNullableNumber(a: number | null | undefined, b: number | null | undefined): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return 1;
-  if (b == null) return -1;
-  return a - b;
-}
-
 /* -- Manifest List -- */
 function ManifestList({
   shipments,
@@ -107,63 +83,6 @@ function ManifestList({
   loading: boolean;
   onRowClick: (id: string) => void;
 }) {
-  type ManifestSortField =
-    | 'shipment_number'
-    | 'account_name'
-    | 'vendor_name'
-    | 'eta_start'
-    | 'expected_pieces'
-    | 'open_items_count'
-    | 'inbound_status'
-    | 'created_at';
-
-  const [sortField, setSortField] = useState<ManifestSortField>('created_at');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-
-  const handleSort = (field: ManifestSortField) => {
-    if (sortField === field) {
-      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const sortedShipments = useMemo(() => {
-    const dir = sortDirection === 'asc' ? 1 : -1;
-    return [...shipments].sort((a, b) => {
-      let cmp = 0;
-      switch (sortField) {
-        case 'shipment_number':
-          cmp = compareNullableString(a.shipment_number, b.shipment_number);
-          break;
-        case 'account_name':
-          cmp = compareNullableString(a.account_name, b.account_name);
-          break;
-        case 'vendor_name':
-          cmp = compareNullableString(a.vendor_name, b.vendor_name);
-          break;
-        case 'eta_start':
-          cmp = compareNullableString(a.eta_start, b.eta_start);
-          break;
-        case 'expected_pieces':
-          cmp = compareNullableNumber(a.expected_pieces, b.expected_pieces);
-          break;
-        case 'open_items_count':
-          cmp = compareNullableNumber(a.open_items_count, b.open_items_count);
-          break;
-        case 'inbound_status':
-          cmp = compareNullableString(a.inbound_status, b.inbound_status);
-          break;
-        case 'created_at':
-        default:
-          cmp = compareNullableString(a.created_at, b.created_at);
-          break;
-      }
-      return cmp * dir;
-    });
-  }, [shipments, sortField, sortDirection]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -185,7 +104,7 @@ function ManifestList({
     <>
       {/* Mobile stacked cards */}
       <div className="md:hidden space-y-3">
-        {sortedShipments.map((s) => (
+        {shipments.map((s) => (
           <Card key={s.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onRowClick(s.id)}>
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -210,34 +129,18 @@ function ManifestList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('shipment_number')}>
-                Manifest #<SortIndicator active={sortField === 'shipment_number'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('account_name')}>
-                Account<SortIndicator active={sortField === 'account_name'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('vendor_name')}>
-                Vendor<SortIndicator active={sortField === 'vendor_name'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('eta_start')}>
-                ETA<SortIndicator active={sortField === 'eta_start'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('expected_pieces')}>
-                Pieces<SortIndicator active={sortField === 'expected_pieces'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('open_items_count')}>
-                Items<SortIndicator active={sortField === 'open_items_count'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('inbound_status')}>
-                Status<SortIndicator active={sortField === 'inbound_status'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('created_at')}>
-                Created<SortIndicator active={sortField === 'created_at'} direction={sortDirection} />
-              </TableHead>
+              <TableHead>Manifest #</TableHead>
+              <TableHead>Account</TableHead>
+              <TableHead>Vendor</TableHead>
+              <TableHead>ETA</TableHead>
+              <TableHead className="text-right">Pieces</TableHead>
+              <TableHead className="text-right">Items</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedShipments.map((s) => (
+            {shipments.map((s) => (
               <TableRow
                 key={s.id}
                 className="cursor-pointer hover:bg-muted/50"
@@ -283,63 +186,6 @@ function ExpectedList({
   loading: boolean;
   onRowClick: (id: string) => void;
 }) {
-  type ExpectedSortField =
-    | 'shipment_number'
-    | 'account_name'
-    | 'vendor_name'
-    | 'eta_start'
-    | 'expected_pieces'
-    | 'open_items_count'
-    | 'inbound_status'
-    | 'created_at';
-
-  const [sortField, setSortField] = useState<ExpectedSortField>('created_at');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-
-  const handleSort = (field: ExpectedSortField) => {
-    if (sortField === field) {
-      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const sortedShipments = useMemo(() => {
-    const dir = sortDirection === 'asc' ? 1 : -1;
-    return [...shipments].sort((a, b) => {
-      let cmp = 0;
-      switch (sortField) {
-        case 'shipment_number':
-          cmp = compareNullableString(a.shipment_number, b.shipment_number);
-          break;
-        case 'account_name':
-          cmp = compareNullableString(a.account_name, b.account_name);
-          break;
-        case 'vendor_name':
-          cmp = compareNullableString(a.vendor_name, b.vendor_name);
-          break;
-        case 'eta_start':
-          cmp = compareNullableString(a.eta_start, b.eta_start);
-          break;
-        case 'expected_pieces':
-          cmp = compareNullableNumber(a.expected_pieces, b.expected_pieces);
-          break;
-        case 'open_items_count':
-          cmp = compareNullableNumber(a.open_items_count, b.open_items_count);
-          break;
-        case 'inbound_status':
-          cmp = compareNullableString(a.inbound_status, b.inbound_status);
-          break;
-        case 'created_at':
-        default:
-          cmp = compareNullableString(a.created_at, b.created_at);
-          break;
-      }
-      return cmp * dir;
-    });
-  }, [shipments, sortField, sortDirection]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -361,7 +207,7 @@ function ExpectedList({
     <>
       {/* Mobile stacked cards */}
       <div className="md:hidden space-y-3">
-        {sortedShipments.map((s) => (
+        {shipments.map((s) => (
           <Card key={s.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onRowClick(s.id)}>
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -386,34 +232,18 @@ function ExpectedList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('shipment_number')}>
-                Expected #<SortIndicator active={sortField === 'shipment_number'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('account_name')}>
-                Account<SortIndicator active={sortField === 'account_name'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('vendor_name')}>
-                Vendor<SortIndicator active={sortField === 'vendor_name'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('eta_start')}>
-                ETA Window<SortIndicator active={sortField === 'eta_start'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('expected_pieces')}>
-                Expected Pieces<SortIndicator active={sortField === 'expected_pieces'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('open_items_count')}>
-                Items<SortIndicator active={sortField === 'open_items_count'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('inbound_status')}>
-                Status<SortIndicator active={sortField === 'inbound_status'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('created_at')}>
-                Created<SortIndicator active={sortField === 'created_at'} direction={sortDirection} />
-              </TableHead>
+              <TableHead>Expected #</TableHead>
+              <TableHead>Account</TableHead>
+              <TableHead>Vendor</TableHead>
+              <TableHead>ETA Window</TableHead>
+              <TableHead className="text-right">Expected Pieces</TableHead>
+              <TableHead className="text-right">Items</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedShipments.map((s) => (
+            {shipments.map((s) => (
               <TableRow
                 key={s.id}
                 className="cursor-pointer hover:bg-muted/50"
@@ -468,55 +298,6 @@ function DockIntakeList({
   loading: boolean;
   onRowClick: (id: string) => void;
 }) {
-  type DockIntakeSortField =
-    | 'shipment_number'
-    | 'account_name'
-    | 'vendor_name'
-    | 'signed_pieces'
-    | 'inbound_status'
-    | 'created_at';
-
-  const [sortField, setSortField] = useState<DockIntakeSortField>('created_at');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-
-  const handleSort = (field: DockIntakeSortField) => {
-    if (sortField === field) {
-      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const sortedShipments = useMemo(() => {
-    const dir = sortDirection === 'asc' ? 1 : -1;
-    return [...shipments].sort((a, b) => {
-      let cmp = 0;
-      switch (sortField) {
-        case 'shipment_number':
-          cmp = compareNullableString(a.shipment_number, b.shipment_number);
-          break;
-        case 'account_name':
-          cmp = compareNullableString(a.account_name, b.account_name);
-          break;
-        case 'vendor_name':
-          cmp = compareNullableString(a.vendor_name, b.vendor_name);
-          break;
-        case 'signed_pieces':
-          cmp = compareNullableNumber(a.signed_pieces, b.signed_pieces);
-          break;
-        case 'inbound_status':
-          cmp = compareNullableString(a.inbound_status, b.inbound_status);
-          break;
-        case 'created_at':
-        default:
-          cmp = compareNullableString(a.created_at, b.created_at);
-          break;
-      }
-      return cmp * dir;
-    });
-  }, [shipments, sortField, sortDirection]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -538,7 +319,7 @@ function DockIntakeList({
     <>
       {/* Mobile stacked cards */}
       <div className="md:hidden space-y-3">
-        {sortedShipments.map((s) => (
+        {shipments.map((s) => (
           <Card key={s.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onRowClick(s.id)}>
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -563,28 +344,16 @@ function DockIntakeList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('shipment_number')}>
-                Intake #<SortIndicator active={sortField === 'shipment_number'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('account_name')}>
-                Account<SortIndicator active={sortField === 'account_name'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('vendor_name')}>
-                Vendor<SortIndicator active={sortField === 'vendor_name'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('signed_pieces')}>
-                Signed Pieces<SortIndicator active={sortField === 'signed_pieces'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('inbound_status')}>
-                Status<SortIndicator active={sortField === 'inbound_status'} direction={sortDirection} />
-              </TableHead>
-              <TableHead className="cursor-pointer select-none" onClick={() => handleSort('created_at')}>
-                Arrived<SortIndicator active={sortField === 'created_at'} direction={sortDirection} />
-              </TableHead>
+              <TableHead>Intake #</TableHead>
+              <TableHead>Account</TableHead>
+              <TableHead>Vendor</TableHead>
+              <TableHead className="text-right">Signed Pieces</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Arrived</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedShipments.map((s) => (
+            {shipments.map((s) => (
               <TableRow
                 key={s.id}
                 className="cursor-pointer hover:bg-muted/50"
@@ -636,15 +405,8 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
   const [activeTab, setActiveTab] = useState<TabValue>(mapInitialTab);
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [creating, setCreating] = useState(false);
-
-  // Debounce inbound list search so we don't spam Supabase on each keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 200);
-    return () => clearTimeout(t);
-  }, [search]);
 
   // Keep active tab aligned with parent-provided sub-tab.
   useEffect(() => {
@@ -657,7 +419,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
   const { shipments, loading } = useIncomingShipments({
     inbound_kind: currentKind,
-    search: debouncedSearch || undefined,
+    search: search || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
 
@@ -676,64 +438,10 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     setActiveTab(val as TabValue);
     setStatusFilter('all');
     setSearch('');
-    setDebouncedSearch('');
   };
 
   const { profile } = useAuth();
   const { toast } = useToast();
-  const { unidentifiedAccountId } = useUnidentifiedAccount();
-  const { accounts } = useAccounts();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
-
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      accounts.map((a) => ({
-        value: a.id,
-        label: a.account_code ? `${a.account_name} (${a.account_code})` : a.account_name,
-      })),
-    [accounts]
-  );
-
-  const searchSuggestions: AutocompleteSuggestion[] = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (q.length < 1) return [];
-
-    const out: AutocompleteSuggestion[] = [];
-    const seen = new Set<string>();
-
-    const add = (value: string | null | undefined, prefix: string) => {
-      if (!value) return;
-      const v = String(value).trim();
-      if (!v) return;
-      if (!v.toLowerCase().includes(q)) return;
-      if (seen.has(v)) return;
-      seen.add(v);
-      out.push({ value: v, label: `${prefix}: ${v}` });
-    };
-
-    // Limit the scan so very large lists don't create UI lag.
-    for (const s of shipments.slice(0, 250)) {
-      add(s.shipment_number, 'Shipment');
-      add(s.account_name, 'Account');
-      add(s.vendor_name, 'Vendor');
-      add(s.tracking_number, 'Tracking');
-      add(s.po_number, 'PO');
-      add(s.carrier, 'Carrier');
-      add(s.origin_name, 'Origin');
-      add(s.destination_name, 'Destination');
-      add(s.sidemark, 'Sidemark');
-      add(s.inbound_status, 'Status');
-    }
-
-    return out;
-  }, [search, shipments]);
-
-  // Default selected account to UNIDENTIFIED once loaded
-  useEffect(() => {
-    if (unidentifiedAccountId && !selectedAccountId) {
-      setSelectedAccountId(unidentifiedAccountId);
-    }
-  }, [unidentifiedAccountId, selectedAccountId]);
 
   const handleRowClick = (id: string) => {
     if (activeTab === 'manifests') {
@@ -745,28 +453,19 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     }
   };
 
-  const handleCreateInbound = async (kind: InboundKind) => {
-    if (!profile?.tenant_id) return;
-    // Account is required for manifests/expected shipments. Dock intakes pick account in the intake workflow.
-    if (kind !== 'dock_intake' && !selectedAccountId) {
-      toast({
-        variant: 'destructive',
-        title: 'Account Required',
-        description: 'Please select an account before creating a shipment.',
-      });
-      return;
-    }
+  const handleCreateDockIntake = async (): Promise<boolean> => {
+    if (!profile?.tenant_id) return false;
     try {
       setCreating(true);
 
-      // Insert with exact PF-1 payload (no account_id).
+      // Insert with exact PF-1 payload (no account_id)
       const { data, error } = await (supabase as any)
         .from('shipments')
         .insert({
           tenant_id: profile.tenant_id,
           shipment_type: 'inbound',
           status: 'expected',
-          inbound_kind: kind,
+          inbound_kind: 'dock_intake',
           inbound_status: 'draft',
           created_by: profile.id,
         })
@@ -774,24 +473,8 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
         .single();
 
       if (error) throw error;
-
-      // Post-insert: set account_id (not for dock intakes; chosen inside Stage 1)
-      if (kind !== 'dock_intake') {
-        const { error: updateError } = await (supabase as any)
-          .from('shipments')
-          .update({ account_id: selectedAccountId })
-          .eq('id', data.id);
-
-        if (updateError) throw updateError;
-      }
-
-      const routeMap: Record<InboundKind, string> = {
-        manifest: `/incoming/manifest/${data.id}`,
-        expected: `/incoming/expected/${data.id}`,
-        dock_intake: `/incoming/dock-intake/${data.id}`,
-      };
-
-      navigate(routeMap[kind]);
+      navigate(`/incoming/dock-intake/${data.id}`);
+      return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create record';
       toast({
@@ -799,6 +482,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
         title: 'Error',
         description: message,
       });
+      return false;
     } finally {
       setCreating(false);
     }
@@ -826,12 +510,17 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
         <Card className="mt-4">
           <CardContent className="pt-4">
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-              <div className="flex-1 w-full sm:max-w-xs">
-                <AutocompleteSearchInput
+              <div className="relative flex-1 w-full sm:max-w-xs">
+                <MaterialIcon
+                  name="search"
+                  size="sm"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
                   placeholder="Search #, account, vendor, notes, refs..."
                   value={search}
-                  onValueChange={setSearch}
-                  suggestions={searchSuggestions}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8"
                 />
               </div>
 
@@ -848,25 +537,14 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
                 </SelectContent>
               </Select>
 
-              {activeTab !== 'dock_intakes' && (
-                <div className="w-full sm:w-[260px]">
-                  <SearchableSelect
-                    options={accountOptions}
-                    value={selectedAccountId}
-                    onChange={setSelectedAccountId}
-                    placeholder="Select account *"
-                    searchPlaceholder="Search accounts..."
-                    emptyText="No accounts found"
-                  />
-                </div>
-              )}
-
               <div className="flex gap-2 ml-auto">
                 {activeTab === 'manifests' && (
                   <Button
                     size="sm"
-                    onClick={() => handleCreateInbound('manifest')}
-                    disabled={creating || !selectedAccountId}
+                    onClick={() => {
+                      navigate('/incoming/manifest/new');
+                    }}
+                    disabled={creating}
                   >
                     <MaterialIcon name="add" size="sm" className="mr-1" />
                     New Manifest
@@ -875,23 +553,13 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
                 {activeTab === 'expected' && (
                   <Button
                     size="sm"
-                    onClick={() => handleCreateInbound('expected')}
-                    disabled={creating || !selectedAccountId}
-                  >
-                    <MaterialIcon name="add" size="sm" className="mr-1" />
-                    New Expected Shipment
-                  </Button>
-                )}
-                {activeTab === 'dock_intakes' && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      onStartDockIntake ? onStartDockIntake() : handleCreateInbound('dock_intake')
-                    }
+                    onClick={() => {
+                      navigate('/incoming/expected/new');
+                    }}
                     disabled={creating}
                   >
                     <MaterialIcon name="add" size="sm" className="mr-1" />
-                    Start Dock Intake
+                    New Expected Shipment
                   </Button>
                 )}
               </div>
@@ -925,6 +593,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           {/* Draft Queue */}
           <DraftQueueList
             onSelect={(id) => navigate(`/incoming/dock-intake/${id}`)}
+            onCreateNew={() => onStartDockIntake ? onStartDockIntake() : handleCreateDockIntake()}
           />
 
           {/* All dock intakes (including closed) */}
@@ -938,6 +607,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           </div>
         </TabsContent>
       </Tabs>
+
     </div>
   );
 }
