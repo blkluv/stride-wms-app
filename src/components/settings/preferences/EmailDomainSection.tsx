@@ -47,7 +47,9 @@ interface EmailDomainSettings {
 
 type SetupStep = 'choice' | 'enter-email' | 'select-registrar' | 'add-records' | 'verify' | 'complete';
 
-const DEFAULT_EMAIL = 'noreply@stride-wms.com';
+// The actual platform default sender is configured server-side (Resend + Edge Function secrets).
+// Avoid hard-coding an address here to prevent mismatch between UI and production.
+const DEFAULT_SENDER_LABEL = 'Stride default sender (no-reply)';
 
 // Registrar-specific instructions
 const REGISTRAR_INSTRUCTIONS: Record<string, { name: string; steps: string[] }> = {
@@ -297,7 +299,7 @@ export function EmailDomainSection() {
 
         toast({
           title: 'Settings Saved',
-          description: `Emails will be sent from ${DEFAULT_EMAIL}`,
+          description: 'Emails will be sent from the Stride default sender.',
         });
       } catch (error) {
         console.error('Error saving email settings:', error);
@@ -578,7 +580,7 @@ export function EmailDomainSection() {
                     Use Default Email (Recommended)
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Emails will be sent from <strong>{DEFAULT_EMAIL}</strong>
+                    Emails will be sent from <strong>{DEFAULT_SENDER_LABEL}</strong>
                   </p>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="secondary" className="text-xs">
@@ -620,7 +622,7 @@ export function EmailDomainSection() {
               <Alert className="border-green-200 bg-green-50">
                 <MaterialIcon name="check_circle" size="sm" className="text-green-600" />
                 <AlertDescription className="text-green-800">
-                  You're all set! Notification emails will be sent from <strong>{DEFAULT_EMAIL}</strong>.
+                  You're all set! Notification emails will be sent from <strong>{DEFAULT_SENDER_LABEL}</strong>.
                   Customers can still reply - replies will go to your company email configured in Contact settings.
                 </AlertDescription>
               </Alert>
