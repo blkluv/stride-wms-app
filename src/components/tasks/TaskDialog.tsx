@@ -645,7 +645,7 @@ export function TaskDialog({
                     </div>
                   </PopoverAnchor>
                   <PopoverContent
-                    className="w-[--radix-popover-trigger-width] p-0 z-50 bg-popover border shadow-md"
+                    className="w-[--radix-popover-trigger-width] p-0 z-[60] bg-popover border shadow-md"
                     align="start"
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
