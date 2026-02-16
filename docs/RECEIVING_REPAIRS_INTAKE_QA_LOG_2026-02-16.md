@@ -1,0 +1,172 @@
+# Repair Receiving Workflow (Stage 1 + Stage 2) — Q&A Log
+Date: 2026-02-16
+
+This file records the question/answer decisions gathered before implementing
+the repair receiving workflow fixes. It is intentionally concise but complete.
+
+## Q&A
+
+1. Q: Is "real scan to B/W PDF" for web, mobile, or both?
+   A: Mobile/tablet only in-app; desktop = upload only.
+
+2. Q: What action marks "Stage 1 complete" and triggers Stage 2 to appear?
+   A: A "Complete Stage 1" button. Users may return later to do Stage 2.
+
+3. Q: Should Stage 2 auto-expand when returning later (Stage 1 complete)?
+   A: Collapsed until user clicks "Start Stage 2". After starting Stage 2,
+      it should default expanded going forward unless the user minimizes.
+
+4. Q: Should clicking "Start Stage 2" be persisted?
+   A: Yes, saved to DB.
+
+5. Q: After Stage 1 complete, should Stage 1 be locked or editable?
+   A: Editable later if needed.
+
+6. Q: Piece-count mismatch prompting enforcement timing?
+   A: Yes, prompt on mismatches and require user to address.
+
+7. Q: Should completing be blocked until mismatch is corrected or exception+note?
+   A: Yes. Add "Shortage" and "Overage" exception chips for piece discrepancies.
+
+8. Q: Need a dedicated Overage chip?
+   A: Yes.
+
+9. Q: Exception chips multi-select or single-select?
+   A: Multi-select.
+
+10. Q: Notes model for exceptions: shared field or separate per exception?
+    A: One shared at first for efficiency, but later refined to per-exception
+       inline entry (see below).
+
+11. Q: Exception note scope: stage-specific or shared?
+    A: One shipment-level notes system (public/internal toggle like item details).
+
+12. Q: Intake page notes types?
+    A: Both Internal and Public, toggle like Item Details notes UI.
+
+13. Q: Required exception note placement?
+    A: Exception notes must be in Public (client-visible).
+       Clarification: auto-matching mismatch (manifest vs expected) does NOT
+       require exception notes; piece-count discrepancies do when exceptions apply.
+
+14. Q: Stage 1 mismatch handling (Carrier vs Dock) should Shortage/Overage sync?
+    A: Yes, sync live; and Shortage/Overage remain locked until mismatch corrected.
+
+15. Q: Mis-Ship chip auto-detect or manual?
+    A: Manual only (typically determined during Stage 2), but must be available
+       once Stage 2 is visible because Stage 1 remains editable.
+
+16. Q: Stage 2 mismatch (Dock vs Entry) should Shortage/Overage sync?
+    A: No sync. Prompt on Stage 2 completion; require correction or exception+note.
+
+17. Q: Entry Count definition: sum quantities or row count?
+    A: Row count. Quantity refers to items inside a carton/package; each row
+       represents one carton/package/piece.
+
+18. Q: Signature required to complete Stage 1?
+    A: Not required.
+
+19. Q: Notes UI style for intake?
+    A: Same as Item Details notes UI (multi-note list with filters).
+
+20. Q: Notes storage: shipment-level or intake-only?
+    A: Shipment-level.
+
+21. Q: Exception-note enforcement UX: Notes tab vs modal?
+    A: Notes tab (option A). (Later refined to inline note per exception chip.)
+
+22. Q: Public note required for which chips?
+    A: All exception chips require a client-visible exception note.
+
+23. Q: Add a third note type "Exception"?
+    A: Yes. Filters/tabs: All / Public / Internal / Exception.
+
+24. Q: Does a generic Public note satisfy exception requirement?
+    A: No. If any exception chip is selected, at least one Exception-type note
+       must exist (and for per-chip notes, each selected chip needs its note).
+
+25. Q: Carrier paperwork pieces input: manual vs auto?
+    A: Manual.
+
+26. Q: Carrier count required for Complete Stage 1?
+    A: Required. Label "Carrier count". Add help icon tooltip.
+
+27. Q: Dock count required for Complete Stage 1?
+    A: Required. Label "Dock Count". Add help icon tooltip to all 3 counts.
+
+28. Q: Stage 2 count label and editability?
+    A: Label "Entry Count", read-only, computed from row count (each row = piece).
+
+29. Q: Exception notes deletion behavior?
+    A: When a chip is removed, remove the corresponding exception note(s).
+       Log all add/remove activity in shipment audit/activity history.
+
+30. Q: Exception notes per chip: one or multiple?
+    A: Inline quick entry is one note per chip; can add more from the Exception
+       notes tab later.
+
+31. Q: If chip-generated exception notes, should they be tied to chip?
+    A: Yes. If note added directly in Exception notes tab, it does not need a chip.
+
+32. Q: Where should per-exception note entry appear?
+    A: Inline in the Exceptions section (quick entry), but stored under Notes tab
+       in Exception filter.
+
+33. Q: Signature applies to which stage?
+    A: Stage 1 carrier sign-for.
+
+34. Q: Signature persistence and visibility?
+    A: Persisted and viewable later; on both intake page and Shipment Details page.
+
+35. Q: Signature metadata display?
+    A: Show metadata and typed name if filled out.
+
+36. Q: Driver name requirement for signature capture?
+    A: Signature optional. If drawn signature is used, Driver name required.
+       Typed signature alone is acceptable (or no signature at all).
+
+37. Q: Driver name label?
+    A: "Driver name".
+
+38. Q: Signature Edit capabilities?
+    A: Edit should allow switching Draw/Type and allow Clear.
+
+39. Q: Scanner: single-page vs multi-page PDF?
+    A: Multi-page scanning into a single PDF.
+
+40. Q: Scanner quality: edge detection + manual crop adjustment?
+    A: Yes, auto edge detection plus manual crop adjustment like scanner apps.
+
+41. Q: Scanner naming prompt?
+    A: No user naming. Auto-name using shipment number shown in UI + date + unique.
+
+42. Q: Mobile scanning environment?
+    A: Initially mobile web browser; native iOS/Android later.
+
+43. Q: Mobile web capture: file-input vs in-page live camera preview?
+    A: Prefer in-page live preview; accept file-input capture if needed.
+
+44. Q: Implement now or postpone scanner?
+    A: Implement now and structure for later native swap.
+
+45. Q: Alerts and downstream effects for exceptions?
+    A: Avoid double-emailing clients. Enhance existing "Shipment Received" email
+       with an Exceptions section (blank when none), using tokens for exception
+       types + notes. Also show exception indicator near shipment number display.
+
+46. Q: Shipment received email formatting for exceptions?
+    A: Bullet list / note-style (types + notes), not item-specific.
+
+47. Q: Item-level flags + alert tokens needed now?
+    A: Yes, implement item-level flags and alert tokens now.
+
+48. Q: Item-level flag types (Stage 2)?
+    A: Damage, Wet, Missing documents, Crushed/Torn, Other, Open.
+
+49. Q: Flag availability level?
+    A: Both shipment-level exceptions and item-level flags; shipment notes the
+       exception exists; item flags specify which carton/piece.
+
+50. Q: Shipment-level exception chip list (final confirmation)?
+    A: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
+
