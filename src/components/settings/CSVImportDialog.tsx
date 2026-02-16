@@ -113,7 +113,7 @@ function detectLocationType(code: string): string {
   }
 
   if (/^[A-Z]+RR\.\d+$/.test(upperCode) || /^[A-Z]+R\d+$/.test(upperCode)) {
-    return 'aisle';
+    return 'row';
   }
 
   if (upperCode.startsWith('SHELF-') || upperCode.startsWith('SHLF-')) {

@@ -17,7 +17,7 @@ export interface LocationListColumn {
 
 export const LOCATION_LIST_COLUMNS: LocationListColumn[] = [
   { key: 'code', label: 'Code', templateExample: 'A1.1' },
-  { key: 'name', label: 'Name', templateExample: 'Aisle 1 Bay 1' },
+  { key: 'name', label: 'Name', templateExample: 'Row 1 Bay 1' },
   { key: 'type', label: 'Type', templateExample: 'bin' },
   { key: 'warehouse', label: 'Warehouse', templateExample: 'STRIDE LOGISTICS' },
   { key: 'capacity', label: 'Capacity', templateExample: 120 },
