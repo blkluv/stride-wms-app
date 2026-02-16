@@ -1,11 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "no-reply@stridelogistics.app";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,7 +96,13 @@ async function authenticateAdminDev(req: Request, serviceClient: ReturnType<type
   return user.id;
 }
 
-async function sendResendEmail(to: string, subject: string, html: string) {
+async function sendResendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  from: string;
+  replyTo?: string | null;
+}) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -104,10 +110,11 @@ async function sendResendEmail(to: string, subject: string, html: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [to],
-      subject,
-      html,
+      from: params.from,
+      to: [params.to],
+      subject: params.subject,
+      html: params.html,
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
     }),
   });
 
@@ -205,6 +212,8 @@ serve(async (req: Request): Promise<Response> => {
 
   try {
     const userId = await authenticateAdminDev(req, serviceClient);
+    const platformDefaults = await resolvePlatformEmailDefaults(serviceClient);
+    const fromAddress = `${platformDefaults.fromName} <${platformDefaults.fromEmail}>`;
     const body = (await req.json()) as NoticeRequestBody;
 
     if (!body?.pricing_version_id) {
@@ -325,7 +334,13 @@ serve(async (req: Request): Promise<Response> => {
     for (const recipient of recipients) {
       try {
         const html = buildNoticeHtml(recipient.companyName, body.notice_type, pricing);
-        await sendResendEmail(recipient.email, subject, html);
+        await sendResendEmail({
+          to: recipient.email,
+          subject,
+          html,
+          from: fromAddress,
+          replyTo: platformDefaults.replyTo,
+        });
         sentCount += 1;
       } catch (error: unknown) {
         failures.push({

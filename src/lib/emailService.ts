@@ -37,8 +37,14 @@ export interface EmailResult {
 }
 
 // Set to true to use test mode (logs to console/DB instead of sending)
-// In production, set this to false or use an environment variable
-const EMAIL_TEST_MODE = true;
+// Default: enabled in dev, disabled in production builds.
+// You can override with VITE_EMAIL_TEST_MODE=true/false.
+const EMAIL_TEST_MODE = (() => {
+  const raw = String(import.meta.env.VITE_EMAIL_TEST_MODE || '').toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return import.meta.env.DEV;
+})();
 
 // Extract links from HTML for test mode
 function extractLinksFromHtml(html: string): { activationLink?: string; quoteLink?: string } {
@@ -125,6 +131,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResult> {
         to: params.to,
         subject: params.subject,
         html: params.htmlBody,
+        ...(params.tenantId ? { tenant_id: params.tenantId } : {}),
       },
     });
 

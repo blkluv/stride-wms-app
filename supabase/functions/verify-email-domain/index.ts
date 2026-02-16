@@ -62,7 +62,7 @@ serve(async (req: Request): Promise<Response> => {
     // Get the resend_domain_id from brand settings
     const { data: brandSettings } = await supabase
       .from("communication_brand_settings")
-      .select("resend_domain_id")
+      .select("resend_domain_id, custom_email_domain, from_email")
       .eq("tenant_id", profile.tenant_id)
       .maybeSingle();
 
@@ -121,15 +121,22 @@ serve(async (req: Request): Promise<Response> => {
     const isVerified = domainData.status === "verified";
 
     // Update the database with verification status
+    const updatePayload: Record<string, unknown> = {
+      email_domain_verified: isVerified,
+      spf_verified: spfVerified,
+      dkim_verified: dkimVerified,
+      email_verified_at: isVerified ? new Date().toISOString() : null,
+      resend_dns_records: records,
+    };
+
+    // Keep from_email in sync with the wizard field if it hasn't been set yet.
+    if (!brandSettings?.from_email && brandSettings?.custom_email_domain) {
+      updatePayload.from_email = brandSettings.custom_email_domain;
+    }
+
     await supabase
       .from("communication_brand_settings")
-      .update({
-        email_domain_verified: isVerified,
-        spf_verified: spfVerified,
-        dkim_verified: dkimVerified,
-        email_verified_at: isVerified ? new Date().toISOString() : null,
-        resend_dns_records: records,
-      })
+      .update(updatePayload)
       .eq("tenant_id", profile.tenant_id);
 
     const message = isVerified 
