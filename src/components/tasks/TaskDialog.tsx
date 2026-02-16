@@ -114,6 +114,15 @@ export function TaskDialog({
   // Check if we're creating from inventory (items pre-selected)
   const isFromInventory = selectedItemIds.length > 0;
 
+  // Will Call is handled as an outbound shipment (not a task) going forward.
+  const DEPRECATED_TASK_TYPES = useMemo(() => new Set(['Will Call']), []);
+
+  const selectableTaskTypes = useMemo(() => {
+    // If we're editing an existing task, keep its type available for display/editing.
+    if (task) return taskTypes;
+    return taskTypes.filter((t) => !DEPRECATED_TASK_TYPES.has(t.name));
+  }, [task, taskTypes, DEPRECATED_TASK_TYPES]);
+
   useEffect(() => {
     if (open) {
       fetchAccounts();
@@ -156,11 +165,13 @@ export function TaskDialog({
     } else {
       // Reset form and apply preSelectedTaskType if provided
       const initialTaskType = preSelectedTaskType || '';
-      const dueDate = initialTaskType ? getDueDateForTaskType(initialTaskType) : null;
+      const isWillCall = initialTaskType === 'Will Call';
+      const safeInitialTaskType = isWillCall ? '' : initialTaskType;
+      const dueDate = safeInitialTaskType ? getDueDateForTaskType(safeInitialTaskType) : null;
 
       setFormData({
         description: '',
-        task_type: initialTaskType,
+        task_type: safeInitialTaskType,
         task_type_id: null,
         priority: 'normal',
         due_date: dueDate,
@@ -172,6 +183,12 @@ export function TaskDialog({
         bill_to_customer_name: '',
         bill_to_customer_email: '',
       });
+      if (isWillCall) {
+        toast({
+          title: 'Will Call moved to Outbound Shipments',
+          description: 'Create Will Calls via Shipments → Outbound (not Tasks).',
+        });
+      }
       setSelectedItems([]);
       setAccountItems([]);
       setItemSearchQuery('');
@@ -288,6 +305,13 @@ export function TaskDialog({
       setShowNewTaskType(true);
       return;
     }
+    if (value === 'Will Call') {
+      toast({
+        title: 'Will Call moved to Outbound Shipments',
+        description: 'Create Will Calls via Shipments → Outbound (not Tasks).',
+      });
+      return;
+    }
 
     // Resolve task_type_id from the selected task type
     const matchedType = taskTypes.find(tt => tt.name === value);
@@ -302,6 +326,14 @@ export function TaskDialog({
 
   const handleCreateTaskType = async () => {
     if (!newTaskTypeName.trim()) return;
+    if (newTaskTypeName.trim().toLowerCase() === 'will call') {
+      toast({
+        variant: 'destructive',
+        title: 'Not allowed',
+        description: 'Will Call is now handled as an Outbound Shipment (not a Task type).',
+      });
+      return;
+    }
 
     const newType = await createTaskType(newTaskTypeName);
     if (newType) {
@@ -587,7 +619,7 @@ export function TaskDialog({
                     <SelectValue placeholder="Select task type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {taskTypes.map(type => (
+                    {selectableTaskTypes.map(type => (
                       <SelectItem key={type.id} value={type.name}>
                         {type.name}
                       </SelectItem>

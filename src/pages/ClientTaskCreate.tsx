@@ -21,7 +21,6 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 const TASK_TYPES = [
   'Delivery',
   'Pick Up',
-  'Will Call',
   'Inspection',
   'Repair',
   'Assembly',
@@ -74,6 +73,16 @@ export default function ClientTaskCreate() {
         title: 'Validation Error',
         description: 'Please select a task type.',
       });
+      return;
+    }
+
+    // Will Call is an outbound shipment (not a task) going forward.
+    if (taskType === 'Will Call') {
+      toast({
+        title: 'Will Call moved to Outbound Shipments',
+        description: 'Please create a Will Call using the Outbound Shipment form instead of Tasks.',
+      });
+      navigate('/client/shipments/outbound/new', { state: { itemIds, accountId } });
       return;
     }
 
@@ -193,6 +202,26 @@ export default function ClientTaskCreate() {
               <CardTitle>Task Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <MaterialIcon name="local_shipping" size="sm" className="mt-0.5 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="font-medium">Need a Will Call pickup?</p>
+                    <p className="text-muted-foreground">
+                      Will Calls are created as <span className="font-medium">Outbound Shipments</span> (not Tasks).
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate('/client/shipments/outbound/new', { state: { itemIds, accountId } })}
+                    >
+                      Create Outbound Shipment
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               {/* Task Type */}
               <div className="space-y-2">
                 <Label htmlFor="taskType">Task Type <span className="text-destructive">*</span></Label>
