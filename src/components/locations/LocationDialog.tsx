@@ -66,8 +66,8 @@ interface LocationDialogProps {
 }
 
 const LOCATION_TYPES = [
-  { value: 'aisle', label: 'Aisle', description: 'Row between shelving units' },
-  { value: 'bay', label: 'Bay', description: 'Section of an aisle' },
+  { value: 'row', label: 'Row', description: 'Row of shelving/racking locations' },
+  { value: 'bay', label: 'Bay', description: 'Section of a row' },
   { value: 'shelf', label: 'Shelf', description: 'Individual shelf level' },
   { value: 'bin', label: 'Bin', description: 'Specific storage location' },
   { value: 'dock', label: 'Dock', description: 'Receiving or shipping dock' },
@@ -209,7 +209,7 @@ export function LocationDialog({
       form.reset({
         code: data.code,
         name: data.name || '',
-        type: data.type || 'bin',
+        type: data.type === 'aisle' ? 'row' : (data.type || 'bin'),
         warehouse_id: data.warehouse_id,
         parent_location_id: data.parent_location_id || 'none',
         capacity: data.capacity ? Number(data.capacity) : undefined,
@@ -444,7 +444,7 @@ export function LocationDialog({
                   <FormItem>
                     <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="Aisle A - North" {...field} />
+                      <Input placeholder="Row A - North" {...field} />
                     </FormControl>
                     <FormDescription>Optional friendly name</FormDescription>
                     <FormMessage />

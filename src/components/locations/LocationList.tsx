@@ -129,17 +129,20 @@ export function LocationList({
   );
 
   const getTypeBadge = (type: string) => {
+    // Backward-compatible: "aisle" was renamed to "row".
+    const normalizedType = type === 'aisle' ? 'row' : type;
     const colors: Record<string, string> = {
       zone: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
-      aisle: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      row: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      aisle: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', // legacy alias
       bay: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
       bin: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
       shelf: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
       release: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
     };
     return (
-      <Badge variant="outline" className={colors[type] || ''}>
-        {type.charAt(0).toUpperCase() + type.slice(1)}
+      <Badge variant="outline" className={colors[normalizedType] || colors[type] || ''}>
+        {normalizedType.charAt(0).toUpperCase() + normalizedType.slice(1)}
       </Badge>
     );
   };

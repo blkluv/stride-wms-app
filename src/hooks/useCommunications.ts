@@ -183,7 +183,7 @@ export const COMMUNICATION_VARIABLES = [
   { key: 'item_vendor', label: 'Item Vendor', group: 'Item', sample: 'Supplier Inc', description: 'Item vendor/supplier' },
   { key: 'item_description', label: 'Item Description', group: 'Item', sample: 'Office Chair - Black', description: 'Item description' },
   { key: 'item_received_date', label: 'Item Received Date', group: 'Item', sample: '2024-01-14', description: 'When item was received' },
-  { key: 'item_location', label: 'Item Location', group: 'Item', sample: 'Aisle A, Rack 5', description: 'Current warehouse location' },
+  { key: 'item_location', label: 'Item Location', group: 'Item', sample: 'Row A, Rack 5', description: 'Current warehouse location' },
   { key: 'item_sidemark', label: 'Item Sidemark', group: 'Item', sample: 'ACME-2024', description: 'Sidemark identifier' },
   { key: 'item_photos_link', label: 'Item Photos Link', group: 'Item', sample: 'https://portal.stride.com/items/123/photos', description: 'Link to item photos' },
 

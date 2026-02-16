@@ -278,7 +278,7 @@ export function TemplatesTab({
                 <td style="font-weight:600;color:#111111;font-size:15px;">1x Office Chair</td>
               </tr>
               <tr>
-                <td style="color:#6b7280;font-size:13px;padding-top:6px;">ITM-001 • Supplier Inc • Aisle A, Rack 5</td>
+                <td style="color:#6b7280;font-size:13px;padding-top:6px;">ITM-001 • Supplier Inc • Row A, Rack 5</td>
               </tr>
             </table>
           </td>
@@ -303,7 +303,7 @@ export function TemplatesTab({
             <td style="padding:14px 16px;border-bottom:1px solid #e5e7eb;font-weight:500;color:#111111;">ITM-001</td>
             <td style="padding:14px 16px;border-bottom:1px solid #e5e7eb;color:#374151;">Office Chair - Black</td>
             <td style="padding:14px 16px;border-bottom:1px solid #e5e7eb;color:#6b7280;">Supplier Inc</td>
-            <td style="padding:14px 16px;border-bottom:1px solid #e5e7eb;color:#6b7280;">Aisle A, Rack 5</td>
+            <td style="padding:14px 16px;border-bottom:1px solid #e5e7eb;color:#6b7280;">Row A, Rack 5</td>
           </tr>
         </tbody>
       </table>

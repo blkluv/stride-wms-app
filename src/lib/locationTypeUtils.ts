@@ -1,5 +1,5 @@
 export const DISPLAY_LOCATION_TYPES = [
-  'aisle',
+  'row',
   'bay',
   'shelf',
   'bin',
@@ -22,7 +22,7 @@ const LEGACY_AREA_TYPES = new Set<string>([
 ]);
 
 const DISPLAY_LOCATION_TYPE_LABELS: Record<DisplayLocationType, string> = {
-  aisle: 'Aisle',
+  row: 'Row',
   bay: 'Bay',
   shelf: 'Shelf',
   bin: 'Bin',
@@ -31,7 +31,7 @@ const DISPLAY_LOCATION_TYPE_LABELS: Record<DisplayLocationType, string> = {
 };
 
 export const DISPLAY_LOCATION_TYPE_BADGE_COLORS: Record<DisplayLocationType, string> = {
-  aisle: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  row: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
   bay: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   shelf: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
   bin: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
@@ -41,6 +41,10 @@ export const DISPLAY_LOCATION_TYPE_BADGE_COLORS: Record<DisplayLocationType, str
 
 export function normalizeLocationType(rawType: string | null | undefined): DisplayLocationType {
   const normalized = (rawType || '').trim().toLowerCase();
+  // Backward-compatible alias: historically stored/displayed as "aisle".
+  if (normalized === 'aisle') {
+    return 'row';
+  }
   if (DISPLAY_LOCATION_TYPE_SET.has(normalized)) {
     return normalized as DisplayLocationType;
   }
@@ -54,6 +58,10 @@ export function parseDisplayLocationType(rawType: string | null | undefined): Di
   const normalized = (rawType || '').trim().toLowerCase();
   if (!normalized) {
     return null;
+  }
+  // Accept "aisle" as an import/UI alias for "row".
+  if (normalized === 'aisle') {
+    return 'row';
   }
   if (DISPLAY_LOCATION_TYPE_SET.has(normalized)) {
     return normalized as DisplayLocationType;
@@ -76,6 +84,10 @@ export function toStoredLocationType(rawType: string | null | undefined): string
   }
   if (normalized === 'area') {
     return 'storage';
+  }
+  // Keep stored values consistent going forward.
+  if (normalized === 'aisle') {
+    return 'row';
   }
   return normalized;
 }
