@@ -3,6 +3,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -28,9 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -254,7 +254,6 @@ export function TaskDialog({
   };
 
   const fetchAccountItems = async (accountId: string) => {
-    console.log('[TaskDialog] fetchAccountItems called for account:', accountId);
     setLoadingItems(true);
     try {
       const { data, error } = await (supabase
@@ -265,8 +264,6 @@ export function TaskDialog({
         .neq('status', 'disposed')
         .is('deleted_at', null)
         .order('item_code');
-
-      console.log('[TaskDialog] fetchAccountItems result:', { count: data?.length, error });
 
       if (error) throw error;
 
@@ -550,7 +547,7 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>{task ? 'Edit Task' : 'Create Task'}</DialogTitle>
           <DialogDescription>
@@ -562,8 +559,8 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
-          <div className="space-y-4">
+        <DialogBody className="pr-4">
+          <div className="space-y-4 pb-1">
             {/* Task Type */}
             <div className="space-y-2">
               <Label>Task Type *</Label>
@@ -632,7 +629,7 @@ export function TaskDialog({
                 <Label>Select Items</Label>
                 <Popover open={itemDropdownOpen} onOpenChange={setItemDropdownOpen}>
                   <PopoverAnchor asChild>
-                    <div className="relative">
+                    <div className="relative" data-item-search-anchor>
                       <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search by item code, description, vendor, sidemark..."
@@ -642,6 +639,7 @@ export function TaskDialog({
                           if (!itemDropdownOpen) setItemDropdownOpen(true);
                         }}
                         onFocus={() => setItemDropdownOpen(true)}
+                        onClick={() => setItemDropdownOpen(true)}
                         className="pl-9"
                       />
                     </div>
@@ -658,13 +656,16 @@ export function TaskDialog({
                       }
                     }}
                   >
-                    <div className="max-h-60 overflow-y-auto">
+                    <div
+                      className="max-h-72 overflow-y-auto overscroll-contain"
+                      style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
                       {loadingItems ? (
                         <div className="flex items-center justify-center py-4">
                           <MaterialIcon name="progress_activity" size="md" className="animate-spin text-muted-foreground" />
                         </div>
                       ) : filteredItems.length > 0 ? (
-                        filteredItems.slice(0, 20).map(item => {
+                        filteredItems.map(item => {
                           const isSelected = selectedItems.some(i => i.id === item.id);
                           return (
                             <div
@@ -900,7 +901,7 @@ export function TaskDialog({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
