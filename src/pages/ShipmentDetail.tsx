@@ -1495,7 +1495,11 @@ export default function ShipmentDetail() {
               setEditPoNumber(shipment.po_number || '');
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
-              setEditReleaseType(shipment.release_type || '');
+              {
+                const existingReleaseType = shipment.release_type || '';
+                // Normalize legacy will-call variants to the current allowed value.
+                setEditReleaseType(existingReleaseType.startsWith('will_call') ? 'will_call' : existingReleaseType);
+              }
               setEditReleasedTo(shipment.released_to || '');
               setEditReleaseToPhone(shipment.release_to_phone || '');
               setEditCustomerAuthorized(!!shipment.customer_authorized);
