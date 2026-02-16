@@ -882,12 +882,10 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
                     New Expected Shipment
                   </Button>
                 )}
-                {activeTab === 'dock_intakes' && (
+                {activeTab === 'dock_intakes' && !onStartDockIntake && (
                   <Button
                     size="sm"
-                    onClick={() =>
-                      onStartDockIntake ? onStartDockIntake() : handleCreateInbound('dock_intake')
-                    }
+                    onClick={() => handleCreateInbound('dock_intake')}
                     disabled={creating}
                   >
                     <MaterialIcon name="add" size="sm" className="mr-1" />
