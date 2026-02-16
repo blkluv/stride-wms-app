@@ -1506,7 +1506,9 @@ export default function ShipmentDetail() {
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
               if (shipment.shipment_type === 'outbound') {
-                setEditReleaseType(shipment.release_type || 'will_call');
+                setEditReleaseType(
+                  shipment.release_type?.startsWith('will_call') ? 'will_call' : shipment.release_type || 'will_call'
+                );
                 setEditReleasedTo(shipment.released_to || '');
                 setEditReleaseToName(shipment.release_to_name || '');
                 setEditReleaseToEmail(shipment.release_to_email || '');
@@ -2031,13 +2033,16 @@ export default function ShipmentDetail() {
                     updates.origin_name = editOriginName || null;
                     updates.scheduled_date = editScheduledDate?.toISOString() || null;
 
+                    const wasCustomerAuthorized = !!shipment.customer_authorized;
                     updates.customer_authorized = editCustomerAuthorized;
-                    if (editCustomerAuthorized) {
-                      updates.customer_authorized_at = new Date().toISOString();
-                      updates.customer_authorized_by = profile?.id || null;
-                    } else {
-                      updates.customer_authorized_at = null;
-                      updates.customer_authorized_by = null;
+                    if (editCustomerAuthorized !== wasCustomerAuthorized) {
+                      if (editCustomerAuthorized) {
+                        updates.customer_authorized_at = new Date().toISOString();
+                        updates.customer_authorized_by = profile?.id || null;
+                      } else {
+                        updates.customer_authorized_at = null;
+                        updates.customer_authorized_by = null;
+                      }
                     }
                   }
 
