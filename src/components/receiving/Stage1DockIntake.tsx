@@ -540,6 +540,10 @@ export function Stage1DockIntake({
   };
 
   const handleClearSignature = async () => {
+    const prevSignatureData = signatureData;
+    const prevSignatureName = signatureName;
+    const prevSignatureTimestamp = signatureTimestamp;
+
     setSignatureData(null);
     setSignatureName('');
     setSignatureTimestamp(null);
@@ -563,6 +567,9 @@ export function Stage1DockIntake({
       onRefresh();
     } catch (err: any) {
       console.error('[Stage1] signature clear error:', err);
+      setSignatureData(prevSignatureData);
+      setSignatureName(prevSignatureName);
+      setSignatureTimestamp(prevSignatureTimestamp);
       toast({
         variant: 'destructive',
         title: 'Signature Error',

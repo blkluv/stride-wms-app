@@ -10,6 +10,12 @@ function toNonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export function isValidEmail(value: string | null | undefined): value is string {
+  if (!value) return false;
+  const trimmed = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
 /**
  * Resolve the platform-level default sender.
  *
