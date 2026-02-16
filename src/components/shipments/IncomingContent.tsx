@@ -593,7 +593,6 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           {/* Draft Queue */}
           <DraftQueueList
             onSelect={(id) => navigate(`/incoming/dock-intake/${id}`)}
-            onCreateNew={() => onStartDockIntake ? onStartDockIntake() : handleCreateDockIntake()}
           />
 
           {/* All dock intakes (including closed) */}
