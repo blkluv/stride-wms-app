@@ -251,6 +251,8 @@ export function useOutboundShipments(filters?: {
         .eq('tenant_id', profile.tenant_id)
         .eq('shipment_type', 'outbound')
         .is('deleted_at', null)
+        // Exclude incomplete "draft on entry" shipments (no warehouse assigned yet)
+        .not('warehouse_id', 'is', null)
         .order('created_at', { ascending: false });
 
       if (filterStatus && filterStatus !== 'all') {

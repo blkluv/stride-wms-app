@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -70,6 +70,32 @@ export default function OutboundCreate() {
   const [draftShipmentNumber, setDraftShipmentNumber] = useState<string | null>(null);
   const [draftCreating, setDraftCreating] = useState(false);
   const draftCreateStartedRef = useRef(false);
+  const draftFinalizedRef = useRef(false);
+  const draftCleanupStartedRef = useRef(false);
+
+  const cleanupDraftShipment = useCallback(async () => {
+    if (!profile?.tenant_id) return;
+    if (!draftShipmentId) return;
+    if (draftFinalizedRef.current) return;
+    if (draftCleanupStartedRef.current) return;
+    draftCleanupStartedRef.current = true;
+
+    try {
+      const now = new Date().toISOString();
+
+      // Best-effort cleanup so abandoned drafts don't appear in outbound lists.
+      await (supabase.from('shipment_items') as any)
+        .delete()
+        .eq('shipment_id', draftShipmentId);
+
+      await (supabase.from('shipments') as any)
+        .update({ deleted_at: now, status: 'cancelled' })
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', draftShipmentId);
+    } catch (err) {
+      console.warn('[OutboundCreate] draft cleanup error:', err);
+    }
+  }, [draftShipmentId, profile?.tenant_id]);
 
   // Form state
   const [loading, setLoading] = useState(false);
@@ -150,6 +176,13 @@ export default function OutboundCreate() {
 
     void createDraft();
   }, [profile?.tenant_id, profile?.id, draftShipmentId, preSelectedAccountId, toast]);
+
+  // Cleanup draft shipment if the user abandons the page.
+  useEffect(() => {
+    return () => {
+      void cleanupDraftShipment();
+    };
+  }, [cleanupDraftShipment]);
 
   // ------------------------------------------
   // Fetch reference data
@@ -403,15 +436,17 @@ export default function OutboundCreate() {
       }
 
       // 3) Mark items as allocated
-      await (supabase.from('items') as any)
+      const { error: allocateError } = await (supabase.from('items') as any)
         .update({ status: 'allocated' })
         .in('id', itemIds);
+      if (allocateError) throw allocateError;
 
       toast({
         title: 'Outbound Shipment Created',
         description: draftShipmentNumber ? `Shipment ${draftShipmentNumber} created.` : 'Outbound shipment created.',
       });
 
+      draftFinalizedRef.current = true;
       navigate(`/shipments/${draftShipmentId}`);
     } catch (err: any) {
       console.error('[OutboundCreate] submit error:', err);

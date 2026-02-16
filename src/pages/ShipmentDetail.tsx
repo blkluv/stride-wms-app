@@ -1878,33 +1878,31 @@ export default function ShipmentDetail() {
                   placeholder="Enter PO number"
                 />
               </div>
-              {!isOutbound && (
-                <div className="space-y-2">
-                  <Label>Expected Arrival</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          'w-full justify-start text-left font-normal',
-                          !editExpectedArrival && 'text-muted-foreground'
-                        )}
-                      >
-                        <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
-                        {editExpectedArrival ? format(editExpectedArrival, 'PPP') : 'Select date'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={editExpectedArrival}
-                        onSelect={setEditExpectedArrival}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>{isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'w-full justify-start text-left font-normal',
+                        !editExpectedArrival && 'text-muted-foreground'
+                      )}
+                    >
+                      <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
+                      {editExpectedArrival ? format(editExpectedArrival, 'PPP') : 'Select date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editExpectedArrival}
+                      onSelect={setEditExpectedArrival}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
@@ -2013,6 +2011,25 @@ export default function ShipmentDetail() {
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
+                  if (isOutbound) {
+                    if (!editReleaseType) {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Validation Error',
+                        description: 'Release Type is required for outbound shipments.',
+                      });
+                      return;
+                    }
+                    if (!editReleasedTo.trim()) {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Validation Error',
+                        description: 'Released To is required for outbound shipments.',
+                      });
+                      return;
+                    }
+                  }
+
                   const updates: Record<string, unknown> = {
                     carrier: editCarrier || null,
                     tracking_number: editTrackingNumber || null,
@@ -2023,8 +2040,8 @@ export default function ShipmentDetail() {
 
                   // Add outbound-specific fields if this is an outbound shipment
                   if (isOutbound) {
-                    updates.release_type = editReleaseType || null;
-                    updates.released_to = editReleasedTo || null;
+                    updates.release_type = editReleaseType;
+                    updates.released_to = editReleasedTo.trim();
                     updates.release_to_name = editReleaseToName || null;
                     updates.release_to_email = editReleaseToEmail || null;
                     updates.release_to_phone = editReleaseToPhone || null;
@@ -2121,16 +2138,16 @@ export default function ShipmentDetail() {
                 <Label className="text-muted-foreground">PO Number</Label>
                 <p className="font-medium">{shipment.po_number || '-'}</p>
               </div>
-              {!isOutbound && (
-                <div>
-                  <Label className="text-muted-foreground">Expected Arrival</Label>
-                  <p className="font-medium">
-                    {shipment.expected_arrival_date
-                      ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
-                      : '-'}
-                  </p>
-                </div>
-              )}
+              <div>
+                <Label className="text-muted-foreground">
+                  {isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}
+                </Label>
+                <p className="font-medium">
+                  {shipment.expected_arrival_date
+                    ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
+                    : '-'}
+                </p>
+              </div>
               <div>
                 <Label className="text-muted-foreground">
                   {isOutbound ? 'Released To' : 'Received At'}
