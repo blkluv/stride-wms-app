@@ -1602,7 +1602,6 @@ export function useTaskTypes() {
     { name: 'Inspection', is_system: true },
     { name: 'Assembly', is_system: true },
     { name: 'Repair', is_system: true },
-    { name: 'Will Call', is_system: true, completion_action: 'release' },
     { name: 'Disposal', is_system: true, completion_action: 'dispose' },
     { name: 'Other', is_system: true },
   ];

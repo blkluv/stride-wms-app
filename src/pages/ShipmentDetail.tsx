@@ -36,6 +36,7 @@ import { ItemLabelData } from '@/lib/labelGenerator';
 import { AddShipmentItemDialog } from '@/components/shipments/AddShipmentItemDialog';
 import { ShipmentItemRow } from '@/components/shipments/ShipmentItemRow';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
+import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { SignatureDialog } from '@/components/shipments/SignatureDialog';
@@ -739,9 +740,26 @@ export default function ShipmentDetail() {
 
   const handleCreateTask = () => {
     if (selectedItemIds.size === 0 || !selectedTaskType) return;
-    // Navigate to create task page with selected items
-    const itemIds = Array.from(selectedItemIds).join(',');
-    navigate(`/tasks/new?items=${itemIds}&type=${selectedTaskType}`);
+    // Create tasks via the TaskDialog (there is no /tasks/new route).
+    setShowCreateTaskDialog(true);
+  };
+
+  const handleTaskDialogSuccess = (createdTaskId?: string) => {
+    setShowCreateTaskDialog(false);
+    setSelectedTaskType('');
+    if (createdTaskId) {
+      navigate(`/tasks/${createdTaskId}`);
+    }
+  };
+
+  const handleCreateOutbound = () => {
+    if (selectedItemIds.size === 0) return;
+    navigate('/shipments/outbound/new', {
+      state: {
+        itemIds: Array.from(selectedItemIds),
+        accountId: shipment?.account_id || '',
+      },
+    });
   };
 
   // ------------------------------------------
@@ -2002,7 +2020,6 @@ export default function ShipmentDetail() {
                     <SelectItem value="Inspection">Inspection</SelectItem>
                     <SelectItem value="Assembly">Assembly</SelectItem>
                     <SelectItem value="Repair">Repair</SelectItem>
-                    <SelectItem value="Will Call">Will Call</SelectItem>
                     <SelectItem value="Disposal">Disposal</SelectItem>
                   </SelectContent>
                 </Select>
@@ -2014,6 +2031,15 @@ export default function ShipmentDetail() {
                   <MaterialIcon name="assignment" size="sm" className="mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Create Task</span>
                   <span className="sm:hidden">Create</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCreateOutbound}
+                >
+                  <MaterialIcon name="local_shipping" size="sm" className="mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Outbound</span>
+                  <span className="sm:hidden">Outbound</span>
                 </Button>
                 {shipment.account_id && (
                   <Button
@@ -2506,6 +2532,18 @@ export default function ShipmentDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Task Dialog (selected shipment items) */}
+      <TaskDialog
+        open={showCreateTaskDialog}
+        onOpenChange={(open) => {
+          setShowCreateTaskDialog(open);
+          if (!open) setSelectedTaskType('');
+        }}
+        selectedItemIds={Array.from(selectedItemIds)}
+        preSelectedTaskType={selectedTaskType}
+        onSuccess={handleTaskDialogSuccess}
+      />
 
       {/* Reassign Account Dialog - operates on selected items */}
       {shipment.account_id && (
