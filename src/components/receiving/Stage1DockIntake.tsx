@@ -69,6 +69,9 @@ interface Stage1DockIntakeProps {
   shipment: {
     account_id: string | null;
     vendor_name: string | null;
+    carrier?: string | null;
+    tracking_number?: string | null;
+    po_number?: string | null;
     signed_pieces: number | null;
     signature_data: string | null;
     signature_name: string | null;
@@ -99,6 +102,9 @@ export function Stage1DockIntake({
   const { unidentifiedAccountId, ensureUnidentifiedAccount, ensuring: ensuringUnidentified } = useUnidentifiedAccount();
   const [accountId, setAccountId] = useState<string>(shipment.account_id || '');
   const [vendorName, setVendorName] = useState(shipment.vendor_name || '');
+  const [carrierName, setCarrierName] = useState((shipment as any).carrier || '');
+  const [trackingNumber, setTrackingNumber] = useState((shipment as any).tracking_number || '');
+  const [poNumber, setPoNumber] = useState((shipment as any).po_number || '');
   const [signedPieces, setSignedPieces] = useState<number>(shipment.signed_pieces || 0);
   const [notes, setNotes] = useState(shipment.notes || '');
   const [exceptions, setExceptions] = useState<ExceptionChip[]>(['NO_EXCEPTIONS']);
@@ -153,6 +159,18 @@ export function Stage1DockIntake({
     setAccountId(shipment.account_id || '');
   }, [shipment.account_id]);
 
+  useEffect(() => {
+    setCarrierName((shipment as any).carrier || '');
+  }, [(shipment as any).carrier]);
+
+  useEffect(() => {
+    setTrackingNumber((shipment as any).tracking_number || '');
+  }, [(shipment as any).tracking_number]);
+
+  useEffect(() => {
+    setPoNumber((shipment as any).po_number || '');
+  }, [(shipment as any).po_number]);
+
   // Keep local photo state aligned with the persisted shipment JSON field.
   useEffect(() => {
     const existing = shipment.receiving_photos;
@@ -168,6 +186,21 @@ export function Stage1DockIntake({
   const handleVendorNameChange = (value: string) => {
     setVendorName(value);
     autosave.saveField('vendor_name', value);
+  };
+
+  const handleCarrierNameChange = (value: string) => {
+    setCarrierName(value);
+    autosave.saveField('carrier', value || null);
+  };
+
+  const handleTrackingNumberChange = (value: string) => {
+    setTrackingNumber(value);
+    autosave.saveField('tracking_number', value || null);
+  };
+
+  const handlePoNumberChange = (value: string) => {
+    setPoNumber(value);
+    autosave.saveField('po_number', value || null);
   };
 
   const handleSignedPiecesChange = (value: number) => {
@@ -560,6 +593,38 @@ export function Stage1DockIntake({
               value={vendorName}
               onChange={(e) => handleVendorNameChange(e.target.value)}
             />
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="carrier_name">Carrier Name</Label>
+              <Input
+                id="carrier_name"
+                placeholder="Enter carrier..."
+                value={carrierName}
+                onChange={(e) => handleCarrierNameChange(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tracking_number">Tracking #</Label>
+              <Input
+                id="tracking_number"
+                placeholder="Enter tracking..."
+                value={trackingNumber}
+                onChange={(e) => handleTrackingNumberChange(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="po_number">Reference / PO #</Label>
+              <Input
+                id="po_number"
+                placeholder="Enter reference..."
+                value={poNumber}
+                onChange={(e) => handlePoNumberChange(e.target.value)}
+              />
+            </div>
           </div>
 
           <Separator />
