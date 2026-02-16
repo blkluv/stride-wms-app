@@ -550,8 +550,8 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>{task ? 'Edit Task' : 'Create Task'}</DialogTitle>
           <DialogDescription>
             {task
@@ -562,7 +562,7 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
+        <ScrollArea className="flex-1 overflow-y-auto pr-4">
           <div className="space-y-4">
             {/* Task Type */}
             <div className="space-y-2">
@@ -631,76 +631,80 @@ export function TaskDialog({
               <div className="space-y-3">
                 <Label>Select Items</Label>
                 <Popover open={itemDropdownOpen} onOpenChange={setItemDropdownOpen}>
-                  <PopoverAnchor asChild>
+                  <PopoverTrigger asChild>
                     <div className="relative">
-                      <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                       <Input
                         placeholder="Search by item code, description, vendor, sidemark..."
                         value={itemSearchQuery}
                         onChange={(e) => {
                           setItemSearchQuery(e.target.value);
-                          if (!itemDropdownOpen) setItemDropdownOpen(true);
                         }}
-                        onFocus={() => setItemDropdownOpen(true)}
+                        onClick={() => setItemDropdownOpen(true)}
                         className="pl-9"
                       />
                     </div>
-                  </PopoverAnchor>
+                  </PopoverTrigger>
                   <PopoverContent
-                    className="w-[--radix-popover-trigger-width] p-0 z-50 bg-popover border shadow-md"
+                    className="w-[--radix-popover-trigger-width] p-0 z-50"
                     align="start"
+                    sideOffset={4}
                     onOpenAutoFocus={(e) => e.preventDefault()}
-                    onInteractOutside={(e) => {
-                      // Allow clicking inside the anchor input without closing
-                      const target = e.target as HTMLElement;
-                      if (target.closest('[data-item-search-anchor]')) {
-                        e.preventDefault();
-                      }
-                    }}
                   >
-                    <div className="max-h-60 overflow-y-auto">
-                      {loadingItems ? (
-                        <div className="flex items-center justify-center py-4">
-                          <MaterialIcon name="progress_activity" size="md" className="animate-spin text-muted-foreground" />
-                        </div>
-                      ) : filteredItems.length > 0 ? (
-                        filteredItems.slice(0, 20).map(item => {
-                          const isSelected = selectedItems.some(i => i.id === item.id);
-                          return (
-                            <div
-                              key={item.id}
-                              className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
-                              onClick={() => toggleItemSelection(item)}
-                              role="button"
-                              tabIndex={0}
-                            >
-                              <div onClick={(e) => e.stopPropagation()}>
+                    <ScrollArea className="h-[300px]">
+                      <div className="p-1">
+                        {loadingItems ? (
+                          <div className="flex items-center justify-center py-8">
+                            <MaterialIcon name="progress_activity" size="md" className="animate-spin text-muted-foreground" />
+                          </div>
+                        ) : filteredItems.length > 0 ? (
+                          filteredItems.map(item => {
+                            const isSelected = selectedItems.some(i => i.id === item.id);
+                            return (
+                              <div
+                                key={item.id}
+                                className="flex items-center gap-3 p-3 hover:bg-muted rounded-md cursor-pointer transition-colors"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  toggleItemSelection(item);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    toggleItemSelection(item);
+                                  }
+                                }}
+                              >
                                 <Checkbox
                                   checked={isSelected}
                                   onCheckedChange={() => toggleItemSelection(item)}
+                                  onClick={(e) => e.stopPropagation()}
                                 />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm">{item.item_code}</div>
-                                <div className="text-xs text-muted-foreground truncate">
-                                  {[item.description, item.vendor, item.sidemark]
-                                    .filter(Boolean)
-                                    .join(' • ')}
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm">{item.item_code}</div>
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {[item.description, item.vendor, item.sidemark]
+                                      .filter(Boolean)
+                                      .join(' • ')}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })
-                      ) : accountItems.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No items found for this account
-                        </p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No items match your search
-                        </p>
-                      )}
-                    </div>
+                            );
+                          })
+                        ) : accountItems.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-8">
+                            No items found for this account
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-8">
+                            No items match your search
+                          </p>
+                        )}
+                      </div>
+                    </ScrollArea>
                   </PopoverContent>
                 </Popover>
               </div>
@@ -902,7 +906,7 @@ export function TaskDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
