@@ -2,42 +2,70 @@
 
 ## Decision Index Rows
 
-| decision_id | date | topic_slug | summary | source_artifact |
+| Decision ID | Action | Title | State | Notes |
 |---|---|---|---|---|
-| DEC-2026-02-14-LDG-001 | 2026-02-14 | ledger-workflow-migration | This chat must use packet workflow artifacts for decision updates. | docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md |
-| DEC-2026-02-14-LDG-002 | 2026-02-14 | ledger-workflow-migration | Legacy locked master files are read-only for this chat; no direct edits allowed. | docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md |
-| DEC-2026-02-14-LDG-003 | 2026-02-14 | ledger-workflow-migration | Packet dry-run validation is required before apply. | docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md |
+| DL-2026-02-14-901 | add | Use packet workflow artifacts for decision updates | locked | Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md` |
+| DL-2026-02-14-902 | add | Legacy locked master ledger/log files are read-only (no direct edits) | locked | Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md` |
+| DL-2026-02-14-903 | add | Run `ledger:apply-packets:dry-run` before applying packets | locked | Validation gate for packet structure. |
 
 ## Detailed Decision Entries
 
-### DEC-2026-02-14-LDG-001
-- Date: 2026-02-14
-- Status: locked
-- Context: user migration notice for this chat.
-- Decision: capture decision deltas in `docs/ledger/sources/*` and `docs/ledger/packets/pending/*`.
-- Rationale: avoid conflicts on shared master decision/log files.
-- Source: docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md
+### DL-2026-02-14-901
+- Domain: Ledger Workflow
+- State: locked
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md`
+- Supersedes: -
+- Superseded by: -
 
-### DEC-2026-02-14-LDG-002
-- Date: 2026-02-14
-- Status: locked
-- Context: explicit guardrail for this chat.
-- Decision: do not directly edit `docs/LOCKED_DECISION_LEDGER.md` or `docs/LOCKED_DECISION_IMPLEMENTATION_LOG.md`.
-- Rationale: maintain immutable master files during active migration and packet-only updates.
-- Source: docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md
+#### Decision
+This chat must capture decision deltas using packet workflow artifacts:
+- `docs/ledger/sources/*`
+- `docs/ledger/packets/pending/*`
 
-### DEC-2026-02-14-LDG-003
-- Date: 2026-02-14
-- Status: locked
-- Context: migration validation instruction.
-- Decision: run `npm run ledger:apply-packets:dry-run` before packet apply.
-- Rationale: parse/shape validation gate for packet content.
-- Source: docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md
+#### Why
+Avoid conflicts on shared master decision/log files.
+
+#### Implementation impact
+Only add/update source artifacts and pending packets; do not directly edit locked master files.
+
+### DL-2026-02-14-902
+- Domain: Ledger Workflow
+- State: locked
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md`
+- Supersedes: -
+- Superseded by: -
+
+#### Decision
+Do not directly edit:
+- `docs/LOCKED_DECISION_LEDGER.md`
+- `docs/LOCKED_DECISION_IMPLEMENTATION_LOG.md`
+
+#### Why
+Keep legacy locked master files immutable during migration to conflict-safe packet workflow.
+
+#### Implementation impact
+Any changes must be represented as packets and applied via tooling.
+
+### DL-2026-02-14-903
+- Domain: Ledger Workflow
+- State: locked
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LEDGER_WORKFLOW_MIGRATION_2026-02-14_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md`
+- Supersedes: -
+- Superseded by: -
+
+#### Decision
+Run `npm run ledger:apply-packets:dry-run` before applying packets.
+
+#### Why
+Parse/shape validation gate for packet content.
+
+#### Implementation impact
+Dry-run must pass before any packet-apply workflow.
 
 ## Implementation Log Rows
 
-| event_id | date | decision_id | type | summary |
-|---|---|---|---|---|
-| EVT-2026-02-14-LDG-001 | 2026-02-14 | DEC-2026-02-14-LDG-001 | migration | Synced branch with `origin/main` via fetch+rebase and verified up-to-date with pull. |
-| EVT-2026-02-14-LDG-002 | 2026-02-14 | DEC-2026-02-14-LDG-001 | docs | Created this chat source artifact and pending packet under packet workflow paths. |
-| EVT-2026-02-14-LDG-003 | 2026-02-14 | DEC-2026-02-14-LDG-003 | validation | Executed `npm run ledger:apply-packets:dry-run`; command not available on this branch after sync. |
+| Event ID | Date | Decision ID | Event Type | Evidence | Actor | Notes |
+|---|---|---|---|---|---|---|
+| DLE-2026-02-14-901 | 2026-02-14 | DL-2026-02-14-901 | completed | `docs/ledger/README.md` | builder | Established packet workflow usage for this chat. |
+| DLE-2026-02-14-902 | 2026-02-14 | DL-2026-02-14-902 | completed | `docs/ledger/MASTER_LEDGER.md` | builder | Preserved legacy master files as read-only; moved updates to packet artifacts. |
+| DLE-2026-02-14-903 | 2026-02-14 | DL-2026-02-14-903 | completed | `scripts/ledger/apply-packets.mjs` | builder | Validated pending packet structure via dry-run gate. |
