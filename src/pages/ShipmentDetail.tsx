@@ -120,7 +120,13 @@ interface Shipment {
   receiving_documents: string[] | null;
   release_type: string | null;
   released_to: string | null;
+  release_to_name: string | null;
+  release_to_email: string | null;
   release_to_phone: string | null;
+  driver_name: string | null;
+  destination_name: string | null;
+  origin_name: string | null;
+  scheduled_date: string | null;
   sidemark_id: string | null;
   sidemark: string | null;
   signature_data: string | null;
@@ -179,6 +185,14 @@ export default function ShipmentDetail() {
   const [editPoNumber, setEditPoNumber] = useState('');
   const [editExpectedArrival, setEditExpectedArrival] = useState<Date | undefined>(undefined);
   const [editNotes, setEditNotes] = useState('');
+  const [editReleasedTo, setEditReleasedTo] = useState('');
+  const [editReleaseToName, setEditReleaseToName] = useState('');
+  const [editReleaseToEmail, setEditReleaseToEmail] = useState('');
+  const [editReleaseToPhone, setEditReleaseToPhone] = useState('');
+  const [editDriverName, setEditDriverName] = useState('');
+  const [editDestinationName, setEditDestinationName] = useState('');
+  const [editOriginName, setEditOriginName] = useState('');
+  const [editScheduledDate, setEditScheduledDate] = useState<Date | undefined>(undefined);
   const [addAddonDialogOpen, setAddAddonDialogOpen] = useState(false);
   const [addCreditDialogOpen, setAddCreditDialogOpen] = useState(false);
   const [coverageDialogOpen, setCoverageDialogOpen] = useState(false);
@@ -1488,6 +1502,14 @@ export default function ShipmentDetail() {
               setEditPoNumber(shipment.po_number || '');
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
+              setEditReleasedTo(shipment.released_to || '');
+              setEditReleaseToName(shipment.release_to_name || '');
+              setEditReleaseToEmail(shipment.release_to_email || '');
+              setEditReleaseToPhone(shipment.release_to_phone || '');
+              setEditDriverName(shipment.driver_name || '');
+              setEditDestinationName(shipment.destination_name || '');
+              setEditOriginName(shipment.origin_name || '');
+              setEditScheduledDate(shipment.scheduled_date ? new Date(shipment.scheduled_date) : undefined);
             }
             setIsEditing(!isEditing);
           }}>
@@ -1830,22 +1852,134 @@ export default function ShipmentDetail() {
                 rows={3}
               />
             </div>
+
+            {/* Outbound-specific fields */}
+            {isOutbound && (
+              <>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium text-sm mb-3">Outbound / Release Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Released To / Company</Label>
+                      <Input
+                        value={editReleasedTo}
+                        onChange={(e) => setEditReleasedTo(e.target.value)}
+                        placeholder="Company or person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Name</Label>
+                      <Input
+                        value={editReleaseToName}
+                        onChange={(e) => setEditReleaseToName(e.target.value)}
+                        placeholder="Contact person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Email</Label>
+                      <Input
+                        type="email"
+                        value={editReleaseToEmail}
+                        onChange={(e) => setEditReleaseToEmail(e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Phone</Label>
+                      <Input
+                        type="tel"
+                        value={editReleaseToPhone}
+                        onChange={(e) => setEditReleaseToPhone(e.target.value)}
+                        placeholder="Phone number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Driver Name</Label>
+                      <Input
+                        value={editDriverName}
+                        onChange={(e) => setEditDriverName(e.target.value)}
+                        placeholder="Driver or pickup person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Scheduled Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              'w-full justify-start text-left font-normal',
+                              !editScheduledDate && 'text-muted-foreground'
+                            )}
+                          >
+                            <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
+                            {editScheduledDate ? format(editScheduledDate, 'PPP') : 'Select date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={editScheduledDate}
+                            onSelect={setEditScheduledDate}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Origin Name</Label>
+                      <Input
+                        value={editOriginName}
+                        onChange={(e) => setEditOriginName(e.target.value)}
+                        placeholder="Pickup location or origin"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Destination Name</Label>
+                      <Input
+                        value={editDestinationName}
+                        onChange={(e) => setEditDestinationName(e.target.value)}
+                        placeholder="Delivery location or destination"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
+                  const updateData: any = {
+                    carrier: editCarrier || null,
+                    tracking_number: editTrackingNumber || null,
+                    po_number: editPoNumber || null,
+                    expected_arrival_date: editExpectedArrival?.toISOString() || null,
+                    notes: editNotes || null,
+                  };
+
+                  // Add outbound-specific fields if this is an outbound shipment
+                  if (isOutbound) {
+                    updateData.released_to = editReleasedTo || null;
+                    updateData.release_to_name = editReleaseToName || null;
+                    updateData.release_to_email = editReleaseToEmail || null;
+                    updateData.release_to_phone = editReleaseToPhone || null;
+                    updateData.driver_name = editDriverName || null;
+                    updateData.destination_name = editDestinationName || null;
+                    updateData.origin_name = editOriginName || null;
+                    updateData.scheduled_date = editScheduledDate?.toISOString() || null;
+                  }
+
                   const { error } = await supabase
                     .from('shipments')
-                    .update({
-                      carrier: editCarrier || null,
-                      tracking_number: editTrackingNumber || null,
-                      po_number: editPoNumber || null,
-                      expected_arrival_date: editExpectedArrival?.toISOString() || null,
-                      notes: editNotes || null,
-                    })
+                    .update(updateData)
                     .eq('id', shipment.id);
                   if (error) throw error;
+                  
+                  await logShipmentAudit('shipment_updated', updateData);
                   toast({ title: 'Shipment Updated' });
                   fetchShipment();
+                  setIsEditing(false);
                 }}
                 label="Save Changes"
                 savedLabel="Saved"
@@ -1934,6 +2068,60 @@ export default function ShipmentDetail() {
                 </p>
               </div>
             </div>
+
+            {/* Outbound-specific fields */}
+            {isOutbound && (
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-sm mb-3">Release Details</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {shipment.release_to_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Name</Label>
+                      <p className="font-medium">{shipment.release_to_name}</p>
+                    </div>
+                  )}
+                  {shipment.release_to_email && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Email</Label>
+                      <p className="font-medium">{shipment.release_to_email}</p>
+                    </div>
+                  )}
+                  {shipment.release_to_phone && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Phone</Label>
+                      <p className="font-medium">{shipment.release_to_phone}</p>
+                    </div>
+                  )}
+                  {shipment.driver_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Driver Name</Label>
+                      <p className="font-medium">{shipment.driver_name}</p>
+                    </div>
+                  )}
+                  {shipment.scheduled_date && (
+                    <div>
+                      <Label className="text-muted-foreground">Scheduled Date</Label>
+                      <p className="font-medium">
+                        {format(new Date(shipment.scheduled_date), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                  )}
+                  {shipment.origin_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Origin</Label>
+                      <p className="font-medium">{shipment.origin_name}</p>
+                    </div>
+                  )}
+                  {shipment.destination_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Destination</Label>
+                      <p className="font-medium">{shipment.destination_name}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {shipment.notes && (
               <div>
                 <Label className="text-muted-foreground">Notes</Label>
