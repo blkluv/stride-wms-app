@@ -659,7 +659,7 @@ export function Stage1DockIntake({
             <MaterialIcon name="inventory" size="sm" />
             Unit Breakdown (optional)
             <HelpTip
-              tooltip="Break down signed pieces by packaging type. Does not need to sum to signed pieces."
+              tooltip="Enter cartons/pallets/crates. Signed pieces will auto-calculate as the sum when you use this breakdown (you can still type signed pieces directly)."
               pageKey="receiving.stage1"
               fieldKey="unit_breakdown"
             />
