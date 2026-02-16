@@ -128,6 +128,7 @@ export function Stage1DockIntake({
     const existing = (shipment as any)?.receiving_photos;
     return Array.isArray(existing) ? (existing as (string | TaggablePhoto)[]) : [];
   });
+  const [legacyPhotosBootstrapped, setLegacyPhotosBootstrapped] = useState(false);
 
   // Shipment exceptions
   const {
@@ -317,6 +318,51 @@ export function Stage1DockIntake({
     const allPhotos = [...normalizedExisting, ...newTaggablePhotos];
     await saveReceivingPhotosToShipment(allPhotos);
   };
+
+  // Backwards compatibility:
+  // Earlier Dock Intake builds stored photos in shipment_photos (split into paperwork/condition).
+  // This UI now uses shipments.receiving_photos; bootstrap once so users don't "lose" existing photos.
+  useEffect(() => {
+    if (legacyPhotosBootstrapped) return;
+    if (!profile?.tenant_id) return;
+
+    // If we already have photos on the shipment JSON field, nothing to do.
+    if (getPhotoUrls(receivingPhotos).length > 0) {
+      setLegacyPhotosBootstrapped(true);
+      return;
+    }
+
+    // Mark attempted immediately to prevent duplicate fetches.
+    setLegacyPhotosBootstrapped(true);
+
+    const bootstrap = async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('shipment_photos')
+          .select('storage_key')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('shipment_id', shipmentId)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        const urls = (data || [])
+          .map((p: { storage_key: string }) => {
+            const { data: urlData } = supabase.storage.from('photos').getPublicUrl(p.storage_key);
+            return urlData?.publicUrl || '';
+          })
+          .filter((u: string) => !!u);
+
+        if (urls.length > 0) {
+          await mergeAndSaveReceivingPhotoUrls(urls);
+        }
+      } catch (err) {
+        console.warn('[Stage1DockIntake] legacy shipment_photos bootstrap failed:', err);
+      }
+    };
+
+    void bootstrap();
+  }, [legacyPhotosBootstrapped, profile?.tenant_id, shipmentId, receivingPhotos]);
 
   // Signature handlers
   const handleSignatureComplete = async (data: string, name: string) => {
