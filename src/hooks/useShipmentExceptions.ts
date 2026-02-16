@@ -11,12 +11,14 @@ export type ShipmentExceptionCode =
   | 'SHIPPER_MISMATCH'
   | 'TRACKING_MISMATCH'
   | 'REFERENCE_MISMATCH'
+  | 'SHORTAGE'
+  | 'OVERAGE'
   | 'DAMAGE'
   | 'WET'
   | 'OPEN'
   | 'MISSING_DOCS'
-  | 'REFUSED'
   | 'CRUSHED_TORN_CARTONS'
+  | 'MIS_SHIP'
   | 'OTHER';
 
 export const SHIPMENT_EXCEPTION_CODE_META: Record<
@@ -30,12 +32,14 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   SHIPPER_MISMATCH: { label: 'Shipper Mismatch', icon: 'local_shipping' },
   TRACKING_MISMATCH: { label: 'Tracking Mismatch', icon: 'qr_code' },
   REFERENCE_MISMATCH: { label: 'Reference Mismatch', icon: 'fingerprint' },
+  SHORTAGE: { label: 'Shortage', icon: 'remove_circle' },
+  OVERAGE: { label: 'Overage', icon: 'add_circle' },
   DAMAGE: { label: 'Damage', icon: 'broken_image' },
   WET: { label: 'Wet', icon: 'water_drop' },
   OPEN: { label: 'Open', icon: 'package_2' },
   MISSING_DOCS: { label: 'Missing Docs', icon: 'description' },
-  REFUSED: { label: 'Refused', icon: 'block', requiresNote: true },
   CRUSHED_TORN_CARTONS: { label: 'Crushed/Torn Cartons', icon: 'inventory_2' },
+  MIS_SHIP: { label: 'Mis-Ship', icon: 'swap_horiz' },
   OTHER: { label: 'Other', icon: 'more_horiz', requiresNote: true },
 };
 
