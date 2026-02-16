@@ -38,6 +38,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useWarehouses } from '@/hooks/useWarehouses';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { SaveButton } from '@/components/ui/SaveButton';
+import { syncStripeSubscriptionSeatsBestEffort } from '@/lib/saas/syncStripeSeats';
 
 const employeeSchema = z.object({
   email: z.string().email('Valid email required'),
@@ -306,6 +307,9 @@ export function EmployeeDialog({
 
       onOpenChange(false);
       onSuccess();
+
+      // Seat-based billing: creating staff or changing roles should update Stripe quantity.
+      await syncStripeSubscriptionSeatsBestEffort(employee ? "employee_dialog_updated" : "employee_dialog_created");
     } catch (error: any) {
       console.error('Error saving employee:', error);
       toast({
