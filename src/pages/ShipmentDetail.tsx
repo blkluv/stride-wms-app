@@ -108,6 +108,14 @@ interface Shipment {
   status: string;
   account_id: string | null;
   warehouse_id: string | null;
+  // Outbound / release (SOP) fields
+  customer_authorized: boolean | null;
+  customer_authorized_at: string | null;
+  customer_authorized_by: string | null;
+  driver_name: string | null;
+  liability_accepted: boolean | null;
+  release_to_name: string | null;
+  release_to_email: string | null;
   carrier: string | null;
   tracking_number: string | null;
   po_number: string | null;
@@ -179,6 +187,11 @@ export default function ShipmentDetail() {
   const [editPoNumber, setEditPoNumber] = useState('');
   const [editExpectedArrival, setEditExpectedArrival] = useState<Date | undefined>(undefined);
   const [editNotes, setEditNotes] = useState('');
+  const [editReleaseType, setEditReleaseType] = useState('');
+  const [editReleasedTo, setEditReleasedTo] = useState('');
+  const [editReleaseToEmail, setEditReleaseToEmail] = useState('');
+  const [editReleaseToPhone, setEditReleaseToPhone] = useState('');
+  const [editCustomerAuthorized, setEditCustomerAuthorized] = useState(false);
   const [addAddonDialogOpen, setAddAddonDialogOpen] = useState(false);
   const [addCreditDialogOpen, setAddCreditDialogOpen] = useState(false);
   const [coverageDialogOpen, setCoverageDialogOpen] = useState(false);
@@ -1165,6 +1178,13 @@ export default function ShipmentDetail() {
     setCompletingOutbound(true);
     try {
       const now = new Date().toISOString();
+      const releasedToName =
+        signatureInfo.signatureName?.trim()
+        || shipment.released_to
+        || shipment.driver_name
+        || shipment.release_to_name
+        || null;
+
       // Update shipment with signature and completion data
       const { error: shipmentError } = await supabase
         .from('shipments')
@@ -1176,6 +1196,11 @@ export default function ShipmentDetail() {
           signature_data: signatureInfo.signatureData,
           signature_name: signatureInfo.signatureName,
           signature_timestamp: now,
+          // Persist release recipient (validation requires released_to OR driver_name)
+          released_to: releasedToName,
+          driver_name: releasedToName,
+          // Keep legacy contact field in sync for older UIs/exports
+          release_to_name: releasedToName,
         })
         .eq('id', shipment.id);
 
@@ -1231,6 +1256,12 @@ export default function ShipmentDetail() {
       // Generate release PDF and upload as a document
       try {
         const staffName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || null;
+        const releasedToForPdf =
+          signatureInfo.signatureName?.trim()
+          || shipment.released_to
+          || shipment.driver_name
+          || shipment.release_to_name
+          || null;
 
         const pdfItems: ReleasePdfItem[] = activeOutboundItems.map(si => ({
           itemCode: si.item?.item_code || si.expected_description || '-',
@@ -1251,7 +1282,7 @@ export default function ShipmentDetail() {
           shipmentNumber: shipment.shipment_number,
           shipmentType: shipment.shipment_type,
           releaseType: shipment.release_type,
-          releasedTo: shipment.released_to || null,
+          releasedTo: releasedToForPdf,
           releaseToPhone: shipment.release_to_phone || null,
           carrier: shipment.carrier,
           trackingNumber: shipment.tracking_number,
@@ -1297,7 +1328,7 @@ export default function ShipmentDetail() {
               page_count: 1,
               mime_type: 'application/pdf',
               label: `Release Document - ${shipment.shipment_number}`,
-              notes: `Release signed by ${signatureInfo.signatureName || shipment.released_to || 'Driver'}`,
+              notes: `Release signed by ${releasedToForPdf || 'Driver'}`,
               is_sensitive: false,
             },
           });
@@ -1347,14 +1378,18 @@ export default function ShipmentDetail() {
 
       const result = validationResult as { ok: boolean; blockers: SOPBlocker[] };
       const allBlockers = result?.blockers || [];
-      const hardBlockers = allBlockers.filter(
+      // "Released To / Driver Name" is captured in the Signature dialog immediately after validation,
+      // so don't block completion on it here.
+      const blockersForDialog = allBlockers.filter((b: SOPBlocker) => b.code !== 'NO_RELEASED_TO');
+
+      const hardBlockers = blockersForDialog.filter(
         (b: SOPBlocker) => b.severity === 'blocking' || !b.severity
       );
-      const warnings = allBlockers.filter((b: SOPBlocker) => b.severity === 'warning');
+      const warnings = blockersForDialog.filter((b: SOPBlocker) => b.severity === 'warning');
 
       // If there are hard blockers, show the dialog (no override)
       if (hardBlockers.length > 0) {
-        setSopBlockers(allBlockers);
+        setSopBlockers(blockersForDialog);
         setSopValidationOpen(true);
         setShowOutboundCompleteDialog(false);
         return;
@@ -1362,7 +1397,7 @@ export default function ShipmentDetail() {
 
       // If there are warnings (but no hard blockers), show the dialog with override option
       if (warnings.length > 0) {
-        setSopBlockers(allBlockers);
+        setSopBlockers(blockersForDialog);
         setSopValidationOpen(true);
         setShowOutboundCompleteDialog(false);
         return;
@@ -1397,10 +1432,12 @@ export default function ShipmentDetail() {
   // ------------------------------------------
   const shipmentStatusLabels: Record<string, string> = {
     expected: 'Expected',
+    pending: 'Pending',
     receiving: 'In Progress',
     in_progress: 'In Progress',
     received: 'Received',
     partial: 'Partial',
+    released: 'Released',
     shipped: 'Shipped',
     completed: 'Completed',
     cancelled: 'Cancelled',
@@ -1488,6 +1525,19 @@ export default function ShipmentDetail() {
               setEditPoNumber(shipment.po_number || '');
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
+              if (shipment.shipment_type === 'outbound') {
+                setEditReleaseType(shipment.release_type || 'will_call');
+                setEditReleasedTo(shipment.released_to || shipment.driver_name || shipment.release_to_name || '');
+                setEditReleaseToEmail(shipment.release_to_email || '');
+                setEditReleaseToPhone(shipment.release_to_phone || '');
+                setEditCustomerAuthorized(!!shipment.customer_authorized);
+              } else {
+                setEditReleaseType('');
+                setEditReleasedTo('');
+                setEditReleaseToEmail('');
+                setEditReleaseToPhone('');
+                setEditCustomerAuthorized(false);
+              }
             }
             setIsEditing(!isEditing);
           }}>
@@ -1770,6 +1820,69 @@ export default function ShipmentDetail() {
             <CardDescription>Update shipment details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Outbound-specific fields (legacy outbound system parity) */}
+            {isOutbound && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Release Type</Label>
+                  <Select value={editReleaseType} onValueChange={setEditReleaseType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select release type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="will_call">Will Call (Pickup/Release)</SelectItem>
+                      <SelectItem value="disposal">Disposal</SelectItem>
+                      <SelectItem value="return">Return to Sender</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Released To / Driver Name</Label>
+                  <Input
+                    value={editReleasedTo}
+                    onChange={(e) => setEditReleasedTo(e.target.value)}
+                    placeholder="Name of person picking up / driver"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Release Contact Email</Label>
+                  <Input
+                    type="email"
+                    value={editReleaseToEmail}
+                    onChange={(e) => setEditReleaseToEmail(e.target.value)}
+                    placeholder="email@example.com"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Release Contact Phone</Label>
+                  <Input
+                    value={editReleaseToPhone}
+                    onChange={(e) => setEditReleaseToPhone(e.target.value)}
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 flex items-center gap-3 rounded-md border p-3">
+                  <Checkbox
+                    id="customer-authorized"
+                    checked={editCustomerAuthorized}
+                    onCheckedChange={(checked) => setEditCustomerAuthorized(checked === true)}
+                  />
+                  <div>
+                    <Label htmlFor="customer-authorized" className="cursor-pointer font-medium">
+                      Customer Authorized
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Mark when the client approved this outbound release (portal, email, or phone).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Carrier</Label>
@@ -1796,7 +1909,7 @@ export default function ShipmentDetail() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Expected Arrival</Label>
+                <Label>{isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -1833,15 +1946,37 @@ export default function ShipmentDetail() {
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
+                  const releasedToValue = editReleasedTo.trim() || null;
+                  const updates: Record<string, unknown> = {
+                    carrier: editCarrier || null,
+                    tracking_number: editTrackingNumber || null,
+                    po_number: editPoNumber || null,
+                    expected_arrival_date: editExpectedArrival?.toISOString() || null,
+                    notes: editNotes || null,
+                  };
+
+                  if (isOutbound) {
+                    updates.release_type = editReleaseType || null;
+                    updates.released_to = releasedToValue;
+                    updates.driver_name = releasedToValue;
+                    // Keep contact fields in sync (used by legacy flows)
+                    updates.release_to_name = releasedToValue;
+                    updates.release_to_email = editReleaseToEmail.trim() || null;
+                    updates.release_to_phone = editReleaseToPhone.trim() || null;
+
+                    updates.customer_authorized = editCustomerAuthorized;
+                    if (editCustomerAuthorized) {
+                      updates.customer_authorized_at = new Date().toISOString();
+                      updates.customer_authorized_by = profile?.id || null;
+                    } else {
+                      updates.customer_authorized_at = null;
+                      updates.customer_authorized_by = null;
+                    }
+                  }
+
                   const { error } = await supabase
                     .from('shipments')
-                    .update({
-                      carrier: editCarrier || null,
-                      tracking_number: editTrackingNumber || null,
-                      po_number: editPoNumber || null,
-                      expected_arrival_date: editExpectedArrival?.toISOString() || null,
-                      notes: editNotes || null,
-                    })
+                    .update(updates)
                     .eq('id', shipment.id);
                   if (error) throw error;
                   toast({ title: 'Shipment Updated' });
@@ -1911,28 +2046,52 @@ export default function ShipmentDetail() {
                 <Label className="text-muted-foreground">PO Number</Label>
                 <p className="font-medium">{shipment.po_number || '-'}</p>
               </div>
-              {!isOutbound && (
-                <div>
-                  <Label className="text-muted-foreground">Expected Arrival</Label>
-                  <p className="font-medium">
-                    {shipment.expected_arrival_date
-                      ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
-                      : '-'}
-                  </p>
-                </div>
-              )}
+              <div>
+                <Label className="text-muted-foreground">
+                  {isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}
+                </Label>
+                <p className="font-medium">
+                  {shipment.expected_arrival_date
+                    ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
+                    : '-'}
+                </p>
+              </div>
               <div>
                 <Label className="text-muted-foreground">
                   {isOutbound ? 'Released To' : 'Received At'}
                 </Label>
                 <p className="font-medium">
                   {isOutbound
-                    ? shipment.released_to || '-'
+                    ? shipment.released_to || shipment.driver_name || shipment.release_to_name || '-'
                     : shipment.received_at
                       ? format(new Date(shipment.received_at), 'MMM d, yyyy h:mm a')
                       : '-'}
                 </p>
               </div>
+              {isOutbound && (
+                <div>
+                  <Label className="text-muted-foreground">Release Type</Label>
+                  <p className="font-medium">{shipment.release_type || '-'}</p>
+                </div>
+              )}
+              {isOutbound && (
+                <div>
+                  <Label className="text-muted-foreground">Customer Authorized</Label>
+                  <p className="font-medium">{shipment.customer_authorized ? 'Yes' : 'No'}</p>
+                </div>
+              )}
+              {isOutbound && (
+                <div>
+                  <Label className="text-muted-foreground">Release Phone</Label>
+                  <p className="font-medium">{shipment.release_to_phone || '-'}</p>
+                </div>
+              )}
+              {isOutbound && (
+                <div>
+                  <Label className="text-muted-foreground">Release Email</Label>
+                  <p className="font-medium">{shipment.release_to_email || '-'}</p>
+                </div>
+              )}
             </div>
             {shipment.notes && (
               <div>
