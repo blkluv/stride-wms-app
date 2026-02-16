@@ -184,6 +184,15 @@ export function Stage1DockIntake({
     const newBreakdown = { ...breakdown, [field]: value };
     setBreakdown(newBreakdown);
     autosave.saveField('dock_intake_breakdown', newBreakdown);
+
+    // Signed pieces should reflect the unit breakdown when the breakdown is used.
+    // Important: set (do not add) to avoid double-counting when users adjust values.
+    const computedPieces =
+      (Number(newBreakdown.cartons) || 0) +
+      (Number(newBreakdown.pallets) || 0) +
+      (Number(newBreakdown.crates) || 0);
+    setSignedPieces(computedPieces);
+    autosave.saveField('signed_pieces', computedPieces);
   };
 
   // Sync local chips with persisted open exceptions
