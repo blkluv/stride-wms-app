@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { logActivity } from '@/lib/activity/logActivity';
 
 export type ShipmentExceptionCode =
   | 'PIECES_MISMATCH'
@@ -127,6 +128,7 @@ export function useShipmentExceptions(
       const existingOpen = exceptions.find((e) => e.code === code && e.status === 'open');
 
       if (existingOpen) {
+        const previousNote = existingOpen.note ?? null;
         const { data, error } = await (supabase as any)
           .from('shipment_exceptions')
           .update({
@@ -139,6 +141,23 @@ export function useShipmentExceptions(
 
         if (error) throw error;
         setExceptions((prev) => prev.map((e) => (e.id === existingOpen.id ? (data as ShipmentExceptionRow) : e)));
+
+        if (previousNote !== normalizedNote) {
+          void logActivity({
+            entityType: 'shipment',
+            tenantId: profile.tenant_id,
+            entityId: shipmentId,
+            actorUserId: profile.id,
+            eventType: 'shipment_exception_note_updated',
+            eventLabel: 'Exception note updated',
+            details: {
+              code,
+              label: SHIPMENT_EXCEPTION_CODE_META[code]?.label,
+              previous_note: previousNote,
+              note: normalizedNote,
+            },
+          });
+        }
         return data as ShipmentExceptionRow;
       }
 
@@ -157,6 +176,21 @@ export function useShipmentExceptions(
 
       if (error) throw error;
       setExceptions((prev) => [data as ShipmentExceptionRow, ...prev]);
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: profile.tenant_id,
+        entityId: shipmentId,
+        actorUserId: profile.id,
+        eventType: 'shipment_exception_added',
+        eventLabel: 'Exception added',
+        details: {
+          code,
+          label: SHIPMENT_EXCEPTION_CODE_META[code]?.label,
+          note: normalizedNote,
+        },
+      });
+
       return data as ShipmentExceptionRow;
     } catch (err: any) {
       console.error('[useShipmentExceptions] upsert error:', err);
@@ -182,6 +216,20 @@ export function useShipmentExceptions(
 
       if (error) throw error;
       setExceptions((prev) => prev.filter((e) => !(e.code === code && e.status === 'open')));
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: profile.tenant_id,
+        entityId: shipmentId,
+        actorUserId: profile.id ?? null,
+        eventType: 'shipment_exception_removed',
+        eventLabel: 'Exception removed',
+        details: {
+          code,
+          label: SHIPMENT_EXCEPTION_CODE_META[code]?.label,
+        },
+      });
+
       return true;
     } catch (err: any) {
       console.error('[useShipmentExceptions] remove error:', err);
@@ -192,7 +240,7 @@ export function useShipmentExceptions(
       });
       return false;
     }
-  }, [shipmentId, profile?.tenant_id, toast]);
+  }, [shipmentId, profile?.tenant_id, profile?.id, toast]);
 
   const resolveException = useCallback(async (id: string, resolutionNote: string): Promise<boolean> => {
     if (!profile?.id) return false;
@@ -211,6 +259,21 @@ export function useShipmentExceptions(
 
       if (error) throw error;
       setExceptions((prev) => prev.map((e) => (e.id === id ? (data as ShipmentExceptionRow) : e)));
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: (data as ShipmentExceptionRow).tenant_id,
+        entityId: (data as ShipmentExceptionRow).shipment_id,
+        actorUserId: profile.id,
+        eventType: 'shipment_exception_resolved',
+        eventLabel: 'Exception resolved',
+        details: {
+          code: (data as ShipmentExceptionRow).code,
+          label: SHIPMENT_EXCEPTION_CODE_META[(data as ShipmentExceptionRow).code]?.label,
+          resolution_note: resolutionNote.trim(),
+        },
+      });
+
       return true;
     } catch (err: any) {
       console.error('[useShipmentExceptions] resolve error:', err);
@@ -242,6 +305,20 @@ export function useShipmentExceptions(
 
       if (error) throw error;
       setExceptions((prev) => prev.map((e) => (e.id === id ? (data as ShipmentExceptionRow) : e)));
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: (data as ShipmentExceptionRow).tenant_id,
+        entityId: (data as ShipmentExceptionRow).shipment_id,
+        actorUserId: profile.id,
+        eventType: 'shipment_exception_reopened',
+        eventLabel: 'Exception reopened',
+        details: {
+          code: (data as ShipmentExceptionRow).code,
+          label: SHIPMENT_EXCEPTION_CODE_META[(data as ShipmentExceptionRow).code]?.label,
+        },
+      });
+
       return true;
     } catch (err: any) {
       console.error('[useShipmentExceptions] reopen error:', err);
