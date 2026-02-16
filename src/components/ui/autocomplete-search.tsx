@@ -53,11 +53,17 @@ export function AutocompleteSearchInput({
     [suggestions, maxSuggestions]
   );
 
-  const shouldShow = open && !disabled && shownSuggestions.length > 0;
+  const canShow = !disabled && (value.trim().length > 0 || shownSuggestions.length > 0);
+  const isOpen = open && canShow;
+
+  // Avoid stale open state when the popover can no longer be shown.
+  useEffect(() => {
+    if (!canShow && open) setOpen(false);
+  }, [canShow, open]);
 
   // Keep popover width synced to the input
   useEffect(() => {
-    if (!shouldShow) return;
+    if (!isOpen) return;
     const update = () => {
       const width = anchorRef.current?.getBoundingClientRect().width;
       if (width && Number.isFinite(width)) setDropdownWidth(width);
@@ -65,10 +71,10 @@ export function AutocompleteSearchInput({
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, [shouldShow]);
+  }, [isOpen]);
 
   return (
-    <Popover open={shouldShow} onOpenChange={setOpen}>
+    <Popover open={isOpen} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
         <div ref={anchorRef} className={cn('relative', className)} data-autocomplete-anchor>
           <MaterialIcon
