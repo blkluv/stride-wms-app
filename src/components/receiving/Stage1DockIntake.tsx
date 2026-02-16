@@ -53,6 +53,7 @@ const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string }[]
 
 export interface MatchingParamsUpdate {
   pieces: number;
+  dockCount: number;
   accountId: string | null;
 }
 
@@ -158,9 +159,10 @@ export function Stage1DockIntake({
   useEffect(() => {
     onMatchingParamsChange?.({
       pieces: signedPieces,
+      dockCount,
       accountId: accountId || null,
     });
-  }, [signedPieces, accountId, onMatchingParamsChange]);
+  }, [signedPieces, dockCount, accountId, onMatchingParamsChange]);
 
   useEffect(() => {
     setAccountId(shipment.account_id || '');
@@ -543,6 +545,15 @@ export function Stage1DockIntake({
         errors.push(`Exception note required: ${SHIPMENT_EXCEPTION_CODE_META[ex].label}`);
       }
     }
+    // Carrier vs Dock mismatch: block completion until corrected OR exception+note is present.
+    if (signedPieces > 0 && dockCount > 0 && signedPieces !== dockCount) {
+      const required: ShipmentExceptionCode = dockCount > signedPieces ? 'OVERAGE' : 'SHORTAGE';
+      if (!exceptionNotes[required]?.trim()) {
+        errors.push(
+          `Counts mismatch requires a ${SHIPMENT_EXCEPTION_CODE_META[required].label} exception note (or fix the counts).`
+        );
+      }
+    }
     if (getPhotoUrls(receivingPhotos).length < 1) errors.push('At least 1 photo is required');
     return errors;
   };
@@ -564,6 +575,20 @@ export function Stage1DockIntake({
     try {
       // Flush any pending autosave
       await autosave.saveNow();
+
+      // Persist exception notes even if the user hasn't blurred the textarea yet.
+      if (exceptions.length > 0) {
+        const results = await Promise.all(
+          exceptions.map(async (code) => {
+            const note = exceptionNotes[code]?.trim() || null;
+            return upsertOpenException(code, note);
+          })
+        );
+
+        if (results.some((r) => !r)) {
+          throw new Error('Failed to save exceptions');
+        }
+      }
 
       // Update shipment: set inbound_status to stage1_complete
       // Include all current field values to prevent stale autosave overwrites

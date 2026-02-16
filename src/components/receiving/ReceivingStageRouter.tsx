@@ -499,6 +499,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   shipmentId={shipmentId}
                   shipmentNumber={shipment.shipment_number}
                   shipment={shipment as any}
+                  dockCount={liveMatchingParams?.dockCount ?? shipment.received_pieces ?? null}
                   onComplete={handleReceivingComplete}
                   onRefresh={fetchShipment}
                   onItemMatchingParamsChange={handleItemMatchingParamsChange}

@@ -37,6 +37,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
+import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
@@ -79,6 +80,8 @@ interface Stage2DetailedReceivingProps {
     sidemark_id: string | null;
     shipment_exception_type?: string | null;
   };
+  /** Optional live Dock Count (from Stage 1 edits while Stage 2 is open) */
+  dockCount?: number | null;
   onComplete: () => void;
   onRefresh: () => void;
   /** Called when item details change to refine matching panel candidates */
@@ -92,6 +95,7 @@ export function Stage2DetailedReceiving({
   shipmentId,
   shipmentNumber,
   shipment,
+  dockCount: dockCountOverride,
   onComplete,
   onRefresh,
   onItemMatchingParamsChange,
@@ -107,6 +111,7 @@ export function Stage2DetailedReceiving({
   const [items, setItems] = useState<ReceivedItem[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const entryCount = items.length;
+  const dockCount = dockCountOverride ?? shipment.received_pieces ?? null;
   const { classes, loading: classesLoading } = useClasses();
   const { flagServiceEvents, loading: flagServicesLoading } = useServiceEvents();
 
@@ -374,7 +379,7 @@ export function Stage2DetailedReceiving({
   };
 
   // Handle complete button
-  const handleCompleteClick = () => {
+  const handleCompleteClick = async () => {
     const errors = validateCompletion();
 
     // Allow admin override if only issue is no items
@@ -390,6 +395,48 @@ export function Stage2DetailedReceiving({
         description: errors.join('. '),
       });
       return;
+    }
+
+    // Stage 2 mismatch gating (Dock vs Entry): allow proceed only if corrected OR has exception+note.
+    if (profile?.tenant_id) {
+      const dock = Number(dockCount) || 0;
+      const entry = Number(entryCount) || 0;
+      const mismatch = dock > 0 && entry > 0 && dock !== entry;
+
+      if (mismatch) {
+        const requiredCode: ShipmentExceptionCode = entry > dock ? 'OVERAGE' : 'SHORTAGE';
+
+        try {
+          const { data, error } = await (supabase as any)
+            .from('shipment_exceptions')
+            .select('note')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('status', 'open')
+            .eq('code', requiredCode)
+            .limit(1);
+
+          if (error) throw error;
+
+          const note = ((data?.[0]?.note as string | null) ?? '').trim();
+          if (!note) {
+            toast({
+              variant: 'destructive',
+              title: 'Counts Mismatch',
+              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note.`,
+            });
+            return;
+          }
+        } catch (err: any) {
+          console.error('[Stage2] mismatch check error:', err);
+          toast({
+            variant: 'destructive',
+            title: 'Could not validate mismatch',
+            description: err?.message || 'Failed to validate Dock vs Entry mismatch. Try again.',
+          });
+          return;
+        }
+      }
     }
 
     setShowCompleteDialog(true);
@@ -725,7 +772,7 @@ export function Stage2DetailedReceiving({
         eventType: 'receiving_completed',
         eventLabel: 'Receiving completed (Stage 2)',
         details: {
-          dock_count: shipment.received_pieces ?? null,
+          dock_count: dockCount ?? null,
           entry_count: entryCount,
           items_count: items.length,
         },
@@ -792,7 +839,7 @@ export function Stage2DetailedReceiving({
                 Carrier: {shipment.signed_pieces ?? '-'}
               </Badge>
               <Badge variant="secondary" className="text-sm">
-                Dock: {shipment.received_pieces ?? '-'}
+                Dock: {dockCount ?? '-'}
               </Badge>
               <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="text-sm">
                 Entry: {entryCount}
@@ -1006,7 +1053,7 @@ export function Stage2DetailedReceiving({
       <div className="flex flex-col sm:flex-row gap-3 justify-end">
         <Button
           size="lg"
-          onClick={handleCompleteClick}
+          onClick={() => void handleCompleteClick()}
           disabled={completing}
           className="gap-2"
         >
@@ -1048,7 +1095,7 @@ export function Stage2DetailedReceiving({
             </div>
             <div className="flex justify-between text-sm">
               <span>Dock Count:</span>
-              <span className="font-medium">{shipment.received_pieces ?? '-'}</span>
+              <span className="font-medium">{dockCount ?? '-'}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span>Entry Count:</span>
@@ -1058,7 +1105,7 @@ export function Stage2DetailedReceiving({
               <span>Items:</span>
               <span className="font-medium">{items.length}</span>
             </div>
-            {!!shipment.received_pieces && entryCount > 0 && entryCount !== shipment.received_pieces && (
+            {typeof dockCount === 'number' && dockCount > 0 && entryCount > 0 && entryCount !== dockCount && (
               <div className="p-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
                 <MaterialIcon name="warning" size="sm" className="inline mr-1" />
                 Dock Count and Entry Count are different.
