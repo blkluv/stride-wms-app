@@ -21,7 +21,8 @@ Add these in:
 ## What the workflow does
 
 1. Links to your Supabase project.
-2. Runs `supabase db push` (migrations) on `main` pushes.
+2. Fetches remote migration history stubs (to avoid "remote versions not found locally" failures).
+3. Runs `supabase db push` (migrations) on `main` pushes.
 3. Deploys changed functions from `supabase/functions/*`.
 
 ## Manual run options
@@ -36,5 +37,6 @@ When using **Run workflow**, you can choose:
 
 ## Notes
 
-- If your remote migration history diverges from local migration files, `db push` will fail safely.
-- In that case, reconcile migration history first (or run migration SQL manually in Supabase SQL Editor).
+- Some Supabase projects have migration history versions that are not present in the repo’s `supabase/migrations/`.
+  The workflow runs `supabase migration fetch` first, which generates local stub files for already-applied
+  remote migrations so `db push` can proceed.

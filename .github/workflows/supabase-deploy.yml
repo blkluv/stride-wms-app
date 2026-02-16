@@ -69,6 +69,19 @@ jobs:
       - name: Link Supabase project
         run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
+      - name: Prepare encoded database URL (for migration fetch)
+        if: github.event_name == 'push' || inputs.run_db_push == 'true'
+        run: |
+          # Supabase CLI db push can fail if the remote migration history includes versions
+          # not present locally. Fetching the remote history creates local stub files so
+          # the CLI can proceed safely.
+          DB_URL_ENC="$(node -e "const ref=process.env.SUPABASE_PROJECT_REF; const pw=process.env.SUPABASE_DB_PASSWORD; const pwEnc=encodeURIComponent(pw); const conn=\`postgresql://postgres:\${pwEnc}@db.\${ref}.supabase.co:5432/postgres\`; process.stdout.write(encodeURIComponent(conn));")"
+          echo "SUPABASE_DB_URL_ENCODED=$DB_URL_ENC" >> "$GITHUB_ENV"
+
+      - name: Fetch remote migration history stubs
+        if: github.event_name == 'push' || inputs.run_db_push == 'true'
+        run: npx supabase migration fetch --db-url "$SUPABASE_DB_URL_ENCODED"
+
       - name: Apply database migrations
         if: github.event_name == 'push' || inputs.run_db_push == 'true'
         run: npx supabase db push --linked --yes -p "$SUPABASE_DB_PASSWORD"
