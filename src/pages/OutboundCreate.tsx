@@ -44,6 +44,7 @@ interface FormErrors {
   account?: string;
   warehouse?: string;
   outbound_type?: string;
+  release_type?: string;
   items?: string;
 }
 
@@ -84,6 +85,14 @@ export default function OutboundCreate() {
   const [sidemarkId, setSidemarkId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [releaseType, setReleaseType] = useState<string>('will_call');
+  const [releasedTo, setReleasedTo] = useState('');
+  const [releaseToEmail, setReleaseToEmail] = useState('');
+  const [releaseToPhone, setReleaseToPhone] = useState('');
+  const [customerAuthorized, setCustomerAuthorized] = useState(true);
+  const [carrier, setCarrier] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [poNumber, setPoNumber] = useState('');
 
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
@@ -229,6 +238,15 @@ export default function OutboundCreate() {
     [sidemarks]
   );
 
+  const releaseTypeOptions: SelectOption[] = useMemo(
+    () => ([
+      { value: 'will_call', label: 'Will Call (Pickup/Release)' },
+      { value: 'disposal', label: 'Disposal' },
+      { value: 'return', label: 'Return to Sender' },
+    ]),
+    []
+  );
+
   // Filter items by search
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return accountItems;
@@ -238,6 +256,17 @@ export default function OutboundCreate() {
       item.description?.toLowerCase().includes(query)
     );
   }, [accountItems, searchQuery]);
+
+  const itemQuantityById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of accountItems as any[]) {
+      const qty = typeof item?.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+      if (typeof item?.id === 'string') {
+        map.set(item.id, qty);
+      }
+    }
+    return map;
+  }, [accountItems]);
 
   // ------------------------------------------
   // Item selection handlers
@@ -327,6 +356,19 @@ export default function OutboundCreate() {
           sidemark_id: sidemarkId || null,
           expected_arrival_date: expectedDate || null,
           notes: notes || null,
+          release_type: releaseType || null,
+          released_to: releasedTo.trim() || null,
+          driver_name: releasedTo.trim() || null,
+          // Keep legacy contact fields in sync (used by older release flows)
+          release_to_name: releasedTo.trim() || null,
+          release_to_email: releaseToEmail.trim() || null,
+          release_to_phone: releaseToPhone.trim() || null,
+          customer_authorized: customerAuthorized,
+          customer_authorized_at: customerAuthorized ? new Date().toISOString() : null,
+          customer_authorized_by: customerAuthorized ? profile.id : null,
+          carrier: carrier.trim() || null,
+          tracking_number: trackingNumber.trim() || null,
+          po_number: poNumber.trim() || null,
         })
         .eq('id', draftShipmentId);
 
@@ -351,7 +393,7 @@ export default function OutboundCreate() {
         .map((item_id) => ({
           shipment_id: draftShipmentId,
           item_id,
-          expected_quantity: 1,
+          expected_quantity: itemQuantityById.get(item_id) ?? 1,
           status: 'pending',
         }));
 
@@ -504,6 +546,102 @@ export default function OutboundCreate() {
                 </div>
               )}
 
+              {/* Legacy outbound release fields (restore) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Carrier</Label>
+                  <Input
+                    value={carrier}
+                    onChange={(e) => setCarrier(e.target.value)}
+                    placeholder="e.g., FedEx, UPS, Local Delivery"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tracking Number</Label>
+                  <Input
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    placeholder="Tracking number"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>PO Number</Label>
+                  <Input
+                    value={poNumber}
+                    onChange={(e) => setPoNumber(e.target.value)}
+                    placeholder="Purchase order number"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Release Type</Label>
+                  <SearchableSelect
+                    data-testid="release-type-select"
+                    options={releaseTypeOptions}
+                    value={releaseType}
+                    onChange={(v) => {
+                      setReleaseType(v);
+                      if (errors.release_type) setErrors({ ...errors, release_type: undefined });
+                    }}
+                    placeholder="Select release type..."
+                    searchPlaceholder="Search release types..."
+                    emptyText="No release types found"
+                    error={errors.release_type}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Released To / Driver Name</Label>
+                  <Input
+                    value={releasedTo}
+                    onChange={(e) => setReleasedTo(e.target.value)}
+                    placeholder="Name of person picking up / driver"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required before completing the release (signature step will also ask).
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Release Contact Phone</Label>
+                  <Input
+                    value={releaseToPhone}
+                    onChange={(e) => setReleaseToPhone(e.target.value)}
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Release Contact Email</Label>
+                <Input
+                  type="email"
+                  value={releaseToEmail}
+                  onChange={(e) => setReleaseToEmail(e.target.value)}
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div className="flex items-start space-x-3 p-3 rounded-md border bg-muted/30">
+                <Checkbox
+                  id="customer-authorized"
+                  checked={customerAuthorized}
+                  onCheckedChange={(checked) => setCustomerAuthorized(checked === true)}
+                  className="mt-1"
+                />
+                <div>
+                  <Label htmlFor="customer-authorized" className="cursor-pointer font-medium">
+                    Customer Authorized
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Mark when the client has approved this outbound request (portal, email, or phone).
+                  </p>
+                </div>
+              </div>
+
               {/* Expected Date */}
               <div className="space-y-1.5">
                 <Label>Expected Pickup/Ship Date</Label>
@@ -588,6 +726,7 @@ export default function OutboundCreate() {
                         <TableRow>
                           <TableHead className="w-12"></TableHead>
                           <TableHead>Item Code</TableHead>
+                          <TableHead className="hidden sm:table-cell w-16 text-right">Qty</TableHead>
                           <TableHead className="hidden sm:table-cell">Description</TableHead>
                           <TableHead className="hidden md:table-cell">Location</TableHead>
                           <TableHead className="hidden lg:table-cell">Room</TableHead>
@@ -599,7 +738,7 @@ export default function OutboundCreate() {
                       <TableBody>
                         {filteredItems.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                               No items match your search
                             </TableCell>
                           </TableRow>
@@ -620,6 +759,9 @@ export default function OutboundCreate() {
                                 />
                               </TableCell>
                               <TableCell className="font-medium">{item.item_code}</TableCell>
+                              <TableCell className="hidden sm:table-cell text-right">
+                                {typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}
+                              </TableCell>
                               <TableCell className="hidden sm:table-cell max-w-[200px] truncate">
                                 {item.description || '-'}
                               </TableCell>

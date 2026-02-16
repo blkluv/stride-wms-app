@@ -693,6 +693,7 @@ export function useAccountItems(accountId: string | undefined) {
           id,
           item_code,
           description,
+          quantity,
           status,
           room,
           location:locations!current_location_id(id, code, name),
