@@ -18,12 +18,11 @@ interface DraftIntake {
 
 interface DraftQueueListProps {
   onSelect: (id: string) => void;
-  onCreateNew: () => void;
 }
 
 // TODO: draft expiry cleanup deferred (future phase)
 
-export function DraftQueueList({ onSelect, onCreateNew }: DraftQueueListProps) {
+export function DraftQueueList({ onSelect }: DraftQueueListProps) {
   const { profile } = useAuth();
   const [drafts, setDrafts] = useState<DraftIntake[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,10 +93,9 @@ export function DraftQueueList({ onSelect, onCreateNew }: DraftQueueListProps) {
         <h3 className="font-medium text-sm text-muted-foreground">
           Draft Dock Intakes ({drafts.length})
         </h3>
-        <Button size="sm" onClick={onCreateNew}>
-          <MaterialIcon name="add" size="sm" className="mr-1" />
-          New Dock Intake
-        </Button>
+        <div className="text-xs text-muted-foreground">
+          Use "Start Dock Intake" above
+        </div>
       </div>
 
       {drafts.length === 0 ? (
@@ -105,9 +103,6 @@ export function DraftQueueList({ onSelect, onCreateNew }: DraftQueueListProps) {
           <CardContent className="text-center py-8 text-muted-foreground">
             <MaterialIcon name="inbox" size="xl" className="mb-2 opacity-40" />
             <p>No draft dock intakes.</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={onCreateNew}>
-              Start a New Dock Intake
-            </Button>
           </CardContent>
         </Card>
       ) : (

@@ -119,6 +119,10 @@ export function Stage1DockIntake({
   // Autosave - disable while completing to prevent race conditions
   const autosave = useReceivingAutosave(shipmentId, !completing);
 
+  // UX guard: account must be selected first. This doesn't affect autosave, it just prevents edits
+  // to other fields until an account (or UNIDENTIFIED) is chosen.
+  const accountRequiredLocked = !accountId;
+
   // Photos
   const {
     photos,
@@ -478,42 +482,50 @@ export function Stage1DockIntake({
                 Use UNIDENTIFIED
               </Button>
             </div>
+            {accountRequiredLocked && (
+              <p className="text-xs text-muted-foreground">
+                Select an account to unlock the rest of the intake form.
+              </p>
+            )}
           </div>
 
           <Separator />
 
-          <div className="space-y-2">
-            <Label htmlFor="vendor_name">
-              Vendor Name
-            </Label>
-            <Input
-              id="vendor_name"
-              placeholder="Enter vendor name"
-              value={vendorName}
-              onChange={(e) => handleVendorNameChange(e.target.value)}
-            />
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-1 justify-center">
-              <Label htmlFor="signed_pieces">
-                Signed Pieces <span className="text-red-500">*</span>
+          <div className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+            <div className="space-y-2">
+              <Label htmlFor="vendor_name">
+                Vendor Name
               </Label>
-              <HelpTip
-                tooltip="The number of pieces counted and signed for at the dock. Tap the number to type a value directly, or use +/- buttons."
-                pageKey="receiving.stage1"
-                fieldKey="signed_pieces"
+              <Input
+                id="vendor_name"
+                placeholder="Enter vendor name"
+                value={vendorName}
+                onChange={(e) => handleVendorNameChange(e.target.value)}
+                disabled={accountRequiredLocked}
               />
             </div>
-            <BigCounter
-              id="signed_pieces"
-              value={signedPieces}
-              onChange={handleSignedPiecesChange}
-              min={0}
-              step={1}
-            />
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-1 justify-center">
+                <Label htmlFor="signed_pieces">
+                  Signed Pieces <span className="text-red-500">*</span>
+                </Label>
+                <HelpTip
+                  tooltip="The number of pieces counted and signed for at the dock. Tap the number to type a value directly, or use +/- buttons."
+                  pageKey="receiving.stage1"
+                  fieldKey="signed_pieces"
+                />
+              </div>
+              <BigCounter
+                id="signed_pieces"
+                value={signedPieces}
+                onChange={handleSignedPiecesChange}
+                min={0}
+                step={1}
+              />
+            </div>
           </div>
 
         </CardContent>
@@ -532,7 +544,7 @@ export function Stage1DockIntake({
             />
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
           <div className="grid gap-4 grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="cartons">Cartons</Label>
@@ -542,6 +554,7 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.cartons || ''}
                 onChange={(e) => handleBreakdownChange('cartons', parseInt(e.target.value) || 0)}
+                disabled={accountRequiredLocked}
               />
             </div>
             <div className="space-y-2">
@@ -552,6 +565,7 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.pallets || ''}
                 onChange={(e) => handleBreakdownChange('pallets', parseInt(e.target.value) || 0)}
+                disabled={accountRequiredLocked}
               />
             </div>
             <div className="space-y-2">
@@ -562,6 +576,7 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.crates || ''}
                 onChange={(e) => handleBreakdownChange('crates', parseInt(e.target.value) || 0)}
+                disabled={accountRequiredLocked}
               />
             </div>
           </div>
@@ -581,7 +596,10 @@ export function Stage1DockIntake({
             />
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className={accountRequiredLocked ? "space-y-4 opacity-50 pointer-events-none" : "space-y-4"}
+          aria-disabled={accountRequiredLocked}
+        >
           <div className="flex flex-wrap gap-2">
             {EXCEPTION_OPTIONS.map((opt) => {
               const isSelected = exceptions.includes(opt.value);
@@ -592,6 +610,7 @@ export function Stage1DockIntake({
                   size="sm"
                   className="gap-1.5"
                   onClick={() => toggleException(opt.value)}
+                  disabled={accountRequiredLocked}
                 >
                   <MaterialIcon name={opt.icon} size="sm" />
                   {opt.label}
@@ -619,6 +638,7 @@ export function Stage1DockIntake({
                   value={exceptionNotes[ex] || ''}
                   onChange={(e) => setExceptionNotes((prev) => ({ ...prev, [ex]: e.target.value }))}
                   onBlur={() => void handleExceptionNoteBlur(ex)}
+                  disabled={accountRequiredLocked}
                 />
               </div>
             ))}
@@ -626,7 +646,10 @@ export function Stage1DockIntake({
       </Card>
 
       {/* Photos */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div
+        className={accountRequiredLocked ? "grid gap-6 md:grid-cols-2 opacity-50 pointer-events-none" : "grid gap-6 md:grid-cols-2"}
+        aria-disabled={accountRequiredLocked}
+      >
         {/* Paperwork Photos */}
         <Card>
           <CardHeader className="pb-3">
@@ -642,6 +665,7 @@ export function Stage1DockIntake({
                 variant="outline"
                 size="sm"
                 onClick={() => paperworkInputRef.current?.click()}
+                disabled={accountRequiredLocked}
               >
                 <MaterialIcon name="add_a_photo" size="sm" className="mr-1" />
                 Add
@@ -699,6 +723,7 @@ export function Stage1DockIntake({
                 variant="outline"
                 size="sm"
                 onClick={() => conditionInputRef.current?.click()}
+                disabled={accountRequiredLocked}
               >
                 <MaterialIcon name="add_a_photo" size="sm" className="mr-1" />
                 Add
@@ -754,7 +779,7 @@ export function Stage1DockIntake({
             Capture or upload delivery paperwork and supporting intake documents.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
           <DocumentCapture
             context={{ type: 'shipment', shipmentId }}
             maxDocuments={12}
@@ -771,7 +796,7 @@ export function Stage1DockIntake({
             Signature (optional)
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
           {signatureData ? (
             <div className="space-y-2">
               <div className="border rounded-md p-2 bg-white">
@@ -807,6 +832,7 @@ export function Stage1DockIntake({
             value={notes}
             onChange={(e) => handleNotesChange(e.target.value)}
             rows={3}
+            disabled={accountRequiredLocked}
           />
         </CardContent>
       </Card>
@@ -816,7 +842,7 @@ export function Stage1DockIntake({
         <Button
           size="lg"
           onClick={handleComplete}
-          disabled={completing}
+          disabled={completing || accountRequiredLocked}
           className="gap-2"
         >
           {completing ? (
