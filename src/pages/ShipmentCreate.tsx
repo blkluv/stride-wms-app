@@ -317,6 +317,10 @@ export default function ShipmentCreate() {
         warehouse_id: warehouseId,
         sidemark: sidemark.trim() || null,
         shipment_type: isReturn ? "return" : "inbound",
+        // Align inbound shipments created here with the receiving/inbound planning layer.
+        // This ensures the DB prefix trigger can generate EXP-##### numbers for expected shipments.
+        inbound_kind: isReturn ? null : "expected",
+        inbound_status: isReturn ? null : "draft",
         status: "expected" as const,
         carrier: carrier || null,
         tracking_number: trackingNumber || null,

@@ -222,6 +222,9 @@ export default function ClientInboundCreate() {
           warehouse_id: warehouseId,
           sidemark: sidemark.trim() || null,
           shipment_type: 'inbound',
+          // Align with inbound planning so EXP-##### numbering is applied via DB trigger.
+          inbound_kind: 'expected',
+          inbound_status: 'draft',
           status: 'expected',
           carrier: carrier || null,
           tracking_number: trackingNumber || null,
