@@ -890,12 +890,12 @@ export function Stage2DetailedReceiving({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-24 text-right">Quantity</TableHead>
-                    <TableHead className="w-40">Vendor</TableHead>
+                    <TableHead className="min-w-[160px]">Vendor</TableHead>
                     <TableHead className="min-w-[220px]">Description</TableHead>
-                    <TableHead className="w-44">Class</TableHead>
-                    <TableHead className="w-40">Side Mark</TableHead>
-                    <TableHead className="w-36">Room</TableHead>
-                    <TableHead className="w-40">Actions</TableHead>
+                    <TableHead className="min-w-[180px]">Class</TableHead>
+                    <TableHead className="min-w-[160px]">Side Mark</TableHead>
+                    <TableHead className="min-w-[140px]">Room</TableHead>
+                    <TableHead className="min-w-[140px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -908,7 +908,7 @@ export function Stage2DetailedReceiving({
                             min={0}
                             value={item.received_quantity}
                             onChange={(e) => updateItem(item.id, 'received_quantity', parseInt(e.target.value) || 0)}
-                            className="w-20 h-8 text-right ml-auto"
+                            className="w-20 h-9 text-right ml-auto"
                           />
                         </TableCell>
                         <TableCell>
@@ -916,7 +916,7 @@ export function Stage2DetailedReceiving({
                             value={item.vendor}
                             onChange={(e) => updateItem(item.id, 'vendor', e.target.value)}
                             placeholder="Vendor"
-                            className="h-8"
+                            className="h-9"
                           />
                         </TableCell>
                         <TableCell>
@@ -924,7 +924,7 @@ export function Stage2DetailedReceiving({
                             value={item.description}
                             onChange={(e) => updateItem(item.id, 'description', e.target.value)}
                             placeholder="Description"
-                            className="h-8"
+                            className="h-9"
                           />
                         </TableCell>
                         <TableCell>
@@ -932,7 +932,7 @@ export function Stage2DetailedReceiving({
                             value={item.class_id || '__none__'}
                             onValueChange={(value) => updateItem(item.id, 'class_id', value === '__none__' ? null : value)}
                           >
-                            <SelectTrigger className="h-8">
+                            <SelectTrigger className="h-9">
                               <SelectValue placeholder={classesLoading ? 'Loading...' : 'Select class'} />
                             </SelectTrigger>
                             <SelectContent>
@@ -950,7 +950,7 @@ export function Stage2DetailedReceiving({
                             value={item.sidemark}
                             onChange={(e) => updateItem(item.id, 'sidemark', e.target.value)}
                             placeholder="Side Mark"
-                            className="h-8"
+                            className="h-9"
                           />
                         </TableCell>
                         <TableCell>
@@ -958,7 +958,7 @@ export function Stage2DetailedReceiving({
                             value={item.room}
                             onChange={(e) => updateItem(item.id, 'room', e.target.value)}
                             placeholder="Room"
-                            className="h-8"
+                            className="h-9"
                           />
                         </TableCell>
                         <TableCell>
