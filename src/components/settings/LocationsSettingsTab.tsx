@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { HelpTip } from '@/components/ui/help-tip';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -599,6 +600,11 @@ export function LocationsSettingsTab({
                   <MaterialIcon name="upload" size="sm" className="mr-2" />
                   Import
                 </Button>
+                <HelpTip
+                  tooltip="Tip: Export your current locations to Excel, edit the rows, then re-import to apply bulk updates. Import uses Warehouse + Code as the unique key: matching codes are updated (not duplicated), and new codes create new locations. For zone assignment imports, use CLEAR to explicitly unassign a zone."
+                  side="bottom"
+                  className="ml-1"
+                />
                 <input
                   ref={fileInputRef}
                   type="file"
