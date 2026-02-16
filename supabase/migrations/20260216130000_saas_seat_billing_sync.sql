@@ -50,7 +50,7 @@ AS $$
   WHERE u.tenant_id = p_tenant_id
     AND u.deleted_at IS NULL
     AND COALESCE(NULLIF(BTRIM(u.status), ''), 'active') IN ('active', 'pending', 'invited')
-    AND (r.is_system IS DISTINCT FROM true)
+    AND r.tenant_id = p_tenant_id
     AND r.name <> 'client_user';
 $$;
 
