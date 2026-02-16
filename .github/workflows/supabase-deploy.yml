@@ -78,13 +78,22 @@ jobs:
         if: github.event_name == 'push' || inputs.deploy_functions == 'true'
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.deploy_mode }}" = "all" ]; then
-            mapfile -t FUNCTIONS < <(ls supabase/functions | sort)
+            shopt -s nullglob
+            mapfile -t FUNCTIONS < <(
+              for d in supabase/functions/*/; do
+                FUNCTION_NAME="$(basename "$d")"
+                case "$FUNCTION_NAME" in
+                  _*) continue ;;
+                esac
+                printf "%s\n" "$FUNCTION_NAME"
+              done | sort -u
+            )
           else
             BEFORE_SHA="${{ github.event.before }}"
             if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
               BEFORE_SHA="$(git rev-parse HEAD~1)"
             fi
-            mapfile -t FUNCTIONS < <(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | awk -F/ '/^supabase\/functions\/[^/]+\// {print $3}' | sort -u)
+            mapfile -t FUNCTIONS < <(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | awk -F/ '/^supabase\/functions\/[^/]+\// { if ($3 !~ /^_/) print $3 }' | sort -u)
           fi
 
           if [ "${#FUNCTIONS[@]}" -eq 0 ]; then
@@ -101,13 +110,15 @@ jobs:
 
       - name: Deploy Supabase functions
         if: (github.event_name == 'push' || inputs.deploy_functions == 'true') && steps.detect_functions.outputs.function_list != ''
+        env:
+          FUNCTION_LIST: ${{ steps.detect_functions.outputs.function_list }}
         run: |
           echo "Deploying functions:"
-          echo "${{ steps.detect_functions.outputs.function_list }}"
+          echo "$FUNCTION_LIST"
           while IFS= read -r FUNCTION_NAME; do
             [ -z "$FUNCTION_NAME" ] && continue
             npx supabase functions deploy "$FUNCTION_NAME" --project-ref "$SUPABASE_PROJECT_REF"
-          done <<< "${{ steps.detect_functions.outputs.function_list }}"
+          done <<< "$FUNCTION_LIST"
 
       - name: No function deployment needed
         if: (github.event_name == 'push' || inputs.deploy_functions == 'true') && steps.detect_functions.outputs.function_list == ''
