@@ -200,6 +200,14 @@ export function EmailDomainSection() {
   // Determine the actual current step based on settings
   useEffect(() => {
     if (isEditingVerified) return; // Don't auto-set step while user is editing
+    // If tenant has chosen the default sender, keep wizard at the choice step
+    // regardless of any previously-verified custom domain state.
+    if (settings.use_default_email) {
+      setCurrentStep('choice');
+      setEmailChoice('default');
+      return;
+    }
+
     if (settings.email_domain_verified) {
       setCurrentStep('complete');
       setEmailChoice('custom');
@@ -230,7 +238,7 @@ export function EmailDomainSection() {
     try {
       const { data, error } = await supabase
         .from('communication_brand_settings')
-        .select('custom_email_domain, email_domain_verified, dkim_verified, spf_verified, resend_domain_id, resend_dns_records, use_default_email')
+        .select('custom_email_domain, from_email, email_domain_verified, dkim_verified, spf_verified, resend_domain_id, resend_dns_records, use_default_email')
         .eq('tenant_id', profile.tenant_id)
         .maybeSingle();
 
@@ -250,7 +258,8 @@ export function EmailDomainSection() {
           resend_dns_records: records,
           use_default_email: data.use_default_email ?? true,
         });
-        setCustomEmail(data.custom_email_domain || '');
+        // Prefer custom_email_domain (wizard field), but fall back to from_email if present.
+        setCustomEmail(data.custom_email_domain || data.from_email || '');
         if (records) {
           setDnsRecords(records);
         }
@@ -274,7 +283,6 @@ export function EmailDomainSection() {
           .upsert({
             tenant_id: profile?.tenant_id,
             use_default_email: true,
-            custom_email_domain: null,
           }, {
             onConflict: 'tenant_id',
           });
@@ -284,7 +292,6 @@ export function EmailDomainSection() {
         setSettings(prev => ({
           ...prev,
           use_default_email: true,
-          custom_email_domain: null,
         }));
         setCurrentStep('choice');
 
@@ -324,6 +331,9 @@ export function EmailDomainSection() {
         .upsert({
           tenant_id: profile?.tenant_id,
           custom_email_domain: customEmail,
+          // Keep from_email in sync with the wizard entry so templates + alerts
+          // actually send from the verified sender once approved.
+          from_email: customEmail,
           use_default_email: false,
         }, {
           onConflict: 'tenant_id',
@@ -468,6 +478,7 @@ export function EmailDomainSection() {
           tenant_id: profile?.tenant_id,
           use_default_email: true,
           custom_email_domain: null,
+          from_email: null,
           resend_domain_id: null,
           resend_dns_records: null,
           email_domain_verified: false,

@@ -6,6 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Platform sender used for employee invites unless a tenant-specific sender is wired up.
+const DEFAULT_FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "onboarding@resend.dev";
+
 interface InvitePayload {
   user_id: string;
   tenant_id: string;
@@ -184,7 +187,7 @@ const handler = async (req: Request): Promise<Response> => {
     const resend = new Resend(resendApiKey);
 
     const { error: sendError } = await resend.emails.send({
-      from: `${branding.companyName || 'Warehouse System'} <noreply@mystridehub.com>`,
+      from: `${branding.companyName || 'Warehouse System'} <${DEFAULT_FROM_EMAIL}>`,
       to: [user.email],
       subject: subject,
       html: html,

@@ -24,6 +24,10 @@ interface AlertPayload {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Platform default sender (must be verified in Resend for production).
+// Falls back to Resend's onboarding sender for development/safety.
+const DEFAULT_FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "onboarding@resend.dev";
+
 function cleanEmails(emails: string[]): string[] {
   const cleaned = emails
     .map(e => (e || '').trim().toLowerCase())
@@ -1224,19 +1228,28 @@ const handler = async (req: Request): Promise<Response> => {
         const resend = new Resend(resendApiKey);
 
         // Determine from address
-        let fromEmail = 'alerts@resend.dev';
+        let fromEmail = DEFAULT_FROM_EMAIL;
         let fromName = 'Stride WMS Test';
 
         if (bodyFilter.tenant_id) {
           const { data: brandSettings } = await supabase
             .from('communication_brand_settings')
-            .select('from_email, from_name, email_domain_verified')
+            .select('from_email, from_name, custom_email_domain, email_domain_verified, use_default_email')
             .eq('tenant_id', bodyFilter.tenant_id)
             .maybeSingle();
 
-          if (brandSettings?.email_domain_verified && brandSettings?.from_email) {
-            fromEmail = brandSettings.from_email;
-            fromName = brandSettings.from_name || 'Stride WMS';
+          // Only use custom sender if tenant explicitly chose it and it is verified.
+          const wantsCustom = brandSettings?.use_default_email === false;
+          const isVerified = brandSettings?.email_domain_verified === true;
+          if (wantsCustom && isVerified) {
+            fromEmail = String(
+              brandSettings?.from_email ||
+              brandSettings?.custom_email_domain ||
+              DEFAULT_FROM_EMAIL
+            );
+          }
+          if (brandSettings?.from_name) {
+            fromName = brandSettings.from_name;
           }
 
           // Also test recipient resolution
@@ -1505,18 +1518,22 @@ const handler = async (req: Request): Promise<Response> => {
         // Get custom email domain settings
         const { data: brandSettings } = await supabase
           .from('communication_brand_settings')
-          .select('custom_email_domain, from_name, from_email, email_domain_verified')
+          .select('custom_email_domain, from_name, from_email, email_domain_verified, use_default_email')
           .eq('tenant_id', alert.tenant_id)
           .maybeSingle();
 
-        let fromEmail = 'alerts@resend.dev';
-        let fromName = variables.tenant_name || 'Warehouse System';
+        let fromEmail = DEFAULT_FROM_EMAIL;
+        let fromName = brandSettings?.from_name || variables.tenant_name || 'Warehouse System';
 
-        if (brandSettings?.email_domain_verified && brandSettings?.from_email) {
-          fromEmail = brandSettings.from_email;
-          if (brandSettings?.from_name) {
-            fromName = brandSettings.from_name;
-          }
+        // Only use custom sender if tenant explicitly chose it and it is verified.
+        const wantsCustom = brandSettings?.use_default_email === false;
+        const isVerified = brandSettings?.email_domain_verified === true;
+        if (wantsCustom && isVerified) {
+          fromEmail = String(
+            brandSettings?.from_email ||
+            brandSettings?.custom_email_domain ||
+            DEFAULT_FROM_EMAIL
+          );
         }
 
         // Send email to merged recipient list
