@@ -118,6 +118,53 @@
 - Explicit answer/decision:
   - Existing locations need to be editable.
 
+### QA-2026-02-15-017
+- Question/context: Intake behavior when one physical box contains multiple units.
+- Explicit answer/decision:
+  - User has two intake options:
+    - Enter one line with quantity (example qty 4) and keep it as one grouped line with one item code.
+    - Enter four separate lines and apply four labels to the same box.
+  - Container label may be created later by user if needed.
+  - Container creation/labeling should not be automated in this intake scenario.
+
+### QA-2026-02-15-018
+- Question/context: Grouped intake semantics and follow-up workflow.
+- Explicit answer/decision:
+  - For grouped single-line intake, use grouped inventory semantics (Option A): one item code representing quantity N.
+  - A split-and-relabel workflow is required for later conversion from grouped to individual labels.
+
+### QA-2026-02-15-019
+- Question/context: Split/relabel behavior for original grouped code.
+- Explicit answer/decision:
+  - Use Option B (partial split model): keep original grouped code for remaining quantity and generate new individual codes only for split quantity.
+
+### QA-2026-02-15-020
+- Question/context: Allowed split amount behavior.
+- Explicit answer/decision:
+  - Use Option A: allow split quantity from 1..remaining quantity and permit repeated partial splits over time.
+
+### QA-2026-02-15-021
+- Question/context: Child code format for split/relabel output.
+- Explicit answer/decision:
+  - Use Option B: child split item codes should be parent-derived (example pattern similar to `PARENT-1`, `PARENT-2`) for visual traceability.
+
+### QA-2026-02-15-022
+- Question/context: Parent end-state and split guardrails.
+- Explicit answer/decision:
+  - If parent record reaches zero state, use archive/inactive behavior (not delete).
+  - Split operation must never allow splitting the last remaining unit; at least one unit must stay attached to original parent item code.
+  - All split operations must be recorded in activity/history audit trail.
+
+### QA-2026-02-15-023
+- Question/context: Label-print timing after split/relabel.
+- Explicit answer/decision:
+  - Use Option A: auto-print all newly generated child labels immediately after split.
+
+### QA-2026-02-15-024
+- Question/context: Child-code suffix style for parent-derived split labels.
+- Explicit answer/decision:
+  - Use Option B: simple non-padded suffix sequence (example: `PARENT-1`, `PARENT-2`).
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.
