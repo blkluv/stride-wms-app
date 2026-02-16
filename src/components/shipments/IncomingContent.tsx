@@ -418,6 +418,10 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
   // Debounce inbound list search so we don't spam Supabase on each keystroke.
   useEffect(() => {
+    if (search === '') {
+      setDebouncedSearch('');
+      return;
+    }
     const timeout = setTimeout(() => {
       setDebouncedSearch(search);
     }, 200);
@@ -448,6 +452,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     setActiveTab(val as TabValue);
     setStatusFilter('all');
     setSearch('');
+    setDebouncedSearch('');
   };
 
   const { profile } = useAuth();
