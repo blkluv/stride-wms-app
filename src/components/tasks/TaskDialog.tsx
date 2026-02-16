@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
-  DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -93,6 +93,8 @@ export function TaskDialog({
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [loadingItems, setLoadingItems] = useState(false);
   const [itemDropdownOpen, setItemDropdownOpen] = useState(false);
+  const itemSearchAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [itemDropdownWidth, setItemDropdownWidth] = useState<number | undefined>(undefined);
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
 
@@ -130,6 +132,7 @@ export function TaskDialog({
   useEffect(() => {
     if (!open) {
       initializedRef.current = false;
+      setItemDropdownOpen(false);
       return;
     }
 
@@ -175,6 +178,7 @@ export function TaskDialog({
       setSelectedItems([]);
       setAccountItems([]);
       setItemSearchQuery('');
+      setItemDropdownOpen(false);
     }
 
     initializedRef.current = true;
@@ -228,8 +232,23 @@ export function TaskDialog({
       fetchAccountItems(formData.account_id);
     } else if (!isFromInventory) {
       setAccountItems([]);
+      setItemDropdownOpen(false);
     }
   }, [formData.account_id, isFromInventory]);
+
+  // Keep popover width synced to the anchor input (mobile Safari can be picky about CSS var sizing without a Trigger)
+  useEffect(() => {
+    if (!itemDropdownOpen) return;
+
+    const updateWidth = () => {
+      const width = itemSearchAnchorRef.current?.getBoundingClientRect().width;
+      if (width && Number.isFinite(width)) setItemDropdownWidth(width);
+    };
+
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [itemDropdownOpen]);
 
   const fetchAccounts = async () => {
     const { data } = await supabase
@@ -319,6 +338,7 @@ export function TaskDialog({
     if (!isFromInventory) {
       setSelectedItems([]);
       setItemSearchQuery('');
+      setItemDropdownOpen(false);
     }
   };
 
@@ -547,7 +567,11 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
+      <DialogContent
+        className="max-w-2xl max-h-[90dvh] overflow-hidden"
+        // Ensure the DialogBody is the only scroll container (nested scroll areas are unreliable on iOS Safari)
+        style={{ overflowY: 'hidden' }}
+      >
         <DialogHeader>
           <DialogTitle>{task ? 'Edit Task' : 'Create Task'}</DialogTitle>
           <DialogDescription>
@@ -559,8 +583,8 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <DialogBody className="pr-4">
-          <div className="space-y-4 pb-1">
+        <DialogBody>
+          <div className="space-y-4 py-1">
             {/* Task Type */}
             <div className="space-y-2">
               <Label>Task Type *</Label>
@@ -626,10 +650,19 @@ export function TaskDialog({
             {/* Item Search and Selection - shown when account is selected */}
             {!isFromInventory && formData.account_id !== 'none' && (
               <div className="space-y-3">
-                <Label>Select Items</Label>
+                <Label className="flex items-center gap-2">
+                  Select Items
+                  {selectedItems.length > 0 && (
+                    <Badge variant="secondary">{selectedItems.length} selected</Badge>
+                  )}
+                </Label>
                 <Popover open={itemDropdownOpen} onOpenChange={setItemDropdownOpen}>
                   <PopoverAnchor asChild>
-                    <div className="relative" data-item-search-anchor>
+                    <div
+                      ref={itemSearchAnchorRef}
+                      className="relative"
+                      data-item-search-anchor
+                    >
                       <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search by item code, description, vendor, sidemark..."
@@ -640,13 +673,24 @@ export function TaskDialog({
                         }}
                         onFocus={() => setItemDropdownOpen(true)}
                         onClick={() => setItemDropdownOpen(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setItemDropdownOpen(false);
+                          }
+                          if ((e.key === 'ArrowDown' || e.key === 'Enter') && !itemDropdownOpen) {
+                            e.preventDefault();
+                            setItemDropdownOpen(true);
+                          }
+                        }}
                         className="pl-9"
                       />
                     </div>
                   </PopoverAnchor>
                   <PopoverContent
-                    className="w-[--radix-popover-trigger-width] p-0 z-[60] bg-popover border shadow-md"
+                    className="p-0 bg-popover border shadow-md"
                     align="start"
+                    sideOffset={4}
+                    style={{ width: itemDropdownWidth, zIndex: 100 }}
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {
                       // Allow clicking inside the anchor input without closing
@@ -657,8 +701,8 @@ export function TaskDialog({
                     }}
                   >
                     <div
-                      className="max-h-72 overflow-y-auto overscroll-contain"
-                      style={{ WebkitOverflowScrolling: 'touch' }}
+                      className="max-h-64 overflow-y-auto overscroll-contain"
+                      style={{ WebkitOverflowScrolling: 'touch' } as CSSProperties}
                     >
                       {loadingItems ? (
                         <div className="flex items-center justify-center py-4">
@@ -668,19 +712,17 @@ export function TaskDialog({
                         filteredItems.map(item => {
                           const isSelected = selectedItems.some(i => i.id === item.id);
                           return (
-                            <div
+                            <button
                               key={item.id}
-                              className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                              type="button"
+                              className={cn(
+                                "w-full flex items-center gap-3 p-2 text-left border-b last:border-b-0",
+                                "hover:bg-muted/50",
+                                isSelected && "bg-muted/30"
+                              )}
                               onClick={() => toggleItemSelection(item)}
-                              role="button"
-                              tabIndex={0}
                             >
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => toggleItemSelection(item)}
-                                />
-                              </div>
+                              <Checkbox checked={isSelected} className="pointer-events-none" />
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium text-sm">{item.item_code}</div>
                                 <div className="text-xs text-muted-foreground truncate">
@@ -689,7 +731,7 @@ export function TaskDialog({
                                     .join(' • ')}
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           );
                         })
                       ) : accountItems.length === 0 ? (
