@@ -405,6 +405,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
   const [activeTab, setActiveTab] = useState<TabValue>(mapInitialTab);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [creating, setCreating] = useState(false);
 
@@ -415,11 +416,24 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     }
   }, [initialSubTab]);
 
+  // Debounce inbound list search so we don't spam Supabase on each keystroke.
+  useEffect(() => {
+    if (search === '') {
+      setDebouncedSearch('');
+      return;
+    }
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 200);
+
+    return () => clearTimeout(timeout);
+  }, [search]);
+
   const currentKind = TAB_TO_KIND[activeTab];
 
   const { shipments, loading } = useIncomingShipments({
     inbound_kind: currentKind,
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
 
@@ -438,6 +452,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     setActiveTab(val as TabValue);
     setStatusFilter('all');
     setSearch('');
+    setDebouncedSearch('');
   };
 
   const { profile } = useAuth();

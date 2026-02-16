@@ -129,6 +129,7 @@ interface Shipment {
   signature_data: string | null;
   signature_name: string | null;
   signature_timestamp: string | null;
+  customer_authorized: boolean | null;
   created_at: string;
   accounts?: { id: string; account_name: string; account_code: string } | null;
   warehouses?: { id: string; name: string } | null;
@@ -1789,24 +1790,20 @@ export default function ShipmentDetail() {
             {isOutbound && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>
-                    Release Type <span className="text-destructive">*</span>
-                  </Label>
+                  <Label>Release Type <span className="text-destructive">*</span></Label>
                   <Select value={editReleaseType} onValueChange={setEditReleaseType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select release type" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="will_call">Will Call</SelectItem>
-                      <SelectItem value="return">Return</SelectItem>
                       <SelectItem value="disposal">Disposal</SelectItem>
+                      <SelectItem value="return">Return</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>
-                    Released To / Driver Name <span className="text-destructive">*</span>
-                  </Label>
+                  <Label>Released To / Driver Name <span className="text-destructive">*</span></Label>
                   <Input
                     value={editReleasedTo}
                     onChange={(e) => setEditReleasedTo(e.target.value)}
@@ -1838,7 +1835,6 @@ export default function ShipmentDetail() {
                 </div>
               </div>
             )}
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Carrier</Label>
@@ -1925,17 +1921,17 @@ export default function ShipmentDetail() {
                     updates.release_type = editReleaseType || null;
                     updates.released_to = editReleasedTo.trim() || null;
                     updates.release_to_phone = editReleaseToPhone.trim() || null;
-                    updates.customer_authorized = editCustomerAuthorized;
-
-                    if (editCustomerAuthorized) {
-                      updates.customer_authorized_at = shipment.customer_authorized_at || new Date().toISOString();
-                      updates.customer_authorized_by = shipment.customer_authorized_by || profile?.id || null;
-                    } else {
+                    const wasCustomerAuthorized = Boolean(shipment.customer_authorized);
+                    const isCustomerAuthorized = Boolean(editCustomerAuthorized);
+                    updates.customer_authorized = isCustomerAuthorized;
+                    if (isCustomerAuthorized && !wasCustomerAuthorized) {
+                      updates.customer_authorized_at = new Date().toISOString();
+                      updates.customer_authorized_by = profile?.id || null;
+                    } else if (!isCustomerAuthorized && wasCustomerAuthorized) {
                       updates.customer_authorized_at = null;
                       updates.customer_authorized_by = null;
                     }
                   }
-
                   const { error } = await supabase
                     .from('shipments')
                     .update(updates)
@@ -2043,7 +2039,13 @@ export default function ShipmentDetail() {
               {isOutbound && (
                 <div>
                   <Label className="text-muted-foreground">Customer Authorized</Label>
-                  <p className="font-medium">{shipment.customer_authorized ? 'Yes' : 'No'}</p>
+                  <div className="font-medium">
+                    {shipment.customer_authorized ? (
+                      <Badge variant="outline" className="text-green-600 border-green-300">Authorized</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-yellow-600 border-yellow-300">Not Authorized</Badge>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

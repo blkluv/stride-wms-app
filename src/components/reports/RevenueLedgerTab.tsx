@@ -356,6 +356,7 @@ export function RevenueLedgerTab() {
           account.billing_contact_email,
           `Invoice ${invoice.invoice_number} from ${tenantSettings?.company_name || 'Stride WMS'}`,
           emailData.html,
+          profile?.tenant_id,
         );
 
         if (emailResult.ok) {
@@ -782,7 +783,7 @@ export function RevenueLedgerTab() {
           lineCount: lines.length || 0,
         });
 
-        const result = await sendEmail(account.billing_contact_email, emailData.subject, emailData.html);
+        const result = await sendEmail(account.billing_contact_email, emailData.subject, emailData.html, profile?.tenant_id);
         if (result.ok) {
           toast({ title: "Email sent", description: `Invoice email sent to ${account.billing_contact_email}` });
         } else {
