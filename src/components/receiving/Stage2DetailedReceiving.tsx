@@ -31,7 +31,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { HelpTip } from '@/components/ui/help-tip';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -75,6 +74,7 @@ interface Stage2DetailedReceivingProps {
     account_id: string | null;
     warehouse_id: string | null;
     signed_pieces: number | null;
+    received_pieces: number | null;
     vendor_name: string | null;
     sidemark_id: string | null;
     shipment_exception_type?: string | null;
@@ -83,6 +83,8 @@ interface Stage2DetailedReceivingProps {
   onRefresh: () => void;
   /** Called when item details change to refine matching panel candidates */
   onItemMatchingParamsChange?: (params: ItemMatchingParams) => void;
+  /** Called whenever Stage 2 row count changes (Entry Count) */
+  onEntryCountChange?: (count: number) => void;
   onOpenExceptions?: () => void;
 }
 
@@ -93,6 +95,7 @@ export function Stage2DetailedReceiving({
   onComplete,
   onRefresh,
   onItemMatchingParamsChange,
+  onEntryCountChange,
   onOpenExceptions,
 }: Stage2DetailedReceivingProps) {
   const { profile } = useAuth();
@@ -103,9 +106,14 @@ export function Stage2DetailedReceiving({
   // Items
   const [items, setItems] = useState<ReceivedItem[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [receivedPieces, setReceivedPieces] = useState<number>(0);
+  const entryCount = items.length;
   const { classes, loading: classesLoading } = useClasses();
   const { flagServiceEvents, loading: flagServicesLoading } = useServiceEvents();
+
+  // Emit Entry Count (row count) for Stage 1 display.
+  useEffect(() => {
+    onEntryCountChange?.(entryCount);
+  }, [entryCount, onEntryCountChange]);
 
   // Emit item-level matching params whenever items change
   useEffect(() => {
@@ -181,7 +189,6 @@ export function Stage2DetailedReceiving({
         packages: 1,
       }));
       setItems(mapped);
-      setReceivedPieces(mapped.reduce((sum, i) => sum + i.received_quantity, 0));
     }
   };
 
@@ -220,11 +227,7 @@ export function Stage2DetailedReceiving({
       sourceShipmentItemId: item.id,
       packages: 1,
     }));
-    setItems(prev => {
-      const next = [...prev, ...newItems];
-      updateReceivedPieces(next);
-      return next;
-    });
+    setItems((prev) => [...prev, ...newItems]);
   };
 
   // Update item field
@@ -232,7 +235,6 @@ export function Stage2DetailedReceiving({
     setItems(prev => {
       const updated = prev.map(i => (i.id === id ? { ...i, [field]: value } : i));
       if (field === 'received_quantity') {
-        updateReceivedPieces(updated);
         // Show container placement prompt when qty > 1
         const qty = value as number;
         if (qty > 1) {
@@ -258,9 +260,7 @@ export function Stage2DetailedReceiving({
         sourceShipmentItemId: undefined,
         allocationId: undefined,
       };
-      const next = [...prev, copy];
-      updateReceivedPieces(next);
-      return next;
+      return [...prev, copy];
     });
   };
 
@@ -342,7 +342,6 @@ export function Stage2DetailedReceiving({
 
     setItems(prev => {
       const updated = prev.filter(i => i.id !== item.id);
-      updateReceivedPieces(updated);
       return updated;
     });
     setExpandedRows(prev => {
@@ -354,15 +353,9 @@ export function Stage2DetailedReceiving({
     toast({ title: 'Removed', description: 'Item removed from receiving.' });
   };
 
-  const updateReceivedPieces = (currentItems: ReceivedItem[]) => {
-    const total = currentItems.reduce((sum, i) => sum + i.received_quantity, 0);
-    setReceivedPieces(total);
-  };
-
   // Validate before completion
   const validateCompletion = (): string[] => {
     const errors: string[] = [];
-    if (receivedPieces <= 0) errors.push('Received pieces must be greater than 0');
     if (items.length === 0 && !isAdmin) {
       errors.push('At least 1 item line is required (admin can override)');
     }
@@ -707,7 +700,6 @@ export function Stage2DetailedReceiving({
         .from('shipments')
         .update({
           inbound_status: 'closed',
-          received_pieces: receivedPieces,
           received_at: new Date().toISOString(),
         } as any)
         .eq('id', shipmentId);
@@ -733,7 +725,8 @@ export function Stage2DetailedReceiving({
         eventType: 'receiving_completed',
         eventLabel: 'Receiving completed (Stage 2)',
         details: {
-          received_pieces: receivedPieces,
+          dock_count: shipment.received_pieces ?? null,
+          entry_count: entryCount,
           items_count: items.length,
         },
       });
@@ -796,46 +789,17 @@ export function Stage2DetailedReceiving({
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-sm">
-                Signed: {shipment.signed_pieces ?? '-'}
+                Carrier: {shipment.signed_pieces ?? '-'}
               </Badge>
-              <Badge variant={receivedPieces > 0 ? 'default' : 'outline'} className="text-sm">
-                Received: {receivedPieces}
+              <Badge variant="secondary" className="text-sm">
+                Dock: {shipment.received_pieces ?? '-'}
+              </Badge>
+              <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="text-sm">
+                Entry: {entryCount}
               </Badge>
             </div>
           </div>
         </CardHeader>
-      </Card>
-
-      {/* Received Pieces */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <MaterialIcon name="pin" size="sm" />
-            Received Pieces <span className="text-red-500">*</span>
-            <HelpTip
-              tooltip="Total number of pieces received at dock intake stage 2."
-              pageKey="receiving.stage2"
-              fieldKey="received_pieces"
-            />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Input
-              type="number"
-              min={0}
-              value={receivedPieces || ''}
-              onChange={(e) => setReceivedPieces(parseInt(e.target.value) || 0)}
-              className="w-32"
-            />
-            {shipment.signed_pieces && receivedPieces !== shipment.signed_pieces && receivedPieces > 0 && (
-              <Badge variant="destructive" className="gap-1">
-                <MaterialIcon name="warning" size="sm" />
-                {receivedPieces > shipment.signed_pieces ? 'Over' : 'Short'} by {Math.abs(receivedPieces - shipment.signed_pieces)}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
       </Card>
 
       {/* Items Table */}
@@ -1079,21 +1043,25 @@ export function Stage2DetailedReceiving({
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="flex justify-between text-sm">
-              <span>Signed Pieces:</span>
+              <span>Carrier count:</span>
               <span className="font-medium">{shipment.signed_pieces ?? '-'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span>Received Pieces:</span>
-              <span className="font-medium">{receivedPieces}</span>
+              <span>Dock Count:</span>
+              <span className="font-medium">{shipment.received_pieces ?? '-'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Entry Count:</span>
+              <span className="font-medium">{entryCount}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span>Items:</span>
               <span className="font-medium">{items.length}</span>
             </div>
-            {receivedPieces !== shipment.signed_pieces && shipment.signed_pieces && (
+            {!!shipment.received_pieces && entryCount > 0 && entryCount !== shipment.received_pieces && (
               <div className="p-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
                 <MaterialIcon name="warning" size="sm" className="inline mr-1" />
-                Signed and received piece counts are different.
+                Dock Count and Entry Count are different.
               </div>
             )}
           </div>

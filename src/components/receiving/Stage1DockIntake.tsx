@@ -82,6 +82,8 @@ interface Stage1DockIntakeProps {
   onOpenExceptions?: () => void;
   /** Stage 2 row-count (each row = 1 carton/package/piece) */
   entryCount?: number;
+  /** Draft-only: show the "Complete Dock Intake" action */
+  showCompleteButton?: boolean;
 }
 
 export function Stage1DockIntake({
@@ -93,6 +95,7 @@ export function Stage1DockIntake({
   onMatchingParamsChange,
   onOpenExceptions,
   entryCount = 0,
+  showCompleteButton = true,
 }: Stage1DockIntakeProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -1023,21 +1026,23 @@ export function Stage1DockIntake({
       </Card>
 
       {/* Complete Stage 1 */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-end">
-        <Button
-          size="lg"
-          onClick={handleComplete}
-          disabled={completing}
-          className="gap-2"
-        >
-          {completing ? (
-            <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-          ) : (
-            <MaterialIcon name="check_circle" size="sm" />
-          )}
-          Complete Dock Intake
-        </Button>
-      </div>
+      {showCompleteButton ? (
+        <div className="flex flex-col sm:flex-row gap-3 justify-end">
+          <Button
+            size="lg"
+            onClick={handleComplete}
+            disabled={completing}
+            className="gap-2"
+          >
+            {completing ? (
+              <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+            ) : (
+              <MaterialIcon name="check_circle" size="sm" />
+            )}
+            Complete Dock Intake
+          </Button>
+        </div>
+      ) : null}
 
       {/* Required Exception Note Dialog */}
       <Dialog open={!!pendingRequiredNoteCode} onOpenChange={(open) => !open && setPendingRequiredNoteCode(null)}>
