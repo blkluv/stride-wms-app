@@ -31,6 +31,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
 import { useAccounts } from '@/hooks/useAccounts';
 import { DraftQueueList } from '@/components/receiving/DraftQueueList';
+import { SearchableSelect, type SelectOption } from '@/components/ui/searchable-select';
 
 type TabValue = 'manifests' | 'expected' | 'dock_intakes';
 
@@ -448,6 +449,15 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
   const { accounts } = useAccounts();
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
 
+  const accountOptions: SelectOption[] = useMemo(
+    () =>
+      accounts.map((a) => ({
+        value: a.id,
+        label: a.account_code ? `${a.account_name} (${a.account_code})` : a.account_name,
+      })),
+    [accounts]
+  );
+
   // Default selected account to UNIDENTIFIED once loaded
   useEffect(() => {
     if (unidentifiedAccountId && !selectedAccountId) {
@@ -467,7 +477,8 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
   const handleCreateInbound = async (kind: InboundKind) => {
     if (!profile?.tenant_id) return;
-    if (!selectedAccountId) {
+    // Account is required for manifests/expected shipments. Dock intakes pick account in the intake workflow.
+    if (kind !== 'dock_intake' && !selectedAccountId) {
       toast({
         variant: 'destructive',
         title: 'Account Required',
@@ -478,7 +489,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     try {
       setCreating(true);
 
-      // Insert with exact PF-1 payload (no account_id)
+      // Insert with exact PF-1 payload (no account_id).
       const { data, error } = await (supabase as any)
         .from('shipments')
         .insert({
@@ -494,13 +505,15 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
       if (error) throw error;
 
-      // Post-insert: set account_id
-      const { error: updateError } = await (supabase as any)
-        .from('shipments')
-        .update({ account_id: selectedAccountId })
-        .eq('id', data.id);
+      // Post-insert: set account_id (not for dock intakes; chosen inside Stage 1)
+      if (kind !== 'dock_intake') {
+        const { error: updateError } = await (supabase as any)
+          .from('shipments')
+          .update({ account_id: selectedAccountId })
+          .eq('id', data.id);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      }
 
       const routeMap: Record<InboundKind, string> = {
         manifest: `/incoming/manifest/${data.id}`,
@@ -570,18 +583,18 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
                 </SelectContent>
               </Select>
 
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select account *" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.account_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {activeTab !== 'dock_intakes' && (
+                <div className="w-full sm:w-[260px]">
+                  <SearchableSelect
+                    options={accountOptions}
+                    value={selectedAccountId}
+                    onChange={setSelectedAccountId}
+                    placeholder="Select account *"
+                    searchPlaceholder="Search accounts..."
+                    emptyText="No accounts found"
+                  />
+                </div>
+              )}
 
               <div className="flex gap-2 ml-auto">
                 {activeTab === 'manifests' && (
