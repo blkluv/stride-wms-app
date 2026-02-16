@@ -1829,11 +1829,11 @@ export default function ShipmentDetail() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Released To / Driver Name <span className="text-destructive">*</span></Label>
+                  <Label>Released To / Company <span className="text-destructive">*</span></Label>
                   <Input
                     value={editReleasedTo}
                     onChange={(e) => setEditReleasedTo(e.target.value)}
-                    placeholder="Name of person picking up"
+                    placeholder="Company or person name"
                   />
                 </div>
                 <div className="sm:col-span-2 flex items-center gap-3 rounded-md border p-3">
@@ -1920,14 +1920,6 @@ export default function ShipmentDetail() {
                 <div className="pt-4 border-t">
                   <h4 className="font-medium text-sm mb-3">Outbound / Release Details</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Released To / Company</Label>
-                      <Input
-                        value={editReleasedTo}
-                        onChange={(e) => setEditReleasedTo(e.target.value)}
-                        placeholder="Company or person name"
-                      />
-                    </div>
                     <div className="space-y-2">
                       <Label>Contact Name</Label>
                       <Input

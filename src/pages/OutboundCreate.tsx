@@ -383,10 +383,23 @@ export default function OutboundCreate() {
     setSaving(true);
 
     try {
-      // 1) Update the draft shipment details
+      const itemIds = Array.from(selectedItemIds);
+
+      // 1) Fetch existing items so retries are idempotent (and can reconcile deselections)
+      const { data: existingItems, error: existingError } = await (supabase.from('shipment_items') as any)
+        .select('item_id')
+        .eq('shipment_id', draftShipmentId);
+
+      if (existingError) throw existingError;
+      const existingItemIds: string[] = (Array.isArray(existingItems) ? existingItems : [])
+        .map((r: any) => r?.item_id)
+        .filter((v: any) => typeof v === 'string');
+
+      const removedItemIds = existingItemIds.filter((id) => !selectedItemIds.has(id));
+
+      // 2) Update the draft shipment details (keep it soft-deleted until everything succeeds)
       const { error: updateError } = await (supabase.from('shipments') as any)
         .update({
-          deleted_at: null,
           account_id: accountId,
           warehouse_id: warehouseId,
           outbound_type_id: outboundTypeId,
@@ -411,39 +424,46 @@ export default function OutboundCreate() {
 
       if (updateError) throw updateError;
 
-      // 2) Add selected items to shipment_items (avoid duplicates)
-      const itemIds = Array.from(selectedItemIds);
-      const { data: existingItems, error: existingError } = await (supabase.from('shipment_items') as any)
-        .select('item_id')
-        .eq('shipment_id', draftShipmentId)
-        .in('item_id', itemIds);
+      // 3) Replace shipment_items to exactly match the current selection
+      const { error: deleteItemsError } = await (supabase.from('shipment_items') as any)
+        .delete()
+        .eq('shipment_id', draftShipmentId);
+      if (deleteItemsError) throw deleteItemsError;
 
-      if (existingError) throw existingError;
-      const existingSet = new Set<string>(
-        (Array.isArray(existingItems) ? existingItems : [])
-          .map((r: any) => r.item_id)
-          .filter((v: any) => typeof v === 'string')
-      );
-
-      const toInsert = itemIds
-        .filter((id) => !existingSet.has(id))
-        .map((item_id) => ({
-          shipment_id: draftShipmentId,
-          item_id,
-          expected_quantity: itemQuantityById.get(item_id) ?? 1,
-          status: 'pending',
-        }));
+      const toInsert = itemIds.map((item_id) => ({
+        shipment_id: draftShipmentId,
+        item_id,
+        expected_quantity: itemQuantityById.get(item_id) ?? 1,
+        status: 'pending',
+      }));
 
       if (toInsert.length > 0) {
         const { error: insertError } = await (supabase.from('shipment_items') as any).insert(toInsert);
         if (insertError) throw insertError;
       }
 
-      // 3) Mark items as allocated
-      const { error: allocateError } = await (supabase.from('items') as any)
-        .update({ status: 'allocated' })
-        .in('id', itemIds);
-      if (allocateError) throw allocateError;
+      // 4) Mark selected items as allocated
+      if (itemIds.length > 0) {
+        const { error: allocateError } = await (supabase.from('items') as any)
+          .update({ status: 'allocated' })
+          .in('id', itemIds);
+        if (allocateError) throw allocateError;
+      }
+
+      // 5) Best-effort: un-allocate items removed from the draft selection
+      if (removedItemIds.length > 0) {
+        const { error: deallocateError } = await (supabase.from('items') as any)
+          .update({ status: 'stored' })
+          .in('id', removedItemIds)
+          .eq('status', 'allocated');
+        if (deallocateError) throw deallocateError;
+      }
+
+      // 6) Finalize the draft by un-deleting it (only after all steps succeed)
+      const { error: finalizeError } = await (supabase.from('shipments') as any)
+        .update({ deleted_at: null })
+        .eq('id', draftShipmentId);
+      if (finalizeError) throw finalizeError;
 
       toast({
         title: 'Outbound Shipment Created',
