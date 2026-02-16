@@ -617,13 +617,13 @@ export default function ExpectedShipmentDetail() {
                               } catch (err: unknown) {
                                 toast({
                                   variant: 'destructive',
-                                  title: 'Failed to save side mark',
-                                  description: err instanceof Error ? err.message : 'Could not save item side mark.',
+                                  title: 'Failed to save sidemark',
+                                  description: err instanceof Error ? err.message : 'Could not save item sidemark.',
                                 });
                                 refetch();
                               }
                             }}
-                            placeholder="Side Mark"
+                            placeholder="Sidemark"
                             className="h-8"
                           />
                         </TableCell>

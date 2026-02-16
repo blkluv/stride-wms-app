@@ -26,7 +26,7 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   PIECES_MISMATCH: { label: 'Item Count Mismatch', icon: 'tag' },
   VENDOR_MISMATCH: { label: 'Vendor Mismatch', icon: 'storefront' },
   DESCRIPTION_MISMATCH: { label: 'Description Mismatch', icon: 'description' },
-  SIDEMARK_MISMATCH: { label: 'Side Mark Mismatch', icon: 'sell' },
+  SIDEMARK_MISMATCH: { label: 'Sidemark Mismatch', icon: 'sell' },
   SHIPPER_MISMATCH: { label: 'Shipper Mismatch', icon: 'local_shipping' },
   TRACKING_MISMATCH: { label: 'Tracking Mismatch', icon: 'qr_code' },
   REFERENCE_MISMATCH: { label: 'Reference Mismatch', icon: 'fingerprint' },
