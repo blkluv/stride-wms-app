@@ -118,6 +118,9 @@ interface Shipment {
   receiving_notes: string | null;
   receiving_photos: (string | TaggablePhoto)[] | null;
   receiving_documents: string[] | null;
+  customer_authorized: boolean | null;
+  customer_authorized_at: string | null;
+  customer_authorized_by: string | null;
   release_type: string | null;
   released_to: string | null;
   release_to_phone: string | null;
@@ -182,6 +185,7 @@ export default function ShipmentDetail() {
   const [editNotes, setEditNotes] = useState('');
   const [editReleaseType, setEditReleaseType] = useState('');
   const [editReleasedTo, setEditReleasedTo] = useState('');
+  const [editReleaseToPhone, setEditReleaseToPhone] = useState('');
   const [editCustomerAuthorized, setEditCustomerAuthorized] = useState(false);
   const [addAddonDialogOpen, setAddAddonDialogOpen] = useState(false);
   const [addCreditDialogOpen, setAddCreditDialogOpen] = useState(false);
@@ -1492,8 +1496,13 @@ export default function ShipmentDetail() {
               setEditPoNumber(shipment.po_number || '');
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
-              setEditReleaseType(shipment.release_type || '');
+              {
+                const existingReleaseType = shipment.release_type || '';
+                // Normalize legacy will-call variants to the current allowed value.
+                setEditReleaseType(existingReleaseType.startsWith('will_call') ? 'will_call' : existingReleaseType);
+              }
               setEditReleasedTo(shipment.released_to || '');
+              setEditReleaseToPhone(shipment.release_to_phone || '');
               setEditCustomerAuthorized(!!shipment.customer_authorized);
             }
             setIsEditing(!isEditing);
@@ -1788,9 +1797,8 @@ export default function ShipmentDetail() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="will_call">Will Call</SelectItem>
-                      <SelectItem value="will_call_customer">Will Call - Customer</SelectItem>
-                      <SelectItem value="will_call_third_party_carrier">Will Call - Third Party Carrier</SelectItem>
-                      <SelectItem value="will_call_stride_delivery">Will Call - Stride Delivery</SelectItem>
+                      <SelectItem value="disposal">Disposal</SelectItem>
+                      <SelectItem value="return">Return</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1800,6 +1808,14 @@ export default function ShipmentDetail() {
                     value={editReleasedTo}
                     onChange={(e) => setEditReleasedTo(e.target.value)}
                     placeholder="Name of person picking up"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Release To Phone</Label>
+                  <Input
+                    value={editReleaseToPhone}
+                    onChange={(e) => setEditReleaseToPhone(e.target.value)}
+                    placeholder="Phone number (optional)"
                   />
                 </div>
                 <div className="sm:col-span-2 flex items-center gap-3 rounded-md border p-3">
@@ -1844,33 +1860,31 @@ export default function ShipmentDetail() {
                   placeholder="Enter PO number"
                 />
               </div>
-              {!isOutbound && (
-                <div className="space-y-2">
-                  <Label>Expected Arrival</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          'w-full justify-start text-left font-normal',
-                          !editExpectedArrival && 'text-muted-foreground'
-                        )}
-                      >
-                        <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
-                        {editExpectedArrival ? format(editExpectedArrival, 'PPP') : 'Select date'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={editExpectedArrival}
-                        onSelect={setEditExpectedArrival}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>{isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'w-full justify-start text-left font-normal',
+                        !editExpectedArrival && 'text-muted-foreground'
+                      )}
+                    >
+                      <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
+                      {editExpectedArrival ? format(editExpectedArrival, 'PPP') : 'Select date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editExpectedArrival}
+                      onSelect={setEditExpectedArrival}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
@@ -1884,18 +1898,29 @@ export default function ShipmentDetail() {
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
+                  if (isOutbound) {
+                    if (!editReleaseType) {
+                      toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a release type' });
+                      return;
+                    }
+                    if (!editReleasedTo.trim()) {
+                      toast({ variant: 'destructive', title: 'Validation Error', description: 'Please enter who the shipment is released to' });
+                      return;
+                    }
+                  }
+
                   const updates: Record<string, unknown> = {
                     carrier: editCarrier || null,
                     tracking_number: editTrackingNumber || null,
                     po_number: editPoNumber || null,
+                    expected_arrival_date: editExpectedArrival?.toISOString() || null,
                     notes: editNotes || null,
                   };
-                  if (!isOutbound) {
-                    updates.expected_arrival_date = editExpectedArrival?.toISOString() || null;
-                  }
+
                   if (isOutbound) {
                     updates.release_type = editReleaseType || null;
-                    updates.released_to = editReleasedTo || null;
+                    updates.released_to = editReleasedTo.trim() || null;
+                    updates.release_to_phone = editReleaseToPhone.trim() || null;
                     const wasCustomerAuthorized = Boolean(shipment.customer_authorized);
                     const isCustomerAuthorized = Boolean(editCustomerAuthorized);
                     updates.customer_authorized = isCustomerAuthorized;
@@ -1979,14 +2004,18 @@ export default function ShipmentDetail() {
                 <Label className="text-muted-foreground">PO Number</Label>
                 <p className="font-medium">{shipment.po_number || '-'}</p>
               </div>
-              {!isOutbound && (
+              <div>
+                <Label className="text-muted-foreground">{isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}</Label>
+                <p className="font-medium">
+                  {shipment.expected_arrival_date
+                    ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
+                    : '-'}
+                </p>
+              </div>
+              {isOutbound && (
                 <div>
-                  <Label className="text-muted-foreground">Expected Arrival</Label>
-                  <p className="font-medium">
-                    {shipment.expected_arrival_date
-                      ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
-                      : '-'}
-                  </p>
+                  <Label className="text-muted-foreground">Release Type</Label>
+                  <p className="font-medium capitalize">{shipment.release_type?.replace(/_/g, ' ') || '-'}</p>
                 </div>
               )}
               <div>
@@ -2003,8 +2032,8 @@ export default function ShipmentDetail() {
               </div>
               {isOutbound && (
                 <div>
-                  <Label className="text-muted-foreground">Release Type</Label>
-                  <p className="font-medium capitalize">{shipment.release_type?.replace(/_/g, ' ') || '-'}</p>
+                  <Label className="text-muted-foreground">Release To Phone</Label>
+                  <p className="font-medium">{shipment.release_to_phone || '-'}</p>
                 </div>
               )}
               {isOutbound && (

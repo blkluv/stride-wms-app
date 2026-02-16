@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { useOutboundTypes, useAccountItems } from '@/hooks/useOutbound';
+import { useOutboundTypes, useOutboundShipments, useAccountItems } from '@/hooks/useOutbound';
 import { useSidemarks } from '@/hooks/useSidemarks';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect, SelectOption } from '@/components/ui/searchable-select';
 import {
@@ -63,12 +62,7 @@ export default function OutboundCreate() {
 
   // Hooks
   const { outboundTypes, loading: typesLoading } = useOutboundTypes();
-
-  // Draft outbound shipment (create immediately to get OUT-##### number)
-  const [draftShipmentId, setDraftShipmentId] = useState<string | null>(null);
-  const [draftShipmentNumber, setDraftShipmentNumber] = useState<string | null>(null);
-  const [draftCreating, setDraftCreating] = useState(false);
-  const draftCreateStartedRef = useRef(false);
+  const { createOutbound } = useOutboundShipments();
 
   // Form state
   const [loading, setLoading] = useState(false);
@@ -94,53 +88,6 @@ export default function OutboundCreate() {
 
   // Fetch sidemarks filtered by account
   const { sidemarks, loading: sidemarksLoading } = useSidemarks(accountId || undefined);
-
-  // Create draft shipment on entry (OUT# assigned by DB trigger)
-  useEffect(() => {
-    if (!profile?.tenant_id || !profile?.id) return;
-    if (draftShipmentId) return;
-    if (draftCreateStartedRef.current) return;
-    draftCreateStartedRef.current = true;
-
-    const createDraft = async () => {
-      setDraftCreating(true);
-      try {
-        const now = new Date().toISOString();
-        const { data, error } = await (supabase.from('shipments') as any)
-          .insert({
-            tenant_id: profile.tenant_id,
-            shipment_type: 'outbound',
-            status: 'pending',
-            // Seed account if the user navigated here from an item context
-            account_id: preSelectedAccountId || null,
-            created_by: profile.id,
-            customer_authorized: true,
-            customer_authorized_at: now,
-            customer_authorized_by: profile.id,
-            release_type: 'will_call',
-          })
-          .select('id, shipment_number')
-          .single();
-
-        if (error) throw error;
-        setDraftShipmentId(data.id);
-        setDraftShipmentNumber(data.shipment_number);
-      } catch (err: any) {
-        console.error('[OutboundCreate] draft create error:', err);
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: err?.message || 'Failed to start outbound shipment',
-        });
-        // Allow retry if the user refreshes
-        draftCreateStartedRef.current = false;
-      } finally {
-        setDraftCreating(false);
-      }
-    };
-
-    void createDraft();
-  }, [profile?.tenant_id, profile?.id, draftShipmentId, preSelectedAccountId, toast]);
 
   // ------------------------------------------
   // Fetch reference data
@@ -306,71 +253,28 @@ export default function OutboundCreate() {
       return;
     }
 
-    if (!draftShipmentId) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Outbound shipment draft not ready yet. Please wait a moment and try again.',
-      });
-      return;
-    }
-
     setSaving(true);
 
     try {
-      // 1) Update the draft shipment details
-      const { error: updateError } = await (supabase.from('shipments') as any)
-        .update({
-          account_id: accountId,
-          warehouse_id: warehouseId,
-          outbound_type_id: outboundTypeId,
-          sidemark_id: sidemarkId || null,
-          expected_arrival_date: expectedDate || null,
-          notes: notes || null,
-        })
-        .eq('id', draftShipmentId);
-
-      if (updateError) throw updateError;
-
-      // 2) Add selected items to shipment_items (avoid duplicates)
-      const itemIds = Array.from(selectedItemIds);
-      const { data: existingItems, error: existingError } = await (supabase.from('shipment_items') as any)
-        .select('item_id')
-        .eq('shipment_id', draftShipmentId)
-        .in('item_id', itemIds);
-
-      if (existingError) throw existingError;
-      const existingSet = new Set<string>(
-        (Array.isArray(existingItems) ? existingItems : [])
-          .map((r: any) => r.item_id)
-          .filter((v: any) => typeof v === 'string')
-      );
-
-      const toInsert = itemIds
-        .filter((id) => !existingSet.has(id))
-        .map((item_id) => ({
-          shipment_id: draftShipmentId,
-          item_id,
-          expected_quantity: 1,
-          status: 'pending',
-        }));
-
-      if (toInsert.length > 0) {
-        const { error: insertError } = await (supabase.from('shipment_items') as any).insert(toInsert);
-        if (insertError) throw insertError;
-      }
-
-      // 3) Mark items as allocated
-      await (supabase.from('items') as any)
-        .update({ status: 'allocated' })
-        .in('id', itemIds);
-
-      toast({
-        title: 'Outbound Shipment Created',
-        description: draftShipmentNumber ? `Shipment ${draftShipmentNumber} created.` : 'Outbound shipment created.',
+      const shipment = await createOutbound({
+        account_id: accountId,
+        warehouse_id: warehouseId,
+        outbound_type_id: outboundTypeId,
+        sidemark_id: sidemarkId || undefined,
+        notes: notes || undefined,
+        expected_date: expectedDate || undefined,
+        item_ids: Array.from(selectedItemIds),
       });
 
-      navigate(`/shipments/${draftShipmentId}`);
+      if (shipment) {
+        navigate(`/shipments/${shipment.id}`);
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to create outbound shipment. Please try again.',
+        });
+      }
     } catch (err: any) {
       console.error('[OutboundCreate] submit error:', err);
       toast({
@@ -405,12 +309,7 @@ export default function OutboundCreate() {
             <MaterialIcon name="arrow_back" size="md" />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
-              Create Outbound Shipment
-              <Badge variant="outline" className="font-mono whitespace-nowrap">
-                {draftCreating ? 'Generating…' : (draftShipmentNumber || '—')}
-              </Badge>
-            </h1>
+            <h1 className="text-xl sm:text-2xl font-bold truncate">Create Outbound Shipment</h1>
             <p className="text-sm text-muted-foreground">Select items to ship out</p>
           </div>
           <HelpButton workflow="outbound" />
@@ -661,7 +560,7 @@ export default function OutboundCreate() {
             <Button
               type="submit"
               data-testid="create-outbound-submit"
-              disabled={saving || selectedItemIds.size === 0 || !draftShipmentId}
+              disabled={saving || selectedItemIds.size === 0}
               className="min-w-[160px]"
             >
               {saving ? (
