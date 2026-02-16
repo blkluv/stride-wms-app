@@ -1,15 +1,11 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolvePlatformEmailDefaults, type PlatformEmailDefaults } from "../_shared/platformEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-
-// Platform default sender. In production this must be a verified Resend domain.
-// Falls back to Resend's onboarding sender for easier dev/test usage.
-const DEFAULT_FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "onboarding@resend.dev";
-const DEFAULT_FROM_NAME = Deno.env.get("FROM_NAME") || "Stride WMS";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,17 +50,11 @@ async function authenticateRequest(req: Request): Promise<{ userId: string; auth
 }
 
 async function resolveSenderForTenant(
+  serviceClient: any,
+  platformDefaults: PlatformEmailDefaults,
   tenantId: string,
   userId: string
 ): Promise<{ fromEmail: string; fromName: string; replyTo?: string }> {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_ENV_MISSING");
-  }
-
-  const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
-
   // Verify user belongs to the tenant they are trying to send as
   const { data: userRow, error: userError } = await serviceClient
     .from("users")
@@ -95,17 +85,17 @@ async function resolveSenderForTenant(
   const fromName =
     String(brandSettings?.from_name || "").trim() ||
     String(companySettings?.company_name || "").trim() ||
-    DEFAULT_FROM_NAME;
+    platformDefaults.fromName;
 
   // Default sender unless tenant explicitly chose + verified a custom domain.
-  let fromEmail = DEFAULT_FROM_EMAIL;
+  let fromEmail = platformDefaults.fromEmail;
   const wantsCustom = brandSettings?.use_default_email === false;
   const isVerified = brandSettings?.email_domain_verified === true;
   if (wantsCustom && isVerified) {
     fromEmail = String(
       brandSettings?.from_email ||
         brandSettings?.custom_email_domain ||
-        DEFAULT_FROM_EMAIL
+        platformDefaults.fromEmail
     );
   }
 
@@ -114,7 +104,7 @@ async function resolveSenderForTenant(
     ? brandSettings!.brand_support_email
     : isValidEmail(companySettings?.company_email)
       ? companySettings!.company_email
-      : undefined;
+      : platformDefaults.replyTo || undefined;
 
   return replyToCandidate
     ? { fromEmail, fromName, replyTo: replyToCandidate }
@@ -180,10 +170,24 @@ serve(async (req) => {
       return jsonResponse({ ok: false, error: "Invalid to field" }, 400);
     }
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return jsonResponse({ ok: false, error: "Supabase env vars are not configured" }, 500);
+    }
+
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
+
+    const platformDefaults = await resolvePlatformEmailDefaults(serviceClient);
+
     const sender =
       tenant_id && typeof tenant_id === "string" && tenant_id.trim().length > 0
-        ? await resolveSenderForTenant(tenant_id, userId)
-        : { fromEmail: DEFAULT_FROM_EMAIL, fromName: DEFAULT_FROM_NAME };
+        ? await resolveSenderForTenant(serviceClient, platformDefaults, tenant_id, userId)
+        : {
+          fromEmail: platformDefaults.fromEmail,
+          fromName: platformDefaults.fromName,
+          ...(platformDefaults.replyTo ? { replyTo: platformDefaults.replyTo } : {}),
+        };
 
     console.log(`Sending email to: ${cleanedTo.join(", ")}, subject: ${subject}`);
     
