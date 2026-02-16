@@ -168,7 +168,7 @@ export function InviteUserDialog({
       });
 
       // Seat-based billing: adding a staff member should update Stripe quantity automatically.
-      await syncStripeSubscriptionSeatsBestEffort("invite_user_dialog_created");
+      void syncStripeSubscriptionSeatsBestEffort("invite_user_dialog_created");
 
       form.reset();
       onSuccess();

@@ -239,7 +239,7 @@ export default function Employees() {
       });
 
       // Seat-based billing: inviting staff should update Stripe quantity automatically.
-      await syncStripeSubscriptionSeatsBestEffort("employees_bulk_invite");
+      void syncStripeSubscriptionSeatsBestEffort("employees_bulk_invite");
 
       setSelectedIds(new Set());
       fetchEmployees();

@@ -309,7 +309,7 @@ export function EmployeeDialog({
       onSuccess();
 
       // Seat-based billing: creating staff or changing roles should update Stripe quantity.
-      await syncStripeSubscriptionSeatsBestEffort(employee ? "employee_dialog_updated" : "employee_dialog_created");
+      void syncStripeSubscriptionSeatsBestEffort(employee ? "employee_dialog_updated" : "employee_dialog_created");
     } catch (error: any) {
       console.error('Error saving employee:', error);
       toast({

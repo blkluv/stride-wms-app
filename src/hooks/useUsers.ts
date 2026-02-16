@@ -128,7 +128,7 @@ export function useUsers() {
 
     // If access state changes (status), re-sync seats best-effort.
     if (typeof data.status === 'string') {
-      await syncStripeSubscriptionSeatsBestEffort("use_users_update_user_status");
+      void syncStripeSubscriptionSeatsBestEffort("use_users_update_user_status");
     }
   };
 
@@ -185,7 +185,7 @@ export function useUsers() {
 
     if (error) throw error;
 
-    await syncStripeSubscriptionSeatsBestEffort("use_users_revoke_access");
+    void syncStripeSubscriptionSeatsBestEffort("use_users_revoke_access");
   };
 
   const deleteUser = async (userId: string) => {
@@ -197,7 +197,7 @@ export function useUsers() {
 
     if (error) throw error;
 
-    await syncStripeSubscriptionSeatsBestEffort("use_users_delete_user");
+    void syncStripeSubscriptionSeatsBestEffort("use_users_delete_user");
   };
 
   const assignRole = async (userId: string, roleId: string) => {
@@ -213,7 +213,7 @@ export function useUsers() {
 
     if (error) throw error;
 
-    await syncStripeSubscriptionSeatsBestEffort("use_users_assign_role");
+    void syncStripeSubscriptionSeatsBestEffort("use_users_assign_role");
   };
 
   const removeRole = async (userId: string, roleId: string) => {
@@ -225,7 +225,7 @@ export function useUsers() {
 
     if (error) throw error;
 
-    await syncStripeSubscriptionSeatsBestEffort("use_users_remove_role");
+    void syncStripeSubscriptionSeatsBestEffort("use_users_remove_role");
   };
 
   return {
