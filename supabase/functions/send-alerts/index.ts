@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { isValidEmail, resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1250,8 +1250,9 @@ const handler = async (req: Request): Promise<Response> => {
           if (brandSettings?.from_name) {
             fromName = brandSettings.from_name;
           }
-          if (brandSettings?.brand_support_email) {
-            replyTo = brandSettings.brand_support_email;
+          const supportEmail = (brandSettings?.brand_support_email || "").trim();
+          if (isValidEmail(supportEmail)) {
+            replyTo = supportEmail;
           }
 
           // Also test recipient resolution
@@ -1527,7 +1528,8 @@ const handler = async (req: Request): Promise<Response> => {
 
         let fromEmail = platformDefaults.fromEmail;
         let fromName = brandSettings?.from_name || variables.tenant_name || platformDefaults.fromName;
-        let replyTo: string | null = (brandSettings?.brand_support_email || "").trim() || platformDefaults.replyTo;
+        const supportEmail = (brandSettings?.brand_support_email || "").trim();
+        let replyTo: string | null = isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo;
 
         // Only use custom sender if tenant explicitly chose it and it is verified.
         const wantsCustom = brandSettings?.use_default_email === false;
