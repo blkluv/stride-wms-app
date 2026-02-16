@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,10 +11,13 @@ import { HelpTip } from '@/components/ui/help-tip';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { AutosaveIndicator } from './AutosaveIndicator';
 import { useReceivingAutosave } from '@/hooks/useReceivingAutosave';
 import { BigCounter } from './BigCounter';
-import { useShipmentPhotos, type ShipmentPhoto } from '@/hooks/useShipmentPhotos';
+import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
+import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
+import { TaggablePhotoGrid, type TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
 import {
   SHIPMENT_EXCEPTION_CODE_META,
   useShipmentExceptions,
@@ -69,6 +72,7 @@ interface Stage1DockIntakeProps {
     signed_pieces: number | null;
     signature_data: string | null;
     signature_name: string | null;
+    receiving_photos?: Json | null;
     dock_intake_breakdown: Record<string, unknown> | null;
     notes: string | null;
   };
@@ -119,19 +123,11 @@ export function Stage1DockIntake({
   // Autosave - disable while completing to prevent race conditions
   const autosave = useReceivingAutosave(shipmentId, !completing);
 
-  // UX guard: account must be selected first. This doesn't affect autosave, it just prevents edits
-  // to other fields until an account (or UNIDENTIFIED) is chosen.
-  const accountRequiredLocked = !accountId;
-
-  // Photos
-  const {
-    photos,
-    loading: photosLoading,
-    uploadPhoto,
-    deletePhoto,
-    paperworkCount,
-    conditionCount,
-  } = useShipmentPhotos(shipmentId);
+  // Photos (legacy incoming shipments style) stored on shipments.receiving_photos
+  const [receivingPhotos, setReceivingPhotos] = useState<(string | TaggablePhoto)[]>(() => {
+    const existing = (shipment as any)?.receiving_photos;
+    return Array.isArray(existing) ? (existing as (string | TaggablePhoto)[]) : [];
+  });
 
   // Shipment exceptions
   const {
@@ -141,9 +137,6 @@ export function Stage1DockIntake({
     refetch: refetchExceptions,
   } = useShipmentExceptions(shipmentId);
 
-  // File input refs
-  const paperworkInputRef = useRef<HTMLInputElement>(null);
-  const conditionInputRef = useRef<HTMLInputElement>(null);
   const { documents } = useDocuments({ contextType: 'shipment', contextId: shipmentId });
 
   // Emit matching params whenever relevant fields change
@@ -158,6 +151,12 @@ export function Stage1DockIntake({
   useEffect(() => {
     setAccountId(shipment.account_id || '');
   }, [shipment.account_id]);
+
+  // Keep local photo state aligned with the persisted shipment JSON field.
+  useEffect(() => {
+    const existing = shipment.receiving_photos;
+    setReceivingPhotos(Array.isArray(existing) ? (existing as unknown as (string | TaggablePhoto)[]) : []);
+  }, [shipment.receiving_photos]);
 
   // Autosave handlers
   const handleAccountChange = (value: string) => {
@@ -292,20 +291,31 @@ export function Stage1DockIntake({
     await upsertOpenException(code, note);
   };
 
-  // Photo upload handler
-  const handlePhotoUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-    category: ShipmentPhoto['category']
-  ) => {
-    const files = event.target.files;
-    if (!files) return;
+  const saveReceivingPhotosToShipment = async (nextPhotos: TaggablePhoto[]) => {
+    setReceivingPhotos(nextPhotos);
+    const { error } = await (supabase as any)
+      .from('shipments')
+      .update({ receiving_photos: nextPhotos as unknown as Json })
+      .eq('id', shipmentId);
+    if (error) throw error;
+  };
 
-    for (let i = 0; i < files.length; i++) {
-      await uploadPhoto(files[i], category);
-    }
-
-    // Reset input
-    event.target.value = '';
+  const mergeAndSaveReceivingPhotoUrls = async (urls: string[]) => {
+    const existingUrls = getPhotoUrls(receivingPhotos);
+    const newUrls = urls.filter((u) => !existingUrls.includes(u));
+    const newTaggablePhotos: TaggablePhoto[] = newUrls.map((url) => ({
+      url,
+      isPrimary: false,
+      needsAttention: false,
+      isRepair: false,
+    }));
+    const normalizedExisting: TaggablePhoto[] = receivingPhotos.map((p) =>
+      typeof p === 'string'
+        ? { url: p, isPrimary: false, needsAttention: false, isRepair: false }
+        : p
+    );
+    const allPhotos = [...normalizedExisting, ...newTaggablePhotos];
+    await saveReceivingPhotosToShipment(allPhotos);
   };
 
   // Signature handlers
@@ -350,8 +360,7 @@ export function Stage1DockIntake({
     if (exceptions.includes('OTHER') && !exceptionNotes.OTHER?.trim()) {
       errors.push('Other requires a note');
     }
-    if (paperworkCount < 1) errors.push('At least 1 paperwork photo is required');
-    if (conditionCount < 1) errors.push('At least 1 condition photo is required');
+    if (getPhotoUrls(receivingPhotos).length < 1) errors.push('At least 1 photo is required');
     return errors;
   };
 
@@ -482,50 +491,42 @@ export function Stage1DockIntake({
                 Use UNIDENTIFIED
               </Button>
             </div>
-            {accountRequiredLocked && (
-              <p className="text-xs text-muted-foreground">
-                Select an account to unlock the rest of the intake form.
-              </p>
-            )}
           </div>
 
           <Separator />
 
-          <div className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
-            <div className="space-y-2">
-              <Label htmlFor="vendor_name">
-                Vendor Name
+          <div className="space-y-2">
+            <Label htmlFor="vendor_name">
+              Vendor Name
+            </Label>
+            <Input
+              id="vendor_name"
+              placeholder="Enter vendor name"
+              value={vendorName}
+              onChange={(e) => handleVendorNameChange(e.target.value)}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 justify-center">
+              <Label htmlFor="signed_pieces">
+                Signed Pieces <span className="text-red-500">*</span>
               </Label>
-              <Input
-                id="vendor_name"
-                placeholder="Enter vendor name"
-                value={vendorName}
-                onChange={(e) => handleVendorNameChange(e.target.value)}
-                disabled={accountRequiredLocked}
+              <HelpTip
+                tooltip="The number of pieces counted and signed for at the dock. Tap the number to type a value directly, or use +/- buttons."
+                pageKey="receiving.stage1"
+                fieldKey="signed_pieces"
               />
             </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-1 justify-center">
-                <Label htmlFor="signed_pieces">
-                  Signed Pieces <span className="text-red-500">*</span>
-                </Label>
-                <HelpTip
-                  tooltip="The number of pieces counted and signed for at the dock. Tap the number to type a value directly, or use +/- buttons."
-                  pageKey="receiving.stage1"
-                  fieldKey="signed_pieces"
-                />
-              </div>
-              <BigCounter
-                id="signed_pieces"
-                value={signedPieces}
-                onChange={handleSignedPiecesChange}
-                min={0}
-                step={1}
-              />
-            </div>
+            <BigCounter
+              id="signed_pieces"
+              value={signedPieces}
+              onChange={handleSignedPiecesChange}
+              min={0}
+              step={1}
+            />
           </div>
 
         </CardContent>
@@ -544,7 +545,7 @@ export function Stage1DockIntake({
             />
           </CardTitle>
         </CardHeader>
-        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+        <CardContent>
           <div className="grid gap-4 grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="cartons">Cartons</Label>
@@ -554,7 +555,6 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.cartons || ''}
                 onChange={(e) => handleBreakdownChange('cartons', parseInt(e.target.value) || 0)}
-                disabled={accountRequiredLocked}
               />
             </div>
             <div className="space-y-2">
@@ -565,7 +565,6 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.pallets || ''}
                 onChange={(e) => handleBreakdownChange('pallets', parseInt(e.target.value) || 0)}
-                disabled={accountRequiredLocked}
               />
             </div>
             <div className="space-y-2">
@@ -576,7 +575,6 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.crates || ''}
                 onChange={(e) => handleBreakdownChange('crates', parseInt(e.target.value) || 0)}
-                disabled={accountRequiredLocked}
               />
             </div>
           </div>
@@ -596,10 +594,7 @@ export function Stage1DockIntake({
             />
           </CardTitle>
         </CardHeader>
-        <CardContent
-          className={accountRequiredLocked ? "space-y-4 opacity-50 pointer-events-none" : "space-y-4"}
-          aria-disabled={accountRequiredLocked}
-        >
+        <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {EXCEPTION_OPTIONS.map((opt) => {
               const isSelected = exceptions.includes(opt.value);
@@ -610,7 +605,6 @@ export function Stage1DockIntake({
                   size="sm"
                   className="gap-1.5"
                   onClick={() => toggleException(opt.value)}
-                  disabled={accountRequiredLocked}
                 >
                   <MaterialIcon name={opt.icon} size="sm" />
                   {opt.label}
@@ -638,134 +632,92 @@ export function Stage1DockIntake({
                   value={exceptionNotes[ex] || ''}
                   onChange={(e) => setExceptionNotes((prev) => ({ ...prev, [ex]: e.target.value }))}
                   onBlur={() => void handleExceptionNoteBlur(ex)}
-                  disabled={accountRequiredLocked}
                 />
               </div>
             ))}
         </CardContent>
       </Card>
 
-      {/* Photos */}
-      <div
-        className={accountRequiredLocked ? "grid gap-6 md:grid-cols-2 opacity-50 pointer-events-none" : "grid gap-6 md:grid-cols-2"}
-        aria-disabled={accountRequiredLocked}
-      >
-        {/* Paperwork Photos */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MaterialIcon name="description" size="sm" />
-                Paperwork Photos <span className="text-red-500">*</span>
-                <Badge variant={paperworkCount >= 1 ? 'default' : 'destructive'}>
-                  {paperworkCount}
-                </Badge>
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => paperworkInputRef.current?.click()}
-                disabled={accountRequiredLocked}
-              >
-                <MaterialIcon name="add_a_photo" size="sm" className="mr-1" />
-                Add
-              </Button>
-              <input
-                ref={paperworkInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                capture="environment"
-                className="hidden"
-                onChange={(e) => handlePhotoUpload(e, 'PAPERWORK')}
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {photos.filter(p => p.category === 'PAPERWORK').length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {photos.filter(p => p.category === 'PAPERWORK').map((photo) => (
-                  <div key={photo.id} className="relative group aspect-square rounded-md overflow-hidden border">
-                    <img
-                      src={photo.url}
-                      alt={photo.file_name}
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      onClick={() => deletePhoto(photo.id)}
-                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <MaterialIcon name="close" size="sm" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No paperwork photos yet. At least 1 required.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Condition Photos */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MaterialIcon name="photo_camera" size="sm" />
-                Condition Photos <span className="text-red-500">*</span>
-                <Badge variant={conditionCount >= 1 ? 'default' : 'destructive'}>
-                  {conditionCount}
-                </Badge>
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => conditionInputRef.current?.click()}
-                disabled={accountRequiredLocked}
-              >
-                <MaterialIcon name="add_a_photo" size="sm" className="mr-1" />
-                Add
-              </Button>
-              <input
-                ref={conditionInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                capture="environment"
-                className="hidden"
-                onChange={(e) => handlePhotoUpload(e, 'CONDITION')}
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {photos.filter(p => p.category === 'CONDITION').length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {photos.filter(p => p.category === 'CONDITION').map((photo) => (
-                  <div key={photo.id} className="relative group aspect-square rounded-md overflow-hidden border">
-                    <img
-                      src={photo.url}
-                      alt={photo.file_name}
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      onClick={() => deletePhoto(photo.id)}
-                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <MaterialIcon name="close" size="sm" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No condition photos yet. At least 1 required.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Photos (single field — legacy incoming shipments style) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <MaterialIcon name="photo_camera" size="sm" />
+              Photos <span className="text-red-500">*</span>
+              <Badge variant={getPhotoUrls(receivingPhotos).length >= 1 ? 'default' : 'destructive'}>
+                {getPhotoUrls(receivingPhotos).length}
+              </Badge>
+            </CardTitle>
+            <CardDescription>Capture or upload photos (paperwork, condition, etc.).</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <PhotoScannerButton
+              entityType="shipment"
+              entityId={shipmentId}
+              tenantId={profile?.tenant_id}
+              existingPhotos={getPhotoUrls(receivingPhotos)}
+              maxPhotos={20}
+              size="sm"
+              label="Add"
+              showCount={false}
+              onPhotosSaved={async (urls) => {
+                try {
+                  await mergeAndSaveReceivingPhotoUrls(urls);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Photo Error',
+                    description: err?.message || 'Failed to save photos',
+                  });
+                }
+              }}
+            />
+            <PhotoUploadButton
+              entityType="shipment"
+              entityId={shipmentId}
+              tenantId={profile?.tenant_id}
+              existingPhotos={getPhotoUrls(receivingPhotos)}
+              maxPhotos={20}
+              size="sm"
+              onPhotosSaved={async (urls) => {
+                try {
+                  await mergeAndSaveReceivingPhotoUrls(urls);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Photo Error',
+                    description: err?.message || 'Failed to save photos',
+                  });
+                }
+              }}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {getPhotoUrls(receivingPhotos).length > 0 ? (
+            <TaggablePhotoGrid
+              photos={receivingPhotos}
+              enableTagging={true}
+              onPhotosChange={async (photos) => {
+                try {
+                  await saveReceivingPhotosToShipment(photos);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Photo Error',
+                    description: err?.message || 'Failed to save photos',
+                  });
+                }
+              }}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No photos yet. At least 1 required.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Documents */}
       <Card>
@@ -779,7 +731,7 @@ export function Stage1DockIntake({
             Capture or upload delivery paperwork and supporting intake documents.
           </CardDescription>
         </CardHeader>
-        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+        <CardContent>
           <DocumentCapture
             context={{ type: 'shipment', shipmentId }}
             maxDocuments={12}
@@ -796,7 +748,7 @@ export function Stage1DockIntake({
             Signature (optional)
           </CardTitle>
         </CardHeader>
-        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+        <CardContent>
           {signatureData ? (
             <div className="space-y-2">
               <div className="border rounded-md p-2 bg-white">
@@ -832,7 +784,6 @@ export function Stage1DockIntake({
             value={notes}
             onChange={(e) => handleNotesChange(e.target.value)}
             rows={3}
-            disabled={accountRequiredLocked}
           />
         </CardContent>
       </Card>
@@ -842,7 +793,7 @@ export function Stage1DockIntake({
         <Button
           size="lg"
           onClick={handleComplete}
-          disabled={completing || accountRequiredLocked}
+          disabled={completing}
           className="gap-2"
         >
           {completing ? (
