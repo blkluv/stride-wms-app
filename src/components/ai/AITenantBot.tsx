@@ -26,7 +26,7 @@ interface UIContext {
 const ENTITY_PATTERNS = {
   // Format: "ITM-12345 [id:uuid]" or just "ITM-12345"
   item: /ITM-\d+(?:\s*\[id:([a-f0-9-]+)\])?/gi,
-  shipment: /SHP-\d+(?:\s*\[id:([a-f0-9-]+)\])?/gi,
+  shipment: /(?:SHP|MAN|EXP|INT|OUT)-\d{5,6}(?:\s*\[id:([a-f0-9-]+)\])?/gi,
   task: /TSK-\d+(?:\s*\[id:([a-f0-9-]+)\])?/gi,
   stocktake: /STK-\d+(?:\s*\[id:([a-f0-9-]+)\])?/gi,
 };
@@ -294,7 +294,7 @@ export function AITenantBot() {
     let lastIndex = 0;
 
     // Combined regex for all entity types
-    const combinedRegex = /(ITM-\d+|SHP-\d+|TSK-\d+|STK-\d+)(?:\s*\[id:([a-f0-9-]+)\])?/gi;
+    const combinedRegex = /(ITM-\d+|(?:SHP|MAN|EXP|INT|OUT)-\d{5,6}|TSK-\d+|STK-\d+)(?:\s*\[id:([a-f0-9-]+)\])?/gi;
     let match;
 
     while ((match = combinedRegex.exec(text)) !== null) {
@@ -310,7 +310,13 @@ export function AITenantBot() {
       let type: string;
       switch (prefix) {
         case 'ITM': type = 'item'; break;
-        case 'SHP': type = 'shipment'; break;
+        case 'SHP':
+        case 'MAN':
+        case 'EXP':
+        case 'INT':
+        case 'OUT':
+          type = 'shipment';
+          break;
         case 'TSK': type = 'task'; break;
         case 'STK': type = 'stocktake'; break;
         default: type = 'item';
@@ -343,7 +349,7 @@ export function AITenantBot() {
     const contentLower = content.toLowerCase();
 
     // Detect shipment mentions and suggest related actions
-    if (contentLower.includes('shipment') || /SHP-\d+/i.test(content)) {
+    if (contentLower.includes('shipment') || /(?:SHP|MAN|EXP|INT|OUT)-\d{5,6}/i.test(content)) {
       if (contentLower.includes('inbound') || contentLower.includes('received')) {
         suggestions.push('Create inspections for all items');
         suggestions.push('Move items to receiving');
