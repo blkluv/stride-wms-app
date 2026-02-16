@@ -350,8 +350,8 @@ export default function Shipments() {
             accentText="Console"
             description="Manage incoming and outbound shipments"
           />
-          {(activeTab === 'hub' || activeTab === 'incoming') && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {(activeTab === 'hub' || activeTab === 'incoming') && (
               <Button
                 onClick={handleStartDockIntake}
                 disabled={creatingIntake}
@@ -364,8 +364,18 @@ export default function Shipments() {
                 )}
                 Start Dock Intake
               </Button>
-            </div>
-          )}
+            )}
+
+            {activeTab === 'outbound' && (
+              <Button
+                onClick={() => navigate('/shipments/outbound/new')}
+                className="gap-2"
+              >
+                <MaterialIcon name="add" size="sm" />
+                Create Outbound Shipment
+              </Button>
+            )}
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => {
@@ -476,15 +486,6 @@ export default function Shipments() {
           </TabsContent>
 
           <TabsContent value="outbound" className="mt-4">
-            <div className="mb-4">
-              <Button
-                onClick={() => navigate('/shipments/outbound/new')}
-                className="gap-2"
-              >
-                <MaterialIcon name="add" size="sm" />
-                Create Outbound Shipment
-              </Button>
-            </div>
             <OutboundContent />
           </TabsContent>
         </Tabs>
