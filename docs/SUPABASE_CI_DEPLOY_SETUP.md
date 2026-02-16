@@ -21,9 +21,11 @@ Add these in:
 ## What the workflow does
 
 1. Links to your Supabase project.
-2. Fetches remote migration history stubs (to avoid "remote versions not found locally" failures).
-3. Runs `supabase db push` (migrations) on `main` pushes.
-3. Deploys changed functions from `supabase/functions/*`.
+2. Detects whether `supabase/migrations/` changed in the pushed commit range.
+3. If migrations changed:
+   - Fetches remote migration history stubs (to avoid "remote versions not found locally" failures).
+   - Runs `supabase db push` (migrations).
+4. Deploys changed functions from `supabase/functions/*`.
 
 ## Manual run options
 
