@@ -694,13 +694,17 @@ export function useAccountItems(accountId: string | undefined) {
           item_code,
           description,
           status,
+          room,
+          location:locations!current_location_id(id, code, name),
+          class:classes(id, code, name),
           item_type:item_types(id, name),
           sidemark:sidemarks(id, sidemark_name),
           warehouse:warehouses(id, name)
         `)
         .eq('tenant_id', profile.tenant_id)
         .eq('account_id', accountId)
-        .in('status', ['in_storage', 'available', 'active']) // Only items that can be shipped (active is the main storage status)
+        // Only items that can be shipped (stored is the common "in storage" status in this app)
+        .in('status', ['stored', 'active', 'available', 'in_storage'])
         .is('deleted_at', null)
         .order('item_code');
 

@@ -1,8 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Select,
   SelectContent,
@@ -24,6 +26,15 @@ interface DockIntakeMatchingPanelProps {
   /** When true, shows item-level refinement hints */
   showItemRefinement?: boolean;
 }
+
+type CandidateItemRow = {
+  id: string;
+  expected_quantity: number;
+  expected_vendor: string | null;
+  expected_description: string | null;
+  expected_sidemark: string | null;
+  room: string | null;
+};
 
 function confidenceBadgeVariant(score: number): 'default' | 'secondary' | 'outline' {
   if (score >= 80) return 'default';
@@ -56,6 +67,12 @@ export default function DockIntakeMatchingPanel({
 }: DockIntakeMatchingPanelProps) {
   const { toast } = useToast();
   const [linking, setLinking] = useState<string | null>(null);
+  const [expandedCandidateIds, setExpandedCandidateIds] = useState<Set<string>>(() => new Set());
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(() => new Set());
+  const [itemsByCandidate, setItemsByCandidate] = useState<Record<string, {
+    loading: boolean;
+    items: CandidateItemRow[];
+  }>>({});
 
   // Reference number input state
   const [refType, setRefType] = useState<RefType>('BOL');
@@ -73,6 +90,73 @@ export default function DockIntakeMatchingPanel({
   // Filter out already-linked shipments from candidates
   const linkedIds = new Set(links.map((l) => l.linked_shipment_id));
   const filteredCandidates = candidates.filter((c) => !linkedIds.has(c.shipment_id));
+
+  const filteredById = useMemo(() => {
+    return new Map(filteredCandidates.map((c) => [c.shipment_id, c]));
+  }, [filteredCandidates]);
+
+  const fetchCandidateItems = useCallback(async (shipmentId: string) => {
+    if (!shipmentId) return;
+    setItemsByCandidate((prev) => ({
+      ...prev,
+      [shipmentId]: {
+        loading: true,
+        items: prev[shipmentId]?.items || [],
+      },
+    }));
+    try {
+      const { data, error } = await (supabase as any)
+        .from('shipment_items')
+        .select('id, expected_quantity, expected_vendor, expected_description, expected_sidemark, room')
+        .eq('shipment_id', shipmentId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      setItemsByCandidate((prev) => ({
+        ...prev,
+        [shipmentId]: {
+          loading: false,
+          items: (data as CandidateItemRow[]) || [],
+        },
+      }));
+    } catch (error) {
+      console.error('[DockIntakeMatchingPanel] fetch items error:', error);
+      setItemsByCandidate((prev) => ({
+        ...prev,
+        [shipmentId]: {
+          loading: false,
+          items: prev[shipmentId]?.items || [],
+        },
+      }));
+    }
+  }, []);
+
+  const toggleExpanded = useCallback((shipmentId: string) => {
+    setExpandedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shipmentId)) {
+        next.delete(shipmentId);
+        return next;
+      }
+      next.add(shipmentId);
+      return next;
+    });
+
+    const entry = itemsByCandidate[shipmentId];
+    const hasLoaded = !!entry && entry.loading === false;
+    const isLoading = !!entry?.loading;
+    if (!hasLoaded && !isLoading) {
+      void fetchCandidateItems(shipmentId);
+    }
+  }, [fetchCandidateItems, itemsByCandidate]);
+
+  const toggleSelected = useCallback((shipmentId: string) => {
+    setSelectedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shipmentId)) next.delete(shipmentId);
+      else next.add(shipmentId);
+      return next;
+    });
+  }, []);
 
   const handleLink = useCallback(
     async (candidate: InboundCandidate) => {
@@ -104,6 +188,44 @@ export default function DockIntakeMatchingPanel({
     },
     [dockIntakeId, toast, onLinked, refetchLinks]
   );
+
+  const handleLinkSelected = useCallback(async () => {
+    const selectedIds = Array.from(selectedCandidateIds);
+    const selectedCandidates = selectedIds
+      .map((id) => filteredById.get(id))
+      .filter(Boolean) as InboundCandidate[];
+
+    if (selectedCandidates.length === 0) return;
+
+    setLinking('bulk');
+    try {
+      for (const c of selectedCandidates) {
+        const { error } = await supabase.rpc('rpc_link_dock_intake_to_shipment', {
+          p_dock_intake_id: dockIntakeId,
+          p_linked_shipment_id: c.shipment_id,
+          p_link_type: c.inbound_kind,
+          p_confidence_score: c.confidence_score,
+        });
+        if (error) throw error;
+      }
+
+      toast({
+        title: 'Linked',
+        description: `Linked ${selectedCandidates.length} shipment${selectedCandidates.length !== 1 ? 's' : ''}.`,
+      });
+      setSelectedCandidateIds(new Set());
+      refetchLinks();
+      onLinked?.();
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Link Failed',
+        description: error instanceof Error ? error.message : 'Failed to link.',
+      });
+    } finally {
+      setLinking(null);
+    }
+  }, [selectedCandidateIds, filteredById, dockIntakeId, toast, refetchLinks, onLinked]);
 
   const handleUnlink = useCallback(
     async (link: InboundLink) => {
@@ -222,55 +344,153 @@ export default function DockIntakeMatchingPanel({
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredCandidates.map((c) => (
-                <div
-                  key={c.shipment_id}
-                  className="flex items-start justify-between p-3 rounded-md border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-medium text-sm">
-                        {c.shipment_number}
-                      </span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {c.inbound_kind}
-                      </Badge>
-                      <Badge variant={confidenceBadgeVariant(c.confidence_score)}>
-                        {c.confidence_score}% — {c.confidence_label}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] font-mono">
-                        {tierLabel(c.match_tier)}
-                      </Badge>
-                      {c.item_match_count > 0 && (
-                        <Badge variant="secondary" className="text-[10px] gap-0.5">
-                          <MaterialIcon name="inventory_2" size="sm" />
-                          {c.item_match_count} item{c.item_match_count !== 1 ? 's' : ''}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {c.account_name || 'No account'}
-                      {c.vendor_name ? ` · Vendor: ${c.vendor_name}` : ''}
-                      {c.expected_pieces ? ` · ${c.expected_pieces} pcs` : ''}
-                      {c.eta_start ? ` · ETA: ${formatDate(c.eta_start)}` : ''}
-                    </div>
+              {selectedCandidateIds.size > 0 && (
+                <div className="flex items-center justify-between gap-2 p-2 rounded-md border bg-muted/20">
+                  <div className="text-xs text-muted-foreground">
+                    {selectedCandidateIds.size} selected
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleLink(c)}
-                    disabled={linking === c.shipment_id}
+                    onClick={handleLinkSelected}
+                    disabled={linking === 'bulk'}
+                    className="h-7"
                   >
-                    {linking === c.shipment_id ? (
+                    {linking === 'bulk' ? (
                       <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
                     ) : (
                       <>
                         <MaterialIcon name="link" size="sm" className="mr-1" />
-                        Link
+                        Link Selected
                       </>
                     )}
                   </Button>
                 </div>
+              )}
+              {filteredCandidates.map((c) => (
+                <Collapsible
+                  key={c.shipment_id}
+                  open={expandedCandidateIds.has(c.shipment_id)}
+                  onOpenChange={() => toggleExpanded(c.shipment_id)}
+                >
+                  <div className="rounded-md border hover:bg-muted/50 transition-colors">
+                    <div className="flex items-start justify-between gap-2 p-3">
+                      <div className="pt-0.5">
+                        <Checkbox
+                          checked={selectedCandidateIds.has(c.shipment_id)}
+                          onCheckedChange={() => toggleSelected(c.shipment_id)}
+                          aria-label={`Select ${c.shipment_number}`}
+                        />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <CollapsibleTrigger asChild>
+                          <button type="button" className="w-full text-left">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-medium text-sm">
+                                {c.shipment_number}
+                              </span>
+                              <Badge variant="outline" className="text-[10px]">
+                                {c.inbound_kind}
+                              </Badge>
+                              <Badge variant={confidenceBadgeVariant(c.confidence_score)}>
+                                {c.confidence_score}% — {c.confidence_label}
+                              </Badge>
+                              <Badge variant="outline" className="text-[10px] font-mono">
+                                {tierLabel(c.match_tier)}
+                              </Badge>
+                              {c.item_match_count > 0 && (
+                                <Badge variant="secondary" className="text-[10px] gap-0.5">
+                                  <MaterialIcon name="inventory_2" size="sm" />
+                                  {c.item_match_count} item{c.item_match_count !== 1 ? 's' : ''}
+                                </Badge>
+                              )}
+                              <span className="ml-auto text-muted-foreground">
+                                <MaterialIcon
+                                  name={expandedCandidateIds.has(c.shipment_id) ? 'expand_less' : 'expand_more'}
+                                  size="sm"
+                                />
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {c.account_name || 'No account'}
+                              {c.vendor_name ? ` · Vendor: ${c.vendor_name}` : ''}
+                              {c.expected_pieces ? ` · ${c.expected_pieces} pcs` : ''}
+                              {c.eta_start ? ` · ETA: ${formatDate(c.eta_start)}` : ''}
+                            </div>
+                          </button>
+                        </CollapsibleTrigger>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleLink(c)}
+                        disabled={linking === c.shipment_id || linking === 'bulk'}
+                      >
+                        {linking === c.shipment_id ? (
+                          <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                        ) : (
+                          <>
+                            <MaterialIcon name="link" size="sm" className="mr-1" />
+                            Link
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    <CollapsibleContent>
+                      <div className="border-t px-3 pb-3">
+                        <div className="pt-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Items
+                            </p>
+                            {itemsByCandidate[c.shipment_id]?.loading ? (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                                Loading…
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                {(itemsByCandidate[c.shipment_id]?.items || []).length} row{(itemsByCandidate[c.shipment_id]?.items || []).length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+
+                          {(itemsByCandidate[c.shipment_id]?.items || []).length > 0 ? (
+                            <div className="mt-2 space-y-1">
+                              {(itemsByCandidate[c.shipment_id]?.items || []).map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="grid grid-cols-[56px_1fr] gap-2 p-2 rounded-md bg-muted/20"
+                                >
+                                  <div className="text-xs font-mono text-muted-foreground">
+                                    Qty {item.expected_quantity}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-medium truncate">
+                                      {item.expected_description || 'No description'}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground truncate">
+                                      {item.expected_vendor ? `Vendor: ${item.expected_vendor}` : 'Vendor: —'}
+                                      {item.expected_sidemark ? ` · Sidemark: ${item.expected_sidemark}` : ''}
+                                      {item.room ? ` · Room: ${item.room}` : ''}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              No items found for this shipment.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
               ))}
             </div>
           )}

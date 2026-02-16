@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,10 +11,13 @@ import { HelpTip } from '@/components/ui/help-tip';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { AutosaveIndicator } from './AutosaveIndicator';
 import { useReceivingAutosave } from '@/hooks/useReceivingAutosave';
 import { BigCounter } from './BigCounter';
-import { useShipmentPhotos, type ShipmentPhoto } from '@/hooks/useShipmentPhotos';
+import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
+import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
+import { TaggablePhotoGrid, type TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
 import {
   SHIPMENT_EXCEPTION_CODE_META,
   useShipmentExceptions,
@@ -25,7 +28,6 @@ import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentException
 import { AccountSelect } from '@/components/ui/account-select';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
-import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
 import {
   Dialog,
   DialogContent,
@@ -38,13 +40,8 @@ type ExceptionChip = 'NO_EXCEPTIONS' | ShipmentExceptionCode;
 
 const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string; requiresNote?: boolean }[] = [
   { value: 'NO_EXCEPTIONS', label: 'No Exceptions', icon: 'check_circle' },
-  { value: 'PIECES_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.PIECES_MISMATCH },
-  { value: 'VENDOR_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.VENDOR_MISMATCH },
-  { value: 'DESCRIPTION_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.DESCRIPTION_MISMATCH },
-  { value: 'SIDEMARK_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.SIDEMARK_MISMATCH },
-  { value: 'SHIPPER_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.SHIPPER_MISMATCH },
-  { value: 'TRACKING_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.TRACKING_MISMATCH },
-  { value: 'REFERENCE_MISMATCH', ...SHIPMENT_EXCEPTION_CODE_META.REFERENCE_MISMATCH },
+  // Dock intake exceptions are condition/paperwork observations at the dock.
+  // Matching/discrepancy flags (vendor/description/sidemark/etc) are handled automatically by matching logic.
   { value: 'DAMAGE', ...SHIPMENT_EXCEPTION_CODE_META.DAMAGE },
   { value: 'WET', ...SHIPMENT_EXCEPTION_CODE_META.WET },
   { value: 'OPEN', ...SHIPMENT_EXCEPTION_CODE_META.OPEN },
@@ -55,7 +52,6 @@ const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string; re
 ];
 
 export interface MatchingParamsUpdate {
-  vendorName: string;
   pieces: number;
   accountId: string | null;
 }
@@ -66,9 +62,13 @@ interface Stage1DockIntakeProps {
   shipment: {
     account_id: string | null;
     vendor_name: string | null;
+    carrier?: string | null;
+    tracking_number?: string | null;
+    po_number?: string | null;
     signed_pieces: number | null;
     signature_data: string | null;
     signature_name: string | null;
+    receiving_photos?: Json | null;
     dock_intake_breakdown: Record<string, unknown> | null;
     notes: string | null;
   };
@@ -92,11 +92,15 @@ export function Stage1DockIntake({
   const { toast } = useToast();
 
   // Form state
-  const { unidentifiedAccountId, ensureUnidentifiedAccount, ensuring: ensuringUnidentified } = useUnidentifiedAccount();
   const [accountId, setAccountId] = useState<string>(shipment.account_id || '');
-  const [vendorName, setVendorName] = useState(shipment.vendor_name || '');
+  const [carrierName, setCarrierName] = useState((shipment as any).carrier || '');
+  const [trackingNumber, setTrackingNumber] = useState((shipment as any).tracking_number || '');
+  const [poNumber, setPoNumber] = useState((shipment as any).po_number || '');
   const [signedPieces, setSignedPieces] = useState<number>(shipment.signed_pieces || 0);
   const [notes, setNotes] = useState(shipment.notes || '');
+  const [notesTouched, setNotesTouched] = useState(false);
+  const [accountDefaultShipmentNotes, setAccountDefaultShipmentNotes] = useState<string | null>(null);
+  const [accountHighlightShipmentNotes, setAccountHighlightShipmentNotes] = useState(false);
   const [exceptions, setExceptions] = useState<ExceptionChip[]>(['NO_EXCEPTIONS']);
   const [exceptionNotes, setExceptionNotes] = useState<Record<ShipmentExceptionCode, string>>({} as Record<ShipmentExceptionCode, string>);
   const [pendingRequiredNoteCode, setPendingRequiredNoteCode] = useState<ShipmentExceptionCode | null>(null);
@@ -119,19 +123,12 @@ export function Stage1DockIntake({
   // Autosave - disable while completing to prevent race conditions
   const autosave = useReceivingAutosave(shipmentId, !completing);
 
-  // UX guard: account must be selected first. This doesn't affect autosave, it just prevents edits
-  // to other fields until an account (or UNIDENTIFIED) is chosen.
-  const accountRequiredLocked = !accountId;
-
-  // Photos
-  const {
-    photos,
-    loading: photosLoading,
-    uploadPhoto,
-    deletePhoto,
-    paperworkCount,
-    conditionCount,
-  } = useShipmentPhotos(shipmentId);
+  // Photos (legacy incoming shipments style) stored on shipments.receiving_photos
+  const [receivingPhotos, setReceivingPhotos] = useState<(string | TaggablePhoto)[]>(() => {
+    const existing = (shipment as any)?.receiving_photos;
+    return Array.isArray(existing) ? (existing as (string | TaggablePhoto)[]) : [];
+  });
+  const [legacyPhotosBootstrapped, setLegacyPhotosBootstrapped] = useState(false);
 
   // Shipment exceptions
   const {
@@ -141,23 +138,37 @@ export function Stage1DockIntake({
     refetch: refetchExceptions,
   } = useShipmentExceptions(shipmentId);
 
-  // File input refs
-  const paperworkInputRef = useRef<HTMLInputElement>(null);
-  const conditionInputRef = useRef<HTMLInputElement>(null);
-  const { documents } = useDocuments({ contextType: 'shipment', contextId: shipmentId });
+  const { documents, refetch: refetchDocuments } = useDocuments({ contextType: 'shipment', contextId: shipmentId });
 
   // Emit matching params whenever relevant fields change
   useEffect(() => {
     onMatchingParamsChange?.({
-      vendorName,
       pieces: signedPieces,
       accountId: accountId || null,
     });
-  }, [vendorName, signedPieces, accountId, onMatchingParamsChange]);
+  }, [signedPieces, accountId, onMatchingParamsChange]);
 
   useEffect(() => {
     setAccountId(shipment.account_id || '');
   }, [shipment.account_id]);
+
+  useEffect(() => {
+    setCarrierName((shipment as any).carrier || '');
+  }, [(shipment as any).carrier]);
+
+  useEffect(() => {
+    setTrackingNumber((shipment as any).tracking_number || '');
+  }, [(shipment as any).tracking_number]);
+
+  useEffect(() => {
+    setPoNumber((shipment as any).po_number || '');
+  }, [(shipment as any).po_number]);
+
+  // Keep local photo state aligned with the persisted shipment JSON field.
+  useEffect(() => {
+    const existing = shipment.receiving_photos;
+    setReceivingPhotos(Array.isArray(existing) ? (existing as unknown as (string | TaggablePhoto)[]) : []);
+  }, [shipment.receiving_photos]);
 
   // Autosave handlers
   const handleAccountChange = (value: string) => {
@@ -165,9 +176,19 @@ export function Stage1DockIntake({
     autosave.saveField('account_id', value || null);
   };
 
-  const handleVendorNameChange = (value: string) => {
-    setVendorName(value);
-    autosave.saveField('vendor_name', value);
+  const handleCarrierNameChange = (value: string) => {
+    setCarrierName(value);
+    autosave.saveField('carrier', value || null);
+  };
+
+  const handleTrackingNumberChange = (value: string) => {
+    setTrackingNumber(value);
+    autosave.saveField('tracking_number', value || null);
+  };
+
+  const handlePoNumberChange = (value: string) => {
+    setPoNumber(value);
+    autosave.saveField('po_number', value || null);
   };
 
   const handleSignedPiecesChange = (value: number) => {
@@ -177,13 +198,71 @@ export function Stage1DockIntake({
 
   const handleNotesChange = (value: string) => {
     setNotes(value);
-    autosave.saveField('notes', value);
+    autosave.saveField('notes', value.trim() ? value : null);
   };
+
+  const handleNotesUserChange = (value: string) => {
+    setNotesTouched(true);
+    handleNotesChange(value);
+  };
+
+  // Pull default shipment notes from Account Settings → Default Notes
+  useEffect(() => {
+    if (!accountId || !profile?.tenant_id) {
+      setAccountDefaultShipmentNotes(null);
+      setAccountHighlightShipmentNotes(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await (supabase.from('accounts') as any)
+        .select('default_shipment_notes, highlight_shipment_notes')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', accountId)
+        .single();
+
+      if (cancelled) return;
+      if (error) {
+        console.warn('[Stage1DockIntake] Failed to load account default shipment notes:', error.message);
+        setAccountDefaultShipmentNotes(null);
+        setAccountHighlightShipmentNotes(false);
+        return;
+      }
+
+      setAccountDefaultShipmentNotes((data?.default_shipment_notes as string | null) ?? null);
+      setAccountHighlightShipmentNotes(!!data?.highlight_shipment_notes);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, profile?.tenant_id]);
+
+  // Prefill shipment notes if blank and user hasn't edited.
+  useEffect(() => {
+    if (!accountId) return;
+    if (notesTouched) return;
+    if (notes.trim()) return;
+    if (!accountDefaultShipmentNotes?.trim()) return;
+    handleNotesChange(accountDefaultShipmentNotes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, accountDefaultShipmentNotes, notesTouched, notes]);
 
   const handleBreakdownChange = (field: string, value: number) => {
     const newBreakdown = { ...breakdown, [field]: value };
     setBreakdown(newBreakdown);
     autosave.saveField('dock_intake_breakdown', newBreakdown);
+
+    // Signed pieces should reflect the unit breakdown when the breakdown is used.
+    // Important: set (do not add) to avoid double-counting when users adjust values.
+    const computedPieces =
+      (Number(newBreakdown.cartons) || 0) +
+      (Number(newBreakdown.pallets) || 0) +
+      (Number(newBreakdown.crates) || 0);
+    setSignedPieces(computedPieces);
+    autosave.saveField('signed_pieces', computedPieces);
   };
 
   // Sync local chips with persisted open exceptions
@@ -292,21 +371,77 @@ export function Stage1DockIntake({
     await upsertOpenException(code, note);
   };
 
-  // Photo upload handler
-  const handlePhotoUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-    category: ShipmentPhoto['category']
-  ) => {
-    const files = event.target.files;
-    if (!files) return;
+  const saveReceivingPhotosToShipment = async (nextPhotos: TaggablePhoto[]) => {
+    setReceivingPhotos(nextPhotos);
+    const { error } = await (supabase as any)
+      .from('shipments')
+      .update({ receiving_photos: nextPhotos as unknown as Json })
+      .eq('id', shipmentId);
+    if (error) throw error;
+  };
 
-    for (let i = 0; i < files.length; i++) {
-      await uploadPhoto(files[i], category);
+  const mergeAndSaveReceivingPhotoUrls = async (urls: string[]) => {
+    const existingUrls = getPhotoUrls(receivingPhotos);
+    const newUrls = urls.filter((u) => !existingUrls.includes(u));
+    const newTaggablePhotos: TaggablePhoto[] = newUrls.map((url) => ({
+      url,
+      isPrimary: false,
+      needsAttention: false,
+      isRepair: false,
+    }));
+    const normalizedExisting: TaggablePhoto[] = receivingPhotos.map((p) =>
+      typeof p === 'string'
+        ? { url: p, isPrimary: false, needsAttention: false, isRepair: false }
+        : p
+    );
+    const allPhotos = [...normalizedExisting, ...newTaggablePhotos];
+    await saveReceivingPhotosToShipment(allPhotos);
+  };
+
+  // Backwards compatibility:
+  // Earlier Dock Intake builds stored photos in shipment_photos (split into paperwork/condition).
+  // This UI now uses shipments.receiving_photos; bootstrap once so users don't "lose" existing photos.
+  useEffect(() => {
+    if (legacyPhotosBootstrapped) return;
+    if (!profile?.tenant_id) return;
+
+    // If we already have photos on the shipment JSON field, nothing to do.
+    if (getPhotoUrls(receivingPhotos).length > 0) {
+      setLegacyPhotosBootstrapped(true);
+      return;
     }
 
-    // Reset input
-    event.target.value = '';
-  };
+    // Mark attempted immediately to prevent duplicate fetches.
+    setLegacyPhotosBootstrapped(true);
+
+    const bootstrap = async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('shipment_photos')
+          .select('storage_key')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('shipment_id', shipmentId)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        const urls = (data || [])
+          .map((p: { storage_key: string }) => {
+            const { data: urlData } = supabase.storage.from('photos').getPublicUrl(p.storage_key);
+            return urlData?.publicUrl || '';
+          })
+          .filter((u: string) => !!u);
+
+        if (urls.length > 0) {
+          await mergeAndSaveReceivingPhotoUrls(urls);
+        }
+      } catch (err) {
+        console.warn('[Stage1DockIntake] legacy shipment_photos bootstrap failed:', err);
+      }
+    };
+
+    void bootstrap();
+  }, [legacyPhotosBootstrapped, profile?.tenant_id, shipmentId, receivingPhotos]);
 
   // Signature handlers
   const handleSignatureComplete = async (data: string, name: string) => {
@@ -341,7 +476,7 @@ export function Stage1DockIntake({
   // Validation
   const validate = (): string[] => {
     const errors: string[] = [];
-    if (!accountId) errors.push('Account is required (or use UNIDENTIFIED SHIPMENT)');
+    if (!accountId) errors.push('Account is required');
     if (signedPieces <= 0) errors.push('Signed pieces must be greater than 0');
     if (exceptions.length === 0) errors.push('At least one exception selection is required');
     if (exceptions.includes('REFUSED') && !exceptionNotes.REFUSED?.trim()) {
@@ -350,8 +485,7 @@ export function Stage1DockIntake({
     if (exceptions.includes('OTHER') && !exceptionNotes.OTHER?.trim()) {
       errors.push('Other requires a note');
     }
-    if (paperworkCount < 1) errors.push('At least 1 paperwork photo is required');
-    if (conditionCount < 1) errors.push('At least 1 condition photo is required');
+    if (getPhotoUrls(receivingPhotos).length < 1) errors.push('At least 1 photo is required');
     return errors;
   };
 
@@ -378,7 +512,6 @@ export function Stage1DockIntake({
       const updateData: Record<string, unknown> = {
         inbound_status: 'stage1_complete',
         account_id: accountId || null,
-        vendor_name: vendorName,
         signed_pieces: signedPieces,
         notes: notes || null,
         dock_intake_breakdown: breakdown,
@@ -421,7 +554,7 @@ export function Stage1DockIntake({
               <CardTitle className="flex items-center gap-2">
                 <MaterialIcon name="local_shipping" size="md" className="text-primary" />
                 Stage 1 — Dock Intake
-                <Badge variant="outline">{shipmentNumber}</Badge>
+                <Badge variant="outline" className="font-mono whitespace-nowrap">{shipmentNumber}</Badge>
                 <ShipmentExceptionBadge
                   shipmentId={shipmentId}
                   onClick={onOpenExceptions}
@@ -441,7 +574,7 @@ export function Stage1DockIntake({
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <MaterialIcon name="business" size="sm" />
-            Shipment Details + Summary
+            Shipment Summary
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -449,83 +582,67 @@ export function Stage1DockIntake({
             <Label>
               Account <span className="text-red-500">*</span>
             </Label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <AccountSelect
-                value={accountId}
-                onChange={handleAccountChange}
-                placeholder="Select account..."
-                clearable={false}
-                className="w-full"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={async () => {
-                  const ensuredId = unidentifiedAccountId || await ensureUnidentifiedAccount(profile?.tenant_id);
-                  if (ensuredId) {
-                    handleAccountChange(ensuredId);
-                    return;
-                  }
-                  toast({
-                    variant: 'destructive',
-                    title: 'Unidentified account unavailable',
-                    description: 'Could not resolve UNIDENTIFIED SHIPMENT account.',
-                  });
-                }}
-                disabled={ensuringUnidentified}
-              >
-                {ensuringUnidentified ? (
-                  <MaterialIcon name="progress_activity" size="sm" className="mr-1 animate-spin" />
-                ) : (
-                  <MaterialIcon name="help_outline" size="sm" className="mr-1" />
-                )}
-                Use UNIDENTIFIED
-              </Button>
-            </div>
-            {accountRequiredLocked && (
-              <p className="text-xs text-muted-foreground">
-                Select an account to unlock the rest of the intake form.
-              </p>
-            )}
+            <AccountSelect
+              value={accountId}
+              onChange={handleAccountChange}
+              placeholder="Select account..."
+              clearable={false}
+              className="w-full"
+            />
           </div>
 
           <Separator />
 
-          <div className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label htmlFor="vendor_name">
-                Vendor Name
-              </Label>
+              <Label htmlFor="carrier_name">Carrier Name</Label>
               <Input
-                id="vendor_name"
-                placeholder="Enter vendor name"
-                value={vendorName}
-                onChange={(e) => handleVendorNameChange(e.target.value)}
-                disabled={accountRequiredLocked}
+                id="carrier_name"
+                placeholder="Enter carrier..."
+                value={carrierName}
+                onChange={(e) => handleCarrierNameChange(e.target.value)}
               />
             </div>
-
-            <Separator />
-
             <div className="space-y-2">
-              <div className="flex items-center gap-1 justify-center">
-                <Label htmlFor="signed_pieces">
-                  Signed Pieces <span className="text-red-500">*</span>
-                </Label>
-                <HelpTip
-                  tooltip="The number of pieces counted and signed for at the dock. Tap the number to type a value directly, or use +/- buttons."
-                  pageKey="receiving.stage1"
-                  fieldKey="signed_pieces"
-                />
-              </div>
-              <BigCounter
-                id="signed_pieces"
-                value={signedPieces}
-                onChange={handleSignedPiecesChange}
-                min={0}
-                step={1}
+              <Label htmlFor="tracking_number">Tracking #</Label>
+              <Input
+                id="tracking_number"
+                placeholder="Enter tracking..."
+                value={trackingNumber}
+                onChange={(e) => handleTrackingNumberChange(e.target.value)}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="po_number">Reference / PO #</Label>
+              <Input
+                id="po_number"
+                placeholder="Enter reference..."
+                value={poNumber}
+                onChange={(e) => handlePoNumberChange(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 justify-center">
+              <Label htmlFor="signed_pieces">
+                Signed Pieces <span className="text-red-500">*</span>
+              </Label>
+              <HelpTip
+                tooltip="The number of pieces counted and signed for at the dock. Tap the number to type a value directly, or use +/- buttons."
+                pageKey="receiving.stage1"
+                fieldKey="signed_pieces"
+              />
+            </div>
+            <BigCounter
+              id="signed_pieces"
+              value={signedPieces}
+              onChange={handleSignedPiecesChange}
+              min={0}
+              step={1}
+            />
           </div>
 
         </CardContent>
@@ -538,13 +655,13 @@ export function Stage1DockIntake({
             <MaterialIcon name="inventory" size="sm" />
             Unit Breakdown (optional)
             <HelpTip
-              tooltip="Break down signed pieces by packaging type. Does not need to sum to signed pieces."
+              tooltip="Enter cartons/pallets/crates. Signed pieces will auto-calculate as the sum when you use this breakdown (you can still type signed pieces directly)."
               pageKey="receiving.stage1"
               fieldKey="unit_breakdown"
             />
           </CardTitle>
         </CardHeader>
-        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+        <CardContent>
           <div className="grid gap-4 grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="cartons">Cartons</Label>
@@ -554,7 +671,6 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.cartons || ''}
                 onChange={(e) => handleBreakdownChange('cartons', parseInt(e.target.value) || 0)}
-                disabled={accountRequiredLocked}
               />
             </div>
             <div className="space-y-2">
@@ -565,7 +681,6 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.pallets || ''}
                 onChange={(e) => handleBreakdownChange('pallets', parseInt(e.target.value) || 0)}
-                disabled={accountRequiredLocked}
               />
             </div>
             <div className="space-y-2">
@@ -576,7 +691,6 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.crates || ''}
                 onChange={(e) => handleBreakdownChange('crates', parseInt(e.target.value) || 0)}
-                disabled={accountRequiredLocked}
               />
             </div>
           </div>
@@ -596,10 +710,7 @@ export function Stage1DockIntake({
             />
           </CardTitle>
         </CardHeader>
-        <CardContent
-          className={accountRequiredLocked ? "space-y-4 opacity-50 pointer-events-none" : "space-y-4"}
-          aria-disabled={accountRequiredLocked}
-        >
+        <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {EXCEPTION_OPTIONS.map((opt) => {
               const isSelected = exceptions.includes(opt.value);
@@ -610,7 +721,6 @@ export function Stage1DockIntake({
                   size="sm"
                   className="gap-1.5"
                   onClick={() => toggleException(opt.value)}
-                  disabled={accountRequiredLocked}
                 >
                   <MaterialIcon name={opt.icon} size="sm" />
                   {opt.label}
@@ -638,134 +748,92 @@ export function Stage1DockIntake({
                   value={exceptionNotes[ex] || ''}
                   onChange={(e) => setExceptionNotes((prev) => ({ ...prev, [ex]: e.target.value }))}
                   onBlur={() => void handleExceptionNoteBlur(ex)}
-                  disabled={accountRequiredLocked}
                 />
               </div>
             ))}
         </CardContent>
       </Card>
 
-      {/* Photos */}
-      <div
-        className={accountRequiredLocked ? "grid gap-6 md:grid-cols-2 opacity-50 pointer-events-none" : "grid gap-6 md:grid-cols-2"}
-        aria-disabled={accountRequiredLocked}
-      >
-        {/* Paperwork Photos */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MaterialIcon name="description" size="sm" />
-                Paperwork Photos <span className="text-red-500">*</span>
-                <Badge variant={paperworkCount >= 1 ? 'default' : 'destructive'}>
-                  {paperworkCount}
-                </Badge>
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => paperworkInputRef.current?.click()}
-                disabled={accountRequiredLocked}
-              >
-                <MaterialIcon name="add_a_photo" size="sm" className="mr-1" />
-                Add
-              </Button>
-              <input
-                ref={paperworkInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                capture="environment"
-                className="hidden"
-                onChange={(e) => handlePhotoUpload(e, 'PAPERWORK')}
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {photos.filter(p => p.category === 'PAPERWORK').length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {photos.filter(p => p.category === 'PAPERWORK').map((photo) => (
-                  <div key={photo.id} className="relative group aspect-square rounded-md overflow-hidden border">
-                    <img
-                      src={photo.url}
-                      alt={photo.file_name}
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      onClick={() => deletePhoto(photo.id)}
-                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <MaterialIcon name="close" size="sm" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No paperwork photos yet. At least 1 required.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Condition Photos */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MaterialIcon name="photo_camera" size="sm" />
-                Condition Photos <span className="text-red-500">*</span>
-                <Badge variant={conditionCount >= 1 ? 'default' : 'destructive'}>
-                  {conditionCount}
-                </Badge>
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => conditionInputRef.current?.click()}
-                disabled={accountRequiredLocked}
-              >
-                <MaterialIcon name="add_a_photo" size="sm" className="mr-1" />
-                Add
-              </Button>
-              <input
-                ref={conditionInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                capture="environment"
-                className="hidden"
-                onChange={(e) => handlePhotoUpload(e, 'CONDITION')}
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {photos.filter(p => p.category === 'CONDITION').length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {photos.filter(p => p.category === 'CONDITION').map((photo) => (
-                  <div key={photo.id} className="relative group aspect-square rounded-md overflow-hidden border">
-                    <img
-                      src={photo.url}
-                      alt={photo.file_name}
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      onClick={() => deletePhoto(photo.id)}
-                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <MaterialIcon name="close" size="sm" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No condition photos yet. At least 1 required.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Photos (single field — legacy incoming shipments style) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <MaterialIcon name="photo_camera" size="sm" />
+              Photos <span className="text-red-500">*</span>
+              <Badge variant={getPhotoUrls(receivingPhotos).length >= 1 ? 'default' : 'destructive'}>
+                {getPhotoUrls(receivingPhotos).length}
+              </Badge>
+            </CardTitle>
+            <CardDescription>Capture or upload photos (paperwork, condition, etc.).</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <PhotoScannerButton
+              entityType="shipment"
+              entityId={shipmentId}
+              tenantId={profile?.tenant_id}
+              existingPhotos={getPhotoUrls(receivingPhotos)}
+              maxPhotos={20}
+              size="sm"
+              label="Add"
+              showCount={false}
+              onPhotosSaved={async (urls) => {
+                try {
+                  await mergeAndSaveReceivingPhotoUrls(urls);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Photo Error',
+                    description: err?.message || 'Failed to save photos',
+                  });
+                }
+              }}
+            />
+            <PhotoUploadButton
+              entityType="shipment"
+              entityId={shipmentId}
+              tenantId={profile?.tenant_id}
+              existingPhotos={getPhotoUrls(receivingPhotos)}
+              maxPhotos={20}
+              size="sm"
+              onPhotosSaved={async (urls) => {
+                try {
+                  await mergeAndSaveReceivingPhotoUrls(urls);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Photo Error',
+                    description: err?.message || 'Failed to save photos',
+                  });
+                }
+              }}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {getPhotoUrls(receivingPhotos).length > 0 ? (
+            <TaggablePhotoGrid
+              photos={receivingPhotos}
+              enableTagging={true}
+              onPhotosChange={async (photos) => {
+                try {
+                  await saveReceivingPhotosToShipment(photos);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Photo Error',
+                    description: err?.message || 'Failed to save photos',
+                  });
+                }
+              }}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No photos yet. At least 1 required.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Documents */}
       <Card>
@@ -779,11 +847,17 @@ export function Stage1DockIntake({
             Capture or upload delivery paperwork and supporting intake documents.
           </CardDescription>
         </CardHeader>
-        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+        <CardContent>
           <DocumentCapture
             context={{ type: 'shipment', shipmentId }}
             maxDocuments={12}
             ocrEnabled={true}
+            onDocumentAdded={() => {
+              void refetchDocuments();
+            }}
+            onDocumentRemoved={() => {
+              void refetchDocuments();
+            }}
           />
         </CardContent>
       </Card>
@@ -796,7 +870,7 @@ export function Stage1DockIntake({
             Signature (optional)
           </CardTitle>
         </CardHeader>
-        <CardContent className={accountRequiredLocked ? "opacity-50 pointer-events-none" : undefined} aria-disabled={accountRequiredLocked}>
+        <CardContent>
           {signatureData ? (
             <div className="space-y-2">
               <div className="border rounded-md p-2 bg-white">
@@ -827,12 +901,17 @@ export function Stage1DockIntake({
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {accountHighlightShipmentNotes && accountDefaultShipmentNotes?.trim() && (
+            <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="font-medium mb-1">Default Shipment Notes</div>
+              <p className="whitespace-pre-wrap">{accountDefaultShipmentNotes}</p>
+            </div>
+          )}
           <Textarea
             placeholder="Add any notes about this delivery..."
             value={notes}
-            onChange={(e) => handleNotesChange(e.target.value)}
+            onChange={(e) => handleNotesUserChange(e.target.value)}
             rows={3}
-            disabled={accountRequiredLocked}
           />
         </CardContent>
       </Card>
@@ -842,7 +921,7 @@ export function Stage1DockIntake({
         <Button
           size="lg"
           onClick={handleComplete}
-          disabled={completing || accountRequiredLocked}
+          disabled={completing}
           className="gap-2"
         >
           {completing ? (

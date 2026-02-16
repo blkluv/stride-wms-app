@@ -19,6 +19,8 @@ export interface UploadOptions {
   notes?: string;
   isSensitive?: boolean;
   enableOcr?: boolean;
+  /** Overrides stored mime_type + storage contentType (defaults to application/pdf) */
+  mimeType?: string;
 }
 
 export interface UploadResult {
@@ -120,29 +122,31 @@ export async function uploadDocument(
   const fileName = options.fileName || `scan_${Date.now()}.pdf`;
   const storageKey = generateStoragePath(tenantId, contextType, contextId, fileName);
   
-  // Get the PDF blob
-  let pdfBlob: Blob;
+  const mimeType = options.mimeType || 'application/pdf';
+
+  // Get the file blob (PDF for scans, but may be other types for uploads)
+  let fileBlob: Blob;
   if (scanOutput.pdfBlob) {
-    pdfBlob = scanOutput.pdfBlob;
+    fileBlob = scanOutput.pdfBlob;
   } else if (scanOutput.pdfUri) {
     // Fetch blob from URI
     const response = await fetch(scanOutput.pdfUri);
-    pdfBlob = await response.blob();
+    fileBlob = await response.blob();
   } else {
-    throw new Error('No PDF data available');
+    throw new Error('No file data available');
   }
   
   // Upload to storage
   onProgress?.({ 
     stage: 'uploading', 
     percentage: 25,
-    totalBytes: pdfBlob.size 
+    totalBytes: fileBlob.size 
   });
   
   const { error: uploadError } = await supabase.storage
     .from('documents-private')
-    .upload(storageKey, pdfBlob, {
-      contentType: 'application/pdf',
+    .upload(storageKey, fileBlob, {
+      contentType: mimeType,
       upsert: false,
     });
   
@@ -185,9 +189,9 @@ export async function uploadDocument(
     context_id: contextId,
     file_name: fileName,
     storage_key: storageKey,
-    file_size: pdfBlob.size,
+    file_size: fileBlob.size,
     page_count: scanOutput.pageCount,
-    mime_type: 'application/pdf',
+    mime_type: mimeType,
     ocr_text: ocrResult?.fullText || null,
     ocr_pages: ocrResult?.pages ? JSON.parse(JSON.stringify(ocrResult.pages)) : null,
     ocr_status: ocrResult ? 'completed' : 'skipped',

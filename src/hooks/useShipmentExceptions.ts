@@ -26,7 +26,7 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   PIECES_MISMATCH: { label: 'Item Count Mismatch', icon: 'tag' },
   VENDOR_MISMATCH: { label: 'Vendor Mismatch', icon: 'storefront' },
   DESCRIPTION_MISMATCH: { label: 'Description Mismatch', icon: 'description' },
-  SIDEMARK_MISMATCH: { label: 'Side Mark Mismatch', icon: 'sell' },
+  SIDEMARK_MISMATCH: { label: 'Sidemark Mismatch', icon: 'sell' },
   SHIPPER_MISMATCH: { label: 'Shipper Mismatch', icon: 'local_shipping' },
   TRACKING_MISMATCH: { label: 'Tracking Mismatch', icon: 'qr_code' },
   REFERENCE_MISMATCH: { label: 'Reference Mismatch', icon: 'fingerprint' },
@@ -38,6 +38,16 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   CRUSHED_TORN_CARTONS: { label: 'Crushed/Torn Cartons', icon: 'inventory_2' },
   OTHER: { label: 'Other', icon: 'more_horiz', requiresNote: true },
 };
+
+const MATCHING_DISCREPANCY_CODES: ReadonlySet<ShipmentExceptionCode> = new Set([
+  'PIECES_MISMATCH',
+  'VENDOR_MISMATCH',
+  'DESCRIPTION_MISMATCH',
+  'SIDEMARK_MISMATCH',
+  'SHIPPER_MISMATCH',
+  'TRACKING_MISMATCH',
+  'REFERENCE_MISMATCH',
+]);
 
 export interface ShipmentExceptionRow {
   id: string;
@@ -68,11 +78,15 @@ interface UseShipmentExceptionsReturn {
   reopenException: (id: string) => Promise<boolean>;
 }
 
-export function useShipmentExceptions(shipmentId: string | undefined): UseShipmentExceptionsReturn {
+export function useShipmentExceptions(
+  shipmentId: string | undefined,
+  options?: { includeMatchingDiscrepancies?: boolean }
+): UseShipmentExceptionsReturn {
   const { profile } = useAuth();
   const { toast } = useToast();
   const [exceptions, setExceptions] = useState<ShipmentExceptionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const includeMatchingDiscrepancies = options?.includeMatchingDiscrepancies ?? false;
 
   const refetch = useCallback(async () => {
     if (!shipmentId || !profile?.tenant_id) return;
@@ -236,13 +250,18 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
     }
   }, [profile?.id, toast]);
 
+  const visibleExceptions = useMemo(() => {
+    if (includeMatchingDiscrepancies) return exceptions;
+    return exceptions.filter((e) => !MATCHING_DISCREPANCY_CODES.has(e.code));
+  }, [exceptions, includeMatchingDiscrepancies]);
+
   const openExceptions = useMemo(
-    () => exceptions.filter((e) => e.status === 'open'),
-    [exceptions]
+    () => visibleExceptions.filter((e) => e.status === 'open'),
+    [visibleExceptions]
   );
 
   return {
-    exceptions,
+    exceptions: visibleExceptions,
     openExceptions,
     openCount: openExceptions.length,
     loading,

@@ -303,7 +303,7 @@ function buildSystemPrompt(entityContext: string): string {
 ## Entity Lookup Tools
 You have access to tools to search for and list entities:
 - lookup_task: Search tasks by number (TSK-XXXXX) or keywords
-- lookup_shipment: Search shipments by number (SHP-XXXXX), tracking number, or keywords
+- lookup_shipment: Search shipments by number (SHP/MAN/EXP/INT/OUT-XXXXX), tracking number, or keywords
 - lookup_repair_quote: Search repair quotes by number (RPQ-XXXXX) or keywords
 - lookup_item: Search items by number (ITM-XXXXX), SKU, or name
 - lookup_quote: Search quotes by number (EST-XXXXX) or account name
