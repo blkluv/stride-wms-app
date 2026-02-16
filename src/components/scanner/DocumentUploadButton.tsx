@@ -69,6 +69,7 @@ export function DocumentUploadButton({
           const result = await uploadDocument(
             {
               pdfUri,
+              pdfBlob: file,
               pageCount: 1,
               pageImageUris: [],
             },
@@ -78,6 +79,7 @@ export function DocumentUploadButton({
               fileName: file.name,
               label: file.name.replace(/\.[^/.]+$/, ''),
               enableOcr: ocrEnabled,
+              mimeType: file.type,
             }
           );
 
@@ -90,6 +92,7 @@ export function DocumentUploadButton({
           const result = await uploadDocument(
             {
               pdfUri: fileUri,
+              pdfBlob: file,
               pageCount: 1,
               pageImageUris: [],
             },
@@ -99,6 +102,7 @@ export function DocumentUploadButton({
               fileName: file.name,
               label: file.name.replace(/\.[^/.]+$/, ''),
               enableOcr: false,
+              mimeType: file.type || 'application/octet-stream',
             }
           );
 

@@ -144,7 +144,7 @@ export function Stage1DockIntake({
     refetch: refetchExceptions,
   } = useShipmentExceptions(shipmentId);
 
-  const { documents } = useDocuments({ contextType: 'shipment', contextId: shipmentId });
+  const { documents, refetch: refetchDocuments } = useDocuments({ contextType: 'shipment', contextId: shipmentId });
 
   // Emit matching params whenever relevant fields change
   useEffect(() => {
@@ -856,6 +856,12 @@ export function Stage1DockIntake({
             context={{ type: 'shipment', shipmentId }}
             maxDocuments={12}
             ocrEnabled={true}
+            onDocumentAdded={() => {
+              void refetchDocuments();
+            }}
+            onDocumentRemoved={() => {
+              void refetchDocuments();
+            }}
           />
         </CardContent>
       </Card>

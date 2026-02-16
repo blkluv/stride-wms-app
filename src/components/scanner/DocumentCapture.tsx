@@ -13,7 +13,7 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { DocumentScanner } from './DocumentScanner';
 import { uploadDocument } from '@/lib/scanner/uploadService';
-import { fileToDataUrl, resizeImage, imagesToPdf, createWebScanOutput } from '@/lib/scanner/webScanner';
+import { fileToDataUrl, resizeImage, createWebScanOutput } from '@/lib/scanner/webScanner';
 import type { DocumentContext, Document } from '@/lib/scanner/types';
 
 interface DocumentCaptureProps {
@@ -97,7 +97,7 @@ export function DocumentCapture({
           const resized = await resizeImage(dataUrl, 1920, 1920, 0.85);
           const scanOutput = await createWebScanOutput([resized]);
           
-          await uploadDocument(
+          const result = await uploadDocument(
             scanOutput,
             context,
             null,
@@ -106,6 +106,7 @@ export function DocumentCapture({
               enableOcr: ocrEnabled,
             }
           );
+          onDocumentAdded?.(result.documentId);
           
           // Cleanup blob URL
           if (scanOutput.pdfUri?.startsWith('blob:')) {
@@ -116,9 +117,10 @@ export function DocumentCapture({
           const pdfBlob = file;
           const pdfUri = URL.createObjectURL(pdfBlob);
           
-          await uploadDocument(
+          const result = await uploadDocument(
             {
               pdfUri,
+              pdfBlob,
               pageCount: 1, // We don't know actual page count
               pageImageUris: [],
             },
@@ -128,17 +130,20 @@ export function DocumentCapture({
               fileName: file.name,
               label: file.name.replace(/\.[^/.]+$/, ''),
               enableOcr: ocrEnabled,
+              mimeType: file.type,
             }
           );
+          onDocumentAdded?.(result.documentId);
           
           URL.revokeObjectURL(pdfUri);
         } else {
           // For other file types (Word, Excel, etc.)
           const fileUri = URL.createObjectURL(file);
           
-          await uploadDocument(
+          const result = await uploadDocument(
             {
               pdfUri: fileUri,
+              pdfBlob: file,
               pageCount: 1,
               pageImageUris: [],
             },
@@ -148,8 +153,10 @@ export function DocumentCapture({
               fileName: file.name,
               label: file.name.replace(/\.[^/.]+$/, ''),
               enableOcr: false, // OCR only works on images/PDFs
+              mimeType: file.type || 'application/octet-stream',
             }
           );
+          onDocumentAdded?.(result.documentId);
           
           URL.revokeObjectURL(fileUri);
         }

@@ -11,6 +11,11 @@ export interface WebScannerOptions {
   imageQuality?: number;
   pageWidth?: number;
   pageHeight?: number;
+  /**
+   * Document scanning should default to a "scanner" look (black & white).
+   * This keeps PDFs readable and smaller than full-color images.
+   */
+  filter?: 'color' | 'grayscale' | 'bw';
 }
 
 const DEFAULT_OPTIONS: Required<WebScannerOptions> = {
@@ -18,7 +23,61 @@ const DEFAULT_OPTIONS: Required<WebScannerOptions> = {
   imageQuality: 0.85,
   pageWidth: 210, // A4 width in mm
   pageHeight: 297, // A4 height in mm
+  filter: 'bw',
 };
+
+async function applyScanFilter(
+  dataUrl: string,
+  filter: WebScannerOptions['filter'],
+  quality: number
+): Promise<string> {
+  if (!filter || filter === 'color') return dataUrl;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { data } = imageData;
+
+      // Simple grayscale + optional thresholding for "black & white".
+      // Threshold tuned for paperwork; avoids too-aggressive clipping.
+      const threshold = 185;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i] ?? 0;
+        const g = data[i + 1] ?? 0;
+        const b = data[i + 2] ?? 0;
+        const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+
+        if (filter === 'bw') {
+          const v = gray > threshold ? 255 : 0;
+          data[i] = v;
+          data[i + 1] = v;
+          data[i + 2] = v;
+        } else {
+          data[i] = gray;
+          data[i + 1] = gray;
+          data[i + 2] = gray;
+        }
+        // alpha stays as-is
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 
 /**
  * Capture image from camera stream
@@ -85,7 +144,8 @@ export async function imagesToPdf(
   });
   
   for (let i = 0; i < imageDataUrls.length; i++) {
-    const dataUrl = imageDataUrls[i];
+    const rawDataUrl = imageDataUrls[i];
+    const dataUrl = await applyScanFilter(rawDataUrl, opts.filter, opts.imageQuality);
     const dimensions = await getImageDimensions(dataUrl);
     
     // Calculate scaling to fit A4 page while maintaining aspect ratio
