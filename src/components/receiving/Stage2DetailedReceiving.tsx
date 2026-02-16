@@ -31,7 +31,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { HelpTip } from '@/components/ui/help-tip';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -39,6 +38,7 @@ import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
 import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
+import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
@@ -76,14 +76,19 @@ interface Stage2DetailedReceivingProps {
     account_id: string | null;
     warehouse_id: string | null;
     signed_pieces: number | null;
+    received_pieces: number | null;
     vendor_name: string | null;
     sidemark_id: string | null;
     shipment_exception_type?: string | null;
   };
+  /** Optional live Dock Count (from Stage 1 edits while Stage 2 is open) */
+  dockCount?: number | null;
   onComplete: () => void;
   onRefresh: () => void;
   /** Called when item details change to refine matching panel candidates */
   onItemMatchingParamsChange?: (params: ItemMatchingParams) => void;
+  /** Called whenever Stage 2 row count changes (Entry Count) */
+  onEntryCountChange?: (count: number) => void;
   onOpenExceptions?: () => void;
 }
 
@@ -91,9 +96,11 @@ export function Stage2DetailedReceiving({
   shipmentId,
   shipmentNumber,
   shipment,
+  dockCount: dockCountOverride,
   onComplete,
   onRefresh,
   onItemMatchingParamsChange,
+  onEntryCountChange,
   onOpenExceptions,
 }: Stage2DetailedReceivingProps) {
   const { profile } = useAuth();
@@ -104,13 +111,19 @@ export function Stage2DetailedReceiving({
   // Items
   const [items, setItems] = useState<ReceivedItem[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [receivedPieces, setReceivedPieces] = useState<number>(0);
+  const entryCount = items.length;
+  const dockCount = dockCountOverride ?? shipment.received_pieces ?? null;
   const { classes, loading: classesLoading } = useClasses();
   const { flagServiceEvents, loading: flagServicesLoading } = useServiceEvents();
   const { locations: allLocations } = useLocations(shipment.warehouse_id || undefined);
 
   // Fallback location when RPC can't resolve default
   const [fallbackLocationId, setFallbackLocationId] = useState<string | null>(null);
+
+  // Emit Entry Count (row count) for Stage 1 display.
+  useEffect(() => {
+    onEntryCountChange?.(entryCount);
+  }, [entryCount, onEntryCountChange]);
 
   // Emit item-level matching params whenever items change
   useEffect(() => {
@@ -186,7 +199,6 @@ export function Stage2DetailedReceiving({
         packages: 1,
       }));
       setItems(mapped);
-      setReceivedPieces(mapped.reduce((sum, i) => sum + i.received_quantity, 0));
     }
   };
 
@@ -225,11 +237,7 @@ export function Stage2DetailedReceiving({
       sourceShipmentItemId: item.id,
       packages: 1,
     }));
-    setItems(prev => {
-      const next = [...prev, ...newItems];
-      updateReceivedPieces(next);
-      return next;
-    });
+    setItems((prev) => [...prev, ...newItems]);
   };
 
   // Update item field
@@ -237,7 +245,6 @@ export function Stage2DetailedReceiving({
     setItems(prev => {
       const updated = prev.map(i => (i.id === id ? { ...i, [field]: value } : i));
       if (field === 'received_quantity') {
-        updateReceivedPieces(updated);
         // Show container placement prompt when qty > 1
         const qty = value as number;
         if (qty > 1) {
@@ -263,9 +270,7 @@ export function Stage2DetailedReceiving({
         sourceShipmentItemId: undefined,
         allocationId: undefined,
       };
-      const next = [...prev, copy];
-      updateReceivedPieces(next);
-      return next;
+      return [...prev, copy];
     });
   };
 
@@ -347,7 +352,6 @@ export function Stage2DetailedReceiving({
 
     setItems(prev => {
       const updated = prev.filter(i => i.id !== item.id);
-      updateReceivedPieces(updated);
       return updated;
     });
     setExpandedRows(prev => {
@@ -359,15 +363,13 @@ export function Stage2DetailedReceiving({
     toast({ title: 'Removed', description: 'Item removed from receiving.' });
   };
 
-  const updateReceivedPieces = (currentItems: ReceivedItem[]) => {
-    const total = currentItems.reduce((sum, i) => sum + i.received_quantity, 0);
-    setReceivedPieces(total);
-  };
-
   // Validate before completion
   const validateCompletion = (): string[] => {
     const errors: string[] = [];
-    if (receivedPieces <= 0) errors.push('Received pieces must be greater than 0');
+    const dock = Number(dockCount) || 0;
+    if (dock <= 0) {
+      errors.push('Dock Count must be greater than 0 (set in Stage 1)');
+    }
     if (items.length === 0 && !isAdmin) {
       errors.push('At least 1 item line is required (admin can override)');
     }
@@ -386,7 +388,7 @@ export function Stage2DetailedReceiving({
   };
 
   // Handle complete button
-  const handleCompleteClick = () => {
+  const handleCompleteClick = async () => {
     const errors = validateCompletion();
 
     // Allow admin override if only issue is no items
@@ -402,6 +404,61 @@ export function Stage2DetailedReceiving({
         description: errors.join('. '),
       });
       return;
+    }
+
+    // Stage 2 mismatch gating (Dock vs Entry): allow proceed only if corrected OR has exception+note.
+    if (profile?.tenant_id) {
+      const dock = Number(dockCount) || 0;
+      const entry = Number(entryCount) || 0;
+      const mismatch = dock > 0 && entry > 0 && dock !== entry;
+
+      if (mismatch) {
+        const requiredCode: ShipmentExceptionCode = entry > dock ? 'OVERAGE' : 'SHORTAGE';
+
+        try {
+          // Ensure any in-focus exception textarea persists its note before we validate against DB.
+          if (typeof document !== 'undefined') {
+            (document.activeElement as HTMLElement | null)?.blur?.();
+          }
+
+          const fetchNote = async () => {
+            const { data, error } = await (supabase as any)
+              .from('shipment_exceptions')
+              .select('note')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('status', 'open')
+              .eq('code', requiredCode)
+              .limit(1);
+
+            if (error) throw error;
+            return (((data?.[0]?.note as string | null) ?? '') as string).trim();
+          };
+
+          // If the user just typed a note and clicked Complete, the save can still be in-flight; retry once.
+          let note = await fetchNote();
+          if (!note) {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            note = await fetchNote();
+          }
+          if (!note) {
+            toast({
+              variant: 'destructive',
+              title: 'Counts Mismatch',
+              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note.`,
+            });
+            return;
+          }
+        } catch (err: any) {
+          console.error('[Stage2] mismatch check error:', err);
+          toast({
+            variant: 'destructive',
+            title: 'Could not validate mismatch',
+            description: err?.message || 'Failed to validate Dock vs Entry mismatch. Try again.',
+          });
+          return;
+        }
+      }
     }
 
     setShowCompleteDialog(true);
@@ -716,7 +773,6 @@ export function Stage2DetailedReceiving({
         .from('shipments')
         .update({
           inbound_status: 'closed',
-          received_pieces: receivedPieces,
           received_at: new Date().toISOString(),
         } as any)
         .eq('id', shipmentId);
@@ -742,7 +798,8 @@ export function Stage2DetailedReceiving({
         eventType: 'receiving_completed',
         eventLabel: 'Receiving completed (Stage 2)',
         details: {
-          received_pieces: receivedPieces,
+          dock_count: dockCount ?? null,
+          entry_count: entryCount,
           items_count: items.length,
         },
       });
@@ -805,46 +862,17 @@ export function Stage2DetailedReceiving({
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-sm">
-                Signed: {shipment.signed_pieces ?? '-'}
+                Carrier: {shipment.signed_pieces ?? '-'}
               </Badge>
-              <Badge variant={receivedPieces > 0 ? 'default' : 'outline'} className="text-sm">
-                Received: {receivedPieces}
+              <Badge variant="secondary" className="text-sm">
+                Dock: {dockCount ?? '-'}
+              </Badge>
+              <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="text-sm">
+                Entry: {entryCount}
               </Badge>
             </div>
           </div>
         </CardHeader>
-      </Card>
-
-      {/* Received Pieces */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <MaterialIcon name="pin" size="sm" />
-            Received Pieces <span className="text-red-500">*</span>
-            <HelpTip
-              tooltip="Total number of pieces received at dock intake stage 2."
-              pageKey="receiving.stage2"
-              fieldKey="received_pieces"
-            />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Input
-              type="number"
-              min={0}
-              value={receivedPieces || ''}
-              onChange={(e) => setReceivedPieces(parseInt(e.target.value) || 0)}
-              className="w-32"
-            />
-            {shipment.signed_pieces && receivedPieces !== shipment.signed_pieces && receivedPieces > 0 && (
-              <Badge variant="destructive" className="gap-1">
-                <MaterialIcon name="warning" size="sm" />
-                {receivedPieces > shipment.signed_pieces ? 'Over' : 'Short'} by {Math.abs(receivedPieces - shipment.signed_pieces)}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
       </Card>
 
       {/* Items Table */}
@@ -1051,7 +1079,7 @@ export function Stage2DetailedReceiving({
       <div className="flex flex-col sm:flex-row gap-3 justify-end">
         <Button
           size="lg"
-          onClick={handleCompleteClick}
+          onClick={() => void handleCompleteClick()}
           disabled={completing}
           className="gap-2"
         >
@@ -1088,21 +1116,25 @@ export function Stage2DetailedReceiving({
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="flex justify-between text-sm">
-              <span>Signed Pieces:</span>
+              <span>Carrier count:</span>
               <span className="font-medium">{shipment.signed_pieces ?? '-'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span>Received Pieces:</span>
-              <span className="font-medium">{receivedPieces}</span>
+              <span>Dock Count:</span>
+              <span className="font-medium">{dockCount ?? '-'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Entry Count:</span>
+              <span className="font-medium">{entryCount}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span>Items:</span>
               <span className="font-medium">{items.length}</span>
             </div>
-            {receivedPieces !== shipment.signed_pieces && shipment.signed_pieces && (
+            {typeof dockCount === 'number' && dockCount > 0 && entryCount > 0 && entryCount !== dockCount && (
               <div className="p-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
                 <MaterialIcon name="warning" size="sm" className="inline mr-1" />
-                Signed and received piece counts are different.
+                Dock Count and Entry Count are different.
               </div>
             )}
             <Separator />
