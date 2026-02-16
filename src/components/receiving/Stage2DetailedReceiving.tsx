@@ -392,7 +392,7 @@ export function Stage2DetailedReceiving({
     const errors = validateCompletion();
 
     // Allow admin override if only issue is no items
-    if (items.length === 0 && isAdmin) {
+    if (items.length === 0 && isAdmin && errors.length === 0) {
       setShowAdminOverride(true);
       return;
     }
