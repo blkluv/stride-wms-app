@@ -132,6 +132,7 @@ export function TaskDialog({
   useEffect(() => {
     if (!open) {
       initializedRef.current = false;
+      setItemDropdownOpen(false);
       return;
     }
 
@@ -177,6 +178,7 @@ export function TaskDialog({
       setSelectedItems([]);
       setAccountItems([]);
       setItemSearchQuery('');
+      setItemDropdownOpen(false);
     }
 
     initializedRef.current = true;
