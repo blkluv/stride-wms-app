@@ -53,6 +53,7 @@ const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string }[]
 
 export interface MatchingParamsUpdate {
   pieces: number;
+  dockCount: number;
   accountId: string | null;
 }
 
@@ -82,6 +83,8 @@ interface Stage1DockIntakeProps {
   onOpenExceptions?: () => void;
   /** Stage 2 row-count (each row = 1 carton/package/piece) */
   entryCount?: number;
+  /** Draft-only: show the "Complete Dock Intake" action */
+  showCompleteButton?: boolean;
 }
 
 export function Stage1DockIntake({
@@ -93,6 +96,7 @@ export function Stage1DockIntake({
   onMatchingParamsChange,
   onOpenExceptions,
   entryCount = 0,
+  showCompleteButton = true,
 }: Stage1DockIntakeProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -155,9 +159,10 @@ export function Stage1DockIntake({
   useEffect(() => {
     onMatchingParamsChange?.({
       pieces: signedPieces,
+      dockCount,
       accountId: accountId || null,
     });
-  }, [signedPieces, accountId, onMatchingParamsChange]);
+  }, [signedPieces, dockCount, accountId, onMatchingParamsChange]);
 
   useEffect(() => {
     setAccountId(shipment.account_id || '');
@@ -540,6 +545,15 @@ export function Stage1DockIntake({
         errors.push(`Exception note required: ${SHIPMENT_EXCEPTION_CODE_META[ex].label}`);
       }
     }
+    // Carrier vs Dock mismatch: block completion until corrected OR exception+note is present.
+    if (signedPieces > 0 && dockCount > 0 && signedPieces !== dockCount) {
+      const required: ShipmentExceptionCode = dockCount > signedPieces ? 'OVERAGE' : 'SHORTAGE';
+      if (!exceptionNotes[required]?.trim()) {
+        errors.push(
+          `Counts mismatch requires a ${SHIPMENT_EXCEPTION_CODE_META[required].label} exception note (or fix the counts).`
+        );
+      }
+    }
     if (getPhotoUrls(receivingPhotos).length < 1) errors.push('At least 1 photo is required');
     return errors;
   };
@@ -561,6 +575,20 @@ export function Stage1DockIntake({
     try {
       // Flush any pending autosave
       await autosave.saveNow();
+
+      // Persist exception notes even if the user hasn't blurred the textarea yet.
+      if (exceptions.length > 0) {
+        const results = await Promise.all(
+          exceptions.map(async (code) => {
+            const note = exceptionNotes[code]?.trim() || null;
+            return upsertOpenException(code, note);
+          })
+        );
+
+        if (results.some((r) => !r)) {
+          throw new Error('Failed to save exceptions');
+        }
+      }
 
       // Update shipment: set inbound_status to stage1_complete
       // Include all current field values to prevent stale autosave overwrites
@@ -1023,21 +1051,23 @@ export function Stage1DockIntake({
       </Card>
 
       {/* Complete Stage 1 */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-end">
-        <Button
-          size="lg"
-          onClick={handleComplete}
-          disabled={completing}
-          className="gap-2"
-        >
-          {completing ? (
-            <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-          ) : (
-            <MaterialIcon name="check_circle" size="sm" />
-          )}
-          Complete Dock Intake
-        </Button>
-      </div>
+      {showCompleteButton ? (
+        <div className="flex flex-col sm:flex-row gap-3 justify-end">
+          <Button
+            size="lg"
+            onClick={handleComplete}
+            disabled={completing}
+            className="gap-2"
+          >
+            {completing ? (
+              <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+            ) : (
+              <MaterialIcon name="check_circle" size="sm" />
+            )}
+            Complete Dock Intake
+          </Button>
+        </div>
+      ) : null}
 
       {/* Required Exception Note Dialog */}
       <Dialog open={!!pendingRequiredNoteCode} onOpenChange={(open) => !open && setPendingRequiredNoteCode(null)}>
