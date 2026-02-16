@@ -47,6 +47,9 @@ import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { createCharges } from '@/services/billing';
+import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
+import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 
 // ============================================
 // TYPES
@@ -1263,6 +1266,225 @@ export default function ShipmentDetail() {
           override_at: now,
         }),
       });
+
+      // Will-call billing + client alert (non-blocking; completion should still succeed)
+      if (
+        shipment.shipment_type === 'outbound' &&
+        shipment.release_type === 'will_call' &&
+        profile?.tenant_id &&
+        profile?.id &&
+        shipment.account_id
+      ) {
+        try {
+          // Fetch shipment_items + item details for rate lookup and billing context.
+          // Do not rely on the page's local item state here (it may be stale after updates).
+          const { data: shipmentItemsForBilling, error: shipmentItemsBillingError } = await (supabase
+            .from('shipment_items') as any)
+            .select(`
+              id,
+              expected_quantity,
+              item_id,
+              items:item_id(
+                id,
+                item_code,
+                class_id,
+                sidemark_id,
+                account_id,
+                account:accounts(account_name)
+              )
+            `)
+            .eq('shipment_id', shipment.id)
+            .neq('status', 'cancelled')
+            .is('deleted_at', null);
+
+          if (shipmentItemsBillingError) throw shipmentItemsBillingError;
+
+          const rawItems = (shipmentItemsForBilling || []) as any[];
+          const uniqueItemIds = [
+            ...new Set(rawItems.map((si) => si?.items?.id).filter(Boolean) as string[]),
+          ];
+
+          // Deduplicate: skip items already billed for this shipment (avoid accidental double-charges).
+          const existingBilledItemIds = new Set<string>();
+          if (uniqueItemIds.length > 0) {
+            const { data: existingEvents, error: existingError } = await supabase
+              .from('billing_events')
+              .select('item_id')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipment.id)
+              .eq('event_type', 'will_call')
+              .eq('charge_type', 'Will_Call')
+              .neq('status', 'void')
+              .in('item_id', uniqueItemIds);
+
+            if (existingError) {
+              console.warn('[ShipmentDetail] Unable to check existing billing events (will proceed):', existingError);
+            } else {
+              (existingEvents || []).forEach((e: any) => {
+                if (e?.item_id) existingBilledItemIds.add(e.item_id);
+              });
+            }
+          }
+
+          // Fetch only the classes we need to map class_id → class_code
+          const classIds = [
+            ...new Set(rawItems.map((si) => si?.items?.class_id).filter(Boolean) as string[]),
+          ];
+          const classMap = new Map<string, string>();
+          if (classIds.length > 0) {
+            const { data: classesData, error: classesError } = await supabase
+              .from('classes')
+              .select('id, code')
+              .eq('tenant_id', profile.tenant_id)
+              .in('id', classIds);
+
+            if (classesError) throw classesError;
+            (classesData || []).forEach((c: any) => {
+              if (c?.id) classMap.set(c.id, c.code);
+            });
+          }
+
+          const chargeRequests: Parameters<typeof createCharges>[0] = [];
+          const alertRequests: Array<{
+            index: number;
+            tenantId: string;
+            serviceName: string;
+            itemCode: string;
+            accountName: string;
+            amount: number;
+            description: string;
+          }> = [];
+
+          for (const si of rawItems) {
+            const item = si?.items;
+            if (!item?.id || existingBilledItemIds.has(item.id)) continue;
+
+            const accountId: string | null = item.account_id || shipment.account_id;
+            if (!accountId) continue;
+
+            const classCode: string | null = item.class_id ? (classMap.get(item.class_id) ?? null) : null;
+
+            // Rate lookup via unified pricing (new system first, legacy fallback)
+            let rate = 0;
+            let serviceName = 'Will Call';
+            let alertRule: string = 'none';
+            let hasError = false;
+            let errorMessage: string | undefined = undefined;
+
+            try {
+              const rateResult = await getEffectiveRate({
+                tenantId: profile.tenant_id,
+                chargeCode: 'Will_Call',
+                accountId,
+                classCode: classCode || undefined,
+              });
+
+              serviceName = rateResult.charge_name || serviceName;
+              alertRule = rateResult.alert_rule || 'none';
+
+              if (rateResult.has_error) {
+                rate = 0;
+                hasError = true;
+                errorMessage = rateResult.error_message || 'Rate lookup error';
+              } else {
+                rate = rateResult.effective_rate || 0;
+              }
+            } catch (rateErr: any) {
+              const msg = rateErr instanceof Error ? rateErr.message : String(rateErr);
+              if (msg === BILLING_DISABLED_ERROR) {
+                throw new Error(BILLING_DISABLED_ERROR);
+              }
+              rate = 0;
+              hasError = true;
+              errorMessage = msg;
+            }
+
+            const quantityRaw = Number(si?.expected_quantity ?? 1);
+            const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw : 1;
+            const description = `Will Call: ${item.item_code}`;
+            const totalAmount = quantity * rate;
+
+            const requestIndex = chargeRequests.length;
+
+            chargeRequests.push({
+              tenantId: profile.tenant_id,
+              accountId,
+              chargeCode: 'Will_Call',
+              eventType: 'will_call',
+              context: { type: 'shipment', shipmentId: shipment.id, itemId: item.id },
+              description,
+              quantity,
+              classCode,
+              rateOverride: rate,
+              hasRateError: hasError,
+              rateErrorMessage: errorMessage,
+              sidemarkId: item.sidemark_id || shipment.sidemark_id || null,
+              classId: item.class_id || null,
+              metadata: { class_code: classCode },
+              userId: profile.id,
+            });
+
+            // Track alerts to queue for services with alert_rule: 'email_office'
+            if (alertRule === 'email_office') {
+              alertRequests.push({
+                index: requestIndex,
+                tenantId: profile.tenant_id,
+                serviceName,
+                itemCode: item.item_code,
+                accountName:
+                  item.account?.account_name ||
+                  shipment.accounts?.account_name ||
+                  'Unknown Account',
+                amount: totalAmount,
+                description,
+              });
+            }
+          }
+
+          if (chargeRequests.length > 0) {
+            const results = await createCharges(chargeRequests);
+
+            for (const alert of alertRequests) {
+              const res = results[alert.index];
+              if (res?.success && res.billingEventId) {
+                await queueBillingEventAlert(
+                  alert.tenantId,
+                  res.billingEventId,
+                  alert.serviceName,
+                  alert.itemCode,
+                  alert.accountName,
+                  // Use persisted amount if available (promos may adjust totals)
+                  typeof res.amount === 'number' ? res.amount : alert.amount,
+                  alert.description
+                );
+              }
+            }
+          }
+        } catch (billingErr: any) {
+          if (billingErr?.message === BILLING_DISABLED_ERROR) {
+            toast({
+              variant: 'destructive',
+              title: 'Billing Disabled',
+              description: BILLING_DISABLED_ERROR,
+            });
+          } else {
+            console.error('[ShipmentDetail] Outbound billing failed (non-blocking):', billingErr);
+          }
+        }
+
+        // Queue client-facing "Will Call Released" communication trigger
+        try {
+          await queueAlert({
+            tenantId: profile.tenant_id,
+            alertType: 'will_call_released',
+            entityType: 'shipment',
+            entityId: shipment.id,
+            subject: `Will-Call Released — ${shipment.shipment_number}`,
+          });
+        } catch (alertErr) {
+          console.error('[ShipmentDetail] Failed to queue will-call released alert (non-blocking):', alertErr);
+        }
+      }
 
       // Generate release PDF and upload as a document
       try {
