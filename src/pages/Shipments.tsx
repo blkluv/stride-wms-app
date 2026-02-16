@@ -24,15 +24,6 @@ import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
 import { IncomingContent } from '@/components/shipments/IncomingContent';
 import { OutboundContent } from '@/components/shipments/OutboundContent';
-import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
-import { useAccounts } from '@/hooks/useAccounts';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { format } from 'date-fns';
 
 interface ShipmentCounts {
@@ -61,16 +52,6 @@ export default function Shipments() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { toast } = useToast();
-  const { unidentifiedAccountId } = useUnidentifiedAccount();
-  const { accounts } = useAccounts();
-  const [intakeAccountId, setIntakeAccountId] = useState<string>('');
-
-  // Default to UNIDENTIFIED account once loaded
-  useEffect(() => {
-    if (unidentifiedAccountId && !intakeAccountId) {
-      setIntakeAccountId(unidentifiedAccountId);
-    }
-  }, [unidentifiedAccountId]);
 
   const [counts, setCounts] = useState<ShipmentCounts>({
     expectedToday: 0,
@@ -240,17 +221,9 @@ export default function Shipments() {
 
   const handleStartDockIntake = useCallback(async () => {
     if (!profile?.tenant_id || creatingIntake) return;
-    if (!intakeAccountId) {
-      toast({
-        variant: 'destructive',
-        title: 'Account Required',
-        description: 'Please select an account before starting a dock intake.',
-      });
-      return;
-    }
     setCreatingIntake(true);
     try {
-      // Insert with exact PF-1 payload (no account_id)
+      // Insert with exact PF-1 payload (no account_id). Account is selected inside the intake workflow.
       const { data, error } = await (supabase as any)
         .from('shipments')
         .insert({
@@ -266,14 +239,6 @@ export default function Shipments() {
 
       if (error) throw error;
 
-      // Post-insert: set account_id
-      const { error: updateError } = await (supabase as any)
-        .from('shipments')
-        .update({ account_id: intakeAccountId })
-        .eq('id', data.id);
-
-      if (updateError) throw updateError;
-
       navigate(`/incoming/dock-intake/${data.id}`);
     } catch (err: any) {
       toast({
@@ -284,7 +249,7 @@ export default function Shipments() {
     } finally {
       setCreatingIntake(false);
     }
-  }, [profile, creatingIntake, intakeAccountId, navigate, toast]);
+  }, [profile, creatingIntake, navigate, toast]);
 
   const handleCardTap = (key: ExpandedCard) => {
     switch (key) {
@@ -386,30 +351,30 @@ export default function Shipments() {
             description="Manage incoming and outbound shipments"
           />
           <div className="flex items-center gap-2">
-            <Select value={intakeAccountId} onValueChange={setIntakeAccountId}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select account *" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.account_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={handleStartDockIntake}
-              disabled={creatingIntake || !intakeAccountId}
-              className="gap-2"
-            >
-              {creatingIntake ? (
-                <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-              ) : (
+            {(activeTab === 'hub' || activeTab === 'incoming') && (
+              <Button
+                onClick={handleStartDockIntake}
+                disabled={creatingIntake}
+                className="gap-2"
+              >
+                {creatingIntake ? (
+                  <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                ) : (
+                  <MaterialIcon name="add" size="sm" />
+                )}
+                Start Dock Intake
+              </Button>
+            )}
+
+            {activeTab === 'outbound' && (
+              <Button
+                onClick={() => navigate('/shipments/outbound/new')}
+                className="gap-2"
+              >
                 <MaterialIcon name="add" size="sm" />
-              )}
-              Start Dock Intake
-            </Button>
+                Create Outbound Shipment
+              </Button>
+            )}
           </div>
         </div>
 
@@ -514,32 +479,6 @@ export default function Shipments() {
           </TabsContent>
 
           <TabsContent value="incoming" className="mt-4">
-            <div className="mb-4 flex items-center gap-2">
-              <Select value={intakeAccountId} onValueChange={setIntakeAccountId}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select account *" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.account_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={handleStartDockIntake}
-                disabled={creatingIntake || !intakeAccountId}
-                className="gap-2"
-              >
-                {creatingIntake ? (
-                  <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-                ) : (
-                  <MaterialIcon name="add" size="sm" />
-                )}
-                Start Dock Intake
-              </Button>
-            </div>
             <IncomingContent
               initialSubTab={incomingSubTab}
               onStartDockIntake={handleStartDockIntake}
@@ -547,15 +486,6 @@ export default function Shipments() {
           </TabsContent>
 
           <TabsContent value="outbound" className="mt-4">
-            <div className="mb-4">
-              <Button
-                onClick={() => navigate('/shipments/outbound/new')}
-                className="gap-2"
-              >
-                <MaterialIcon name="add" size="sm" />
-                Create Outbound Shipment
-              </Button>
-            </div>
             <OutboundContent />
           </TabsContent>
         </Tabs>

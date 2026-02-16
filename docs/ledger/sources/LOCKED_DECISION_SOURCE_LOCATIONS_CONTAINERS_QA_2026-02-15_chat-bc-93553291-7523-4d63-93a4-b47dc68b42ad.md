@@ -165,6 +165,12 @@
 - Explicit answer/decision:
   - Use Option B: simple non-padded suffix sequence (example: `PARENT-1`, `PARENT-2`).
 
+### QA-2026-02-15-025
+- Question/context: Location assignment for new child units created by a split/relabel.
+- Explicit answer/decision:
+  - Use Option A: default new child units to the parent's current location/container assignment.
+  - Show a warning/confirmation that child location will be set to the current location and users should scan to update if a different location is needed.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.
