@@ -146,6 +146,9 @@ export default function OutboundCreate() {
             tenant_id: profile.tenant_id,
             shipment_type: 'outbound',
             status: 'pending',
+            // Create as soft-deleted so abandoned drafts don't surface as real shipments.
+            // We'll "un-delete" it on successful submit.
+            deleted_at: now,
             // Seed account if the user navigated here from an item context
             account_id: preSelectedAccountId || null,
             created_by: profile.id,
@@ -383,6 +386,7 @@ export default function OutboundCreate() {
       // 1) Update the draft shipment details
       const { error: updateError } = await (supabase.from('shipments') as any)
         .update({
+          deleted_at: null,
           account_id: accountId,
           warehouse_id: warehouseId,
           outbound_type_id: outboundTypeId,
