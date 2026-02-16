@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `8` (`QA-2026-02-15-017..024`)
+- Q&A items extracted: `9` (`QA-2026-02-15-017..025`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-035`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-036`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -32,6 +32,7 @@
 | DL-2026-02-15-033 | Every split/relabel action must be recorded in activity/history audit trail | Audit/Traceability | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-022` | - | - |
 | DL-2026-02-15-034 | Split workflow auto-prints all generated child labels immediately | Intake Label Printing | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-023` | - | - |
 | DL-2026-02-15-035 | Parent-derived split child codes use simple non-padded numeric suffixes | Intake Labeling | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-024` | - | - |
+| DL-2026-02-15-036 | Split child units default to parent's current location/container (warn user) | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-025` | - | - |
 
 ## Detailed Decision Entries
 
@@ -269,6 +270,26 @@ Simple suffixing is easier for floor teams to read and communicate while preserv
 - Suffix allocator must continue sequence across multiple split sessions for the same parent.
 - Validation must prevent duplicate child codes when concurrent split operations occur.
 
+### DL-2026-02-15-036: Split child units default to parent's current location/container (warn user)
+- Domain: Intake Operations
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-025`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+When a grouped parent is split into new child units, those child units should default to the parent's current location/container assignment. The split UI must warn/confirm that child location will be set to the current location and instruct users to scan/move if a different location is needed.
+
+#### Why
+Defaulting to the current location keeps physical workflow predictable while still making it explicit to operators when they need to perform an immediate move/putaway update.
+
+#### Implementation impact
+- Split modal/wizard must show the current location that will be applied to children and require acknowledgement before creating labels.
+- Child record creation must copy location/container references from the parent at the time of split.
+- Move/scan workflows must remain available immediately after split to relocate newly labeled child units when needed.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
@@ -283,3 +304,4 @@ Simple suffixing is easier for floor teams to read and communicate while preserv
 | DLE-2026-02-15-038 | 2026-02-15 | DL-2026-02-15-033 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured mandatory split activity/history audit logging requirement. |
 | DLE-2026-02-15-039 | 2026-02-15 | DL-2026-02-15-034 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured auto-print-on-split behavior for all newly generated child labels. |
 | DLE-2026-02-15-040 | 2026-02-15 | DL-2026-02-15-035 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured child-code suffix standard as simple non-padded numeric sequence. |
+| DLE-2026-02-15-041 | 2026-02-15 | DL-2026-02-15-036 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured default location/container inheritance for split children plus explicit warning/confirmation UX. |
