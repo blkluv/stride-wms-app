@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { useOutboundTypes, useOutboundShipments, useAccountItems } from '@/hooks/useOutbound';
+import { useOutboundTypes, useAccountItems } from '@/hooks/useOutbound';
 import { useSidemarks } from '@/hooks/useSidemarks';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect, SelectOption } from '@/components/ui/searchable-select';
 import {
@@ -43,6 +44,7 @@ interface FormErrors {
   account?: string;
   warehouse?: string;
   outbound_type?: string;
+  release_type?: string;
   items?: string;
 }
 
@@ -62,7 +64,12 @@ export default function OutboundCreate() {
 
   // Hooks
   const { outboundTypes, loading: typesLoading } = useOutboundTypes();
-  const { createOutbound } = useOutboundShipments();
+
+  // Draft outbound shipment (create immediately to get OUT-##### number)
+  const [draftShipmentId, setDraftShipmentId] = useState<string | null>(null);
+  const [draftShipmentNumber, setDraftShipmentNumber] = useState<string | null>(null);
+  const [draftCreating, setDraftCreating] = useState(false);
+  const draftCreateStartedRef = useRef(false);
 
   // Form state
   const [loading, setLoading] = useState(false);
@@ -78,6 +85,14 @@ export default function OutboundCreate() {
   const [sidemarkId, setSidemarkId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [releaseType, setReleaseType] = useState<string>('will_call');
+  const [releasedTo, setReleasedTo] = useState('');
+  const [releaseToEmail, setReleaseToEmail] = useState('');
+  const [releaseToPhone, setReleaseToPhone] = useState('');
+  const [customerAuthorized, setCustomerAuthorized] = useState(true);
+  const [carrier, setCarrier] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [poNumber, setPoNumber] = useState('');
 
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
@@ -88,6 +103,53 @@ export default function OutboundCreate() {
 
   // Fetch sidemarks filtered by account
   const { sidemarks, loading: sidemarksLoading } = useSidemarks(accountId || undefined);
+
+  // Create draft shipment on entry (OUT# assigned by DB trigger)
+  useEffect(() => {
+    if (!profile?.tenant_id || !profile?.id) return;
+    if (draftShipmentId) return;
+    if (draftCreateStartedRef.current) return;
+    draftCreateStartedRef.current = true;
+
+    const createDraft = async () => {
+      setDraftCreating(true);
+      try {
+        const now = new Date().toISOString();
+        const { data, error } = await (supabase.from('shipments') as any)
+          .insert({
+            tenant_id: profile.tenant_id,
+            shipment_type: 'outbound',
+            status: 'pending',
+            // Seed account if the user navigated here from an item context
+            account_id: preSelectedAccountId || null,
+            created_by: profile.id,
+            customer_authorized: true,
+            customer_authorized_at: now,
+            customer_authorized_by: profile.id,
+            release_type: 'will_call',
+          })
+          .select('id, shipment_number')
+          .single();
+
+        if (error) throw error;
+        setDraftShipmentId(data.id);
+        setDraftShipmentNumber(data.shipment_number);
+      } catch (err: any) {
+        console.error('[OutboundCreate] draft create error:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: err?.message || 'Failed to start outbound shipment',
+        });
+        // Allow retry if the user refreshes
+        draftCreateStartedRef.current = false;
+      } finally {
+        setDraftCreating(false);
+      }
+    };
+
+    void createDraft();
+  }, [profile?.tenant_id, profile?.id, draftShipmentId, preSelectedAccountId, toast]);
 
   // ------------------------------------------
   // Fetch reference data
@@ -176,6 +238,15 @@ export default function OutboundCreate() {
     [sidemarks]
   );
 
+  const releaseTypeOptions: SelectOption[] = useMemo(
+    () => ([
+      { value: 'will_call', label: 'Will Call (Pickup/Release)' },
+      { value: 'disposal', label: 'Disposal' },
+      { value: 'return', label: 'Return to Sender' },
+    ]),
+    []
+  );
+
   // Filter items by search
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return accountItems;
@@ -185,6 +256,17 @@ export default function OutboundCreate() {
       item.description?.toLowerCase().includes(query)
     );
   }, [accountItems, searchQuery]);
+
+  const itemQuantityById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of accountItems as any[]) {
+      const qty = typeof item?.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+      if (typeof item?.id === 'string') {
+        map.set(item.id, qty);
+      }
+    }
+    return map;
+  }, [accountItems]);
 
   // ------------------------------------------
   // Item selection handlers
@@ -253,28 +335,84 @@ export default function OutboundCreate() {
       return;
     }
 
+    if (!draftShipmentId) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Outbound shipment draft not ready yet. Please wait a moment and try again.',
+      });
+      return;
+    }
+
     setSaving(true);
 
     try {
-      const shipment = await createOutbound({
-        account_id: accountId,
-        warehouse_id: warehouseId,
-        outbound_type_id: outboundTypeId,
-        sidemark_id: sidemarkId || undefined,
-        notes: notes || undefined,
-        expected_date: expectedDate || undefined,
-        item_ids: Array.from(selectedItemIds),
+      // 1) Update the draft shipment details
+      const { error: updateError } = await (supabase.from('shipments') as any)
+        .update({
+          account_id: accountId,
+          warehouse_id: warehouseId,
+          outbound_type_id: outboundTypeId,
+          sidemark_id: sidemarkId || null,
+          expected_arrival_date: expectedDate || null,
+          notes: notes || null,
+          release_type: releaseType || null,
+          released_to: releasedTo.trim() || null,
+          driver_name: releasedTo.trim() || null,
+          // Keep legacy contact fields in sync (used by older release flows)
+          release_to_name: releasedTo.trim() || null,
+          release_to_email: releaseToEmail.trim() || null,
+          release_to_phone: releaseToPhone.trim() || null,
+          customer_authorized: customerAuthorized,
+          customer_authorized_at: customerAuthorized ? new Date().toISOString() : null,
+          customer_authorized_by: customerAuthorized ? profile.id : null,
+          carrier: carrier.trim() || null,
+          tracking_number: trackingNumber.trim() || null,
+          po_number: poNumber.trim() || null,
+        })
+        .eq('id', draftShipmentId);
+
+      if (updateError) throw updateError;
+
+      // 2) Add selected items to shipment_items (avoid duplicates)
+      const itemIds = Array.from(selectedItemIds);
+      const { data: existingItems, error: existingError } = await (supabase.from('shipment_items') as any)
+        .select('item_id')
+        .eq('shipment_id', draftShipmentId)
+        .in('item_id', itemIds);
+
+      if (existingError) throw existingError;
+      const existingSet = new Set<string>(
+        (Array.isArray(existingItems) ? existingItems : [])
+          .map((r: any) => r.item_id)
+          .filter((v: any) => typeof v === 'string')
+      );
+
+      const toInsert = itemIds
+        .filter((id) => !existingSet.has(id))
+        .map((item_id) => ({
+          shipment_id: draftShipmentId,
+          item_id,
+          expected_quantity: itemQuantityById.get(item_id) ?? 1,
+          status: 'pending',
+        }));
+
+      if (toInsert.length > 0) {
+        const { error: insertError } = await (supabase.from('shipment_items') as any).insert(toInsert);
+        if (insertError) throw insertError;
+      }
+
+      // 3) Mark items as allocated
+      await (supabase.from('items') as any)
+        .update({ status: 'allocated' })
+        .in('id', itemIds);
+
+      toast({
+        title: 'Outbound Shipment Created',
+        description: draftShipmentNumber ? `Shipment ${draftShipmentNumber} created.` : 'Outbound shipment created.',
       });
 
-      if (shipment) {
-        navigate(`/shipments/${shipment.id}`);
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: 'Failed to create outbound shipment. Please try again.',
-        });
-      }
+      navigate(`/shipments/${draftShipmentId}`);
     } catch (err: any) {
       console.error('[OutboundCreate] submit error:', err);
       toast({
@@ -309,7 +447,12 @@ export default function OutboundCreate() {
             <MaterialIcon name="arrow_back" size="md" />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl sm:text-2xl font-bold truncate">Create Outbound Shipment</h1>
+            <h1 className="text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
+              Create Outbound Shipment
+              <Badge variant="outline" className="font-mono whitespace-nowrap">
+                {draftCreating ? 'Generating…' : (draftShipmentNumber || '—')}
+              </Badge>
+            </h1>
             <p className="text-sm text-muted-foreground">Select items to ship out</p>
           </div>
           <HelpButton workflow="outbound" />
@@ -403,6 +546,102 @@ export default function OutboundCreate() {
                 </div>
               )}
 
+              {/* Legacy outbound release fields (restore) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Carrier</Label>
+                  <Input
+                    value={carrier}
+                    onChange={(e) => setCarrier(e.target.value)}
+                    placeholder="e.g., FedEx, UPS, Local Delivery"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tracking Number</Label>
+                  <Input
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    placeholder="Tracking number"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>PO Number</Label>
+                  <Input
+                    value={poNumber}
+                    onChange={(e) => setPoNumber(e.target.value)}
+                    placeholder="Purchase order number"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Release Type</Label>
+                  <SearchableSelect
+                    data-testid="release-type-select"
+                    options={releaseTypeOptions}
+                    value={releaseType}
+                    onChange={(v) => {
+                      setReleaseType(v);
+                      if (errors.release_type) setErrors({ ...errors, release_type: undefined });
+                    }}
+                    placeholder="Select release type..."
+                    searchPlaceholder="Search release types..."
+                    emptyText="No release types found"
+                    error={errors.release_type}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Released To / Driver Name</Label>
+                  <Input
+                    value={releasedTo}
+                    onChange={(e) => setReleasedTo(e.target.value)}
+                    placeholder="Name of person picking up / driver"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required before completing the release (signature step will also ask).
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Release Contact Phone</Label>
+                  <Input
+                    value={releaseToPhone}
+                    onChange={(e) => setReleaseToPhone(e.target.value)}
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Release Contact Email</Label>
+                <Input
+                  type="email"
+                  value={releaseToEmail}
+                  onChange={(e) => setReleaseToEmail(e.target.value)}
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              <div className="flex items-start space-x-3 p-3 rounded-md border bg-muted/30">
+                <Checkbox
+                  id="customer-authorized"
+                  checked={customerAuthorized}
+                  onCheckedChange={(checked) => setCustomerAuthorized(checked === true)}
+                  className="mt-1"
+                />
+                <div>
+                  <Label htmlFor="customer-authorized" className="cursor-pointer font-medium">
+                    Customer Authorized
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Mark when the client has approved this outbound request (portal, email, or phone).
+                  </p>
+                </div>
+              </div>
+
               {/* Expected Date */}
               <div className="space-y-1.5">
                 <Label>Expected Pickup/Ship Date</Label>
@@ -487,6 +726,7 @@ export default function OutboundCreate() {
                         <TableRow>
                           <TableHead className="w-12"></TableHead>
                           <TableHead>Item Code</TableHead>
+                          <TableHead className="hidden sm:table-cell w-16 text-right">Qty</TableHead>
                           <TableHead className="hidden sm:table-cell">Description</TableHead>
                           <TableHead className="hidden md:table-cell">Location</TableHead>
                           <TableHead className="hidden lg:table-cell">Room</TableHead>
@@ -498,7 +738,7 @@ export default function OutboundCreate() {
                       <TableBody>
                         {filteredItems.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                               No items match your search
                             </TableCell>
                           </TableRow>
@@ -519,6 +759,9 @@ export default function OutboundCreate() {
                                 />
                               </TableCell>
                               <TableCell className="font-medium">{item.item_code}</TableCell>
+                              <TableCell className="hidden sm:table-cell text-right">
+                                {typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}
+                              </TableCell>
                               <TableCell className="hidden sm:table-cell max-w-[200px] truncate">
                                 {item.description || '-'}
                               </TableCell>
@@ -560,7 +803,7 @@ export default function OutboundCreate() {
             <Button
               type="submit"
               data-testid="create-outbound-submit"
-              disabled={saving || selectedItemIds.size === 0}
+              disabled={saving || selectedItemIds.size === 0 || !draftShipmentId}
               className="min-w-[160px]"
             >
               {saving ? (

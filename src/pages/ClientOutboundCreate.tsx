@@ -180,6 +180,8 @@ export default function ClientOutboundCreate() {
         .insert({
           tenant_id: portalUser.tenant_id,
           shipment_type: 'outbound',
+          // Required for outbound completion SOP validation
+          release_type: 'will_call',
           status: 'pending',
           account_id: portalUser.account_id,
           warehouse_id: warehouseId,
