@@ -131,6 +131,9 @@ export function Stage1DockIntake({
   const [signatureTimestamp, setSignatureTimestamp] = useState<string | null>(
     (shipment as any).signature_timestamp || null
   );
+  // Draft signature fields (edited in dialog; persisted on save)
+  const [signatureDraftData, setSignatureDraftData] = useState<string | null>(null);
+  const [signatureDraftName, setSignatureDraftName] = useState('');
 
   // Submitting
   const [completing, setCompleting] = useState(false);
@@ -507,6 +510,8 @@ export function Stage1DockIntake({
     setSignatureName(normalizedName);
     const nowIso = new Date().toISOString();
     setSignatureTimestamp(nowIso);
+    setSignatureDraftData(null);
+    setSignatureDraftName('');
     setShowSignatureDialog(false);
 
     // Save signature to shipment (awaited with error handling)
@@ -532,6 +537,59 @@ export function Stage1DockIntake({
         description: err?.message || 'Failed to save signature',
       });
     }
+  };
+
+  const handleClearSignature = async () => {
+    setSignatureData(null);
+    setSignatureName('');
+    setSignatureTimestamp(null);
+    setSignatureDraftData(null);
+    setSignatureDraftName('');
+    setShowSignatureDialog(false);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('shipments')
+        .update({
+          signature_data: null,
+          signature_name: null,
+          driver_name: null,
+          signature_timestamp: null,
+        })
+        .eq('id', shipmentId);
+
+      if (error) throw error;
+      toast({ title: 'Signature cleared' });
+      onRefresh();
+    } catch (err: any) {
+      console.error('[Stage1] signature clear error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Signature Error',
+        description: err?.message || 'Failed to clear signature',
+      });
+    }
+  };
+
+  const handleSignatureDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      setShowSignatureDialog(false);
+      setSignatureDraftData(null);
+      setSignatureDraftName('');
+      return;
+    }
+
+    // Initialize drafts from the currently-saved signature
+    setSignatureDraftData(signatureData);
+    setSignatureDraftName(signatureName);
+    setShowSignatureDialog(true);
+  };
+
+  const formatSignedAt = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString();
   };
 
   // Validation
@@ -1004,25 +1062,60 @@ export function Stage1DockIntake({
             Signature (optional)
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {signatureData ? (
-            <div className="space-y-2">
-              <div className="border rounded-md p-2 bg-white">
-                <img src={signatureData} alt="Signature" className="max-h-24 mx-auto" />
+        <CardContent className="space-y-3">
+          <div className="border rounded-md p-2 bg-white">
+            {signatureData ? (
+              <img src={signatureData} alt="Signature" className="max-h-24 mx-auto" />
+            ) : signatureName.trim() ? (
+              <div className="min-h-24 flex items-center justify-center">
+                <span className="text-3xl font-cursive italic text-gray-800">
+                  {signatureName.trim()}
+                </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Signed by: {signatureName}</span>
-                <Button variant="outline" size="sm" onClick={() => setShowSignatureDialog(true)}>
-                  Redo Signature
-                </Button>
+            ) : (
+              <div className="min-h-24 flex items-center justify-center text-sm text-muted-foreground">
+                No signature captured
               </div>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="text-sm text-muted-foreground">
+              {signatureName.trim() ? (
+                <>
+                  Signed by:{' '}
+                  <span className="text-foreground">{signatureName.trim()}</span>
+                  {formatSignedAt(signatureTimestamp) ? (
+                    <>
+                      {' '}
+                      · Signed at:{' '}
+                      <span className="text-foreground">{formatSignedAt(signatureTimestamp)}</span>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <span>Optional</span>
+              )}
             </div>
-          ) : (
-            <Button variant="outline" onClick={() => setShowSignatureDialog(true)}>
-              <MaterialIcon name="draw" size="sm" className="mr-2" />
-              Capture Signature
-            </Button>
-          )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleSignatureDialogOpenChange(true)}>
+                <MaterialIcon name={signatureData || signatureName.trim() ? 'edit' : 'draw'} size="sm" className="mr-2" />
+                {signatureData || signatureName.trim() ? 'Edit' : 'Capture'}
+              </Button>
+              {signatureData || signatureName.trim() ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleClearSignature()}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <MaterialIcon name="delete" size="sm" className="mr-1" />
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1103,7 +1196,7 @@ export function Stage1DockIntake({
       </Dialog>
 
       {/* Signature Dialog */}
-      <Dialog open={showSignatureDialog} onOpenChange={setShowSignatureDialog}>
+      <Dialog open={showSignatureDialog} onOpenChange={handleSignatureDialogOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1114,32 +1207,35 @@ export function Stage1DockIntake({
           <div className="py-2">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="sig-name">Signed By <span className="text-red-500">*</span></Label>
+                <Label htmlFor="sig-name">Driver name <span className="text-red-500">*</span></Label>
                 <Input
                   id="sig-name"
-                  value={signatureName}
-                  onChange={(e) => setSignatureName(e.target.value)}
-                  placeholder="Name of person signing"
+                  value={signatureDraftName}
+                  onChange={(e) => setSignatureDraftName(e.target.value)}
+                  placeholder="Driver name (required if drawing)"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Optional overall. If you draw a signature, Driver name is required.
+                </p>
               </div>
               <SignaturePad
                 onSignatureChange={(data) => {
-                  setSignatureData(data.signatureData);
-                  if (data.signatureName) setSignatureName(data.signatureName);
+                  setSignatureDraftData(data.signatureData);
+                  if (data.signatureName) setSignatureDraftName(data.signatureName);
                 }}
-                initialName=""
+                initialName={signatureDraftName}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSignatureDialog(false)}>
+            <Button variant="outline" onClick={() => handleSignatureDialogOpenChange(false)}>
               Cancel
             </Button>
             <Button
               onClick={() => {
-                void handleSignatureComplete(signatureData, signatureName);
+                void handleSignatureComplete(signatureDraftData, signatureDraftName);
               }}
-              disabled={!signatureData && !signatureName.trim()}
+              disabled={!signatureDraftName.trim() || (!!signatureDraftData && !signatureDraftName.trim())}
             >
               <MaterialIcon name="check" size="sm" className="mr-2" />
               Save Signature
