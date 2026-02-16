@@ -125,7 +125,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: plan, error: planError } = await supabase
       .from("saas_plans")
-      .select("id, name, stripe_price_id_base")
+      .select("id, name, stripe_price_id_base, stripe_price_id_per_user")
       .eq("is_active", true)
       .not("stripe_price_id_base", "is", null)
       .order("created_at", { ascending: true })
@@ -146,30 +146,58 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    let seatCount = 1;
+    if (plan.stripe_price_id_per_user) {
+      const { data: seatCountRaw, error: seatCountError } = await (supabase as any).rpc(
+        "rpc_get_tenant_billable_seat_count",
+        {
+          p_tenant_id: tenantId,
+        }
+      );
+      if (seatCountError) {
+        // Don't block checkout if seat RPC isn't available yet; fall back to 1.
+        console.warn("rpc_get_tenant_billable_seat_count error:", seatCountError.message);
+      } else {
+        const n = Number(seatCountRaw ?? 1);
+        seatCount = Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1;
+      }
+    }
+
     const baseUrl = getBaseUrl(req);
     const successUrl = `${baseUrl}/billing?subscription=success`;
     const cancelUrl = `${baseUrl}/billing?subscription=cancelled`;
 
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+      {
+        price: plan.stripe_price_id_base,
+        quantity: 1,
+      },
+    ];
+
+    if (plan.stripe_price_id_per_user) {
+      lineItems.push({
+        price: plan.stripe_price_id_per_user,
+        quantity: seatCount,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: existingSubscription?.stripe_customer_id ?? undefined,
-      line_items: [
-        {
-          price: plan.stripe_price_id_base,
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       success_url: successUrl,
       cancel_url: cancelUrl,
       allow_promotion_codes: true,
       metadata: {
         tenant_id: tenantId,
         plan_id: plan.id,
+        seat_count: String(seatCount),
       },
       subscription_data: {
         metadata: {
           tenant_id: tenantId,
           plan_id: plan.id,
+          seat_count: String(seatCount),
         },
       },
     });

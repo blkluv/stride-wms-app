@@ -60,6 +60,8 @@ interface TenantSubscriptionSnapshot {
   cancel_at_period_end: boolean | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  billable_seat_count: number | null;
+  billable_seat_count_updated_at: string | null;
   updated_at: string | null;
 }
 
@@ -100,6 +102,7 @@ export default function Billing() {
   const [startingSubscription, setStartingSubscription] = useState(false);
   const [subscriptionSnapshot, setSubscriptionSnapshot] = useState<TenantSubscriptionSnapshot | null>(null);
   const [subscriptionSummaryLoading, setSubscriptionSummaryLoading] = useState(true);
+  const [syncingSeats, setSyncingSeats] = useState(false);
   const [subscriptionInvoices, setSubscriptionInvoices] = useState<SubscriptionInvoiceSnapshot[]>([]);
   const [subscriptionInvoicesLoading, setSubscriptionInvoicesLoading] = useState(true);
 
@@ -175,7 +178,9 @@ export default function Billing() {
     try {
       const { data, error } = await supabase
         .from('tenant_subscriptions')
-        .select('status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, updated_at')
+        .select(
+          'status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, billable_seat_count, billable_seat_count_updated_at, updated_at'
+        )
         .eq('tenant_id', profile.tenant_id)
         .maybeSingle();
 
@@ -213,6 +218,37 @@ export default function Billing() {
       setSubscriptionInvoices([]);
     } finally {
       setSubscriptionInvoicesLoading(false);
+    }
+  };
+
+  const handleSyncSeats = async () => {
+    setSyncingSeats(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-stripe-subscription-seats', {
+        body: { reason: 'billing_page_manual' },
+      });
+      if (error) throw new Error(error.message);
+
+      const seatCount = (data as any)?.seat_count;
+      toast({
+        title: 'Seat count synced',
+        description:
+          typeof seatCount === 'number'
+            ? `Stripe seat quantity synced to ${seatCount}.`
+            : 'Stripe seat quantity sync completed.',
+      });
+
+      await fetchSubscriptionSnapshot();
+      await fetchSubscriptionInvoices();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync seat billing.';
+      toast({
+        variant: 'destructive',
+        title: 'Seat sync failed',
+        description: message,
+      });
+    } finally {
+      setSyncingSeats(false);
     }
   };
 
@@ -570,6 +606,33 @@ export default function Billing() {
                     <p className="text-xs text-muted-foreground">Stripe Customer</p>
                     <p className="text-sm font-mono">{truncateStripeId(subscriptionSnapshot?.stripe_customer_id)}</p>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Billable Staff Seats</p>
+                    <p className="text-sm font-medium">
+                      {typeof subscriptionSnapshot?.billable_seat_count === 'number'
+                        ? subscriptionSnapshot.billable_seat_count
+                        : '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Last synced: {formatSummaryDate(subscriptionSnapshot?.billable_seat_count_updated_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleSyncSeats()}
+                    disabled={syncingSeats || startingSubscription || isCompedTenant}
+                  >
+                    <MaterialIcon
+                      name={syncingSeats ? 'progress_activity' : 'sync'}
+                      size="sm"
+                      className={syncingSeats ? 'mr-2 animate-spin' : 'mr-2'}
+                    />
+                    {syncingSeats ? 'Syncing seats...' : 'Sync seats now'}
+                  </Button>
                 </div>
 
                 {senderProvisioningStatus !== 'approved' && (

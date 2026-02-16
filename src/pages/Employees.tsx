@@ -33,6 +33,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { EmployeeDialog } from '@/components/employees/EmployeeDialog';
 import { EmployeeImportDialog } from '@/components/employees/EmployeeImportDialog';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { syncStripeSubscriptionSeatsBestEffort } from '@/lib/saas/syncStripeSeats';
 import {
   MobileDataCard,
   MobileDataCardHeader,
@@ -236,6 +237,9 @@ export default function Employees() {
         title: 'Invitations Sent',
         description: `Sent ${successCount} invitation(s) successfully.`,
       });
+
+      // Seat-based billing: inviting staff should update Stripe quantity automatically.
+      void syncStripeSubscriptionSeatsBestEffort("employees_bulk_invite");
 
       setSelectedIds(new Set());
       fetchEmployees();
