@@ -56,10 +56,10 @@ export function AutocompleteSearchInput({
   const canShow = !disabled && (value.trim().length > 0 || shownSuggestions.length > 0);
   const isOpen = open && canShow;
 
-  // Avoid stale open state when the popover can no longer be shown.
+  // Avoid stale open state when the input becomes disabled.
   useEffect(() => {
-    if (!canShow && open) setOpen(false);
-  }, [canShow, open]);
+    if (disabled && open) setOpen(false);
+  }, [disabled, open]);
 
   // Keep popover width synced to the input
   useEffect(() => {
