@@ -37,6 +37,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
+import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
@@ -106,6 +107,10 @@ export function Stage2DetailedReceiving({
   const [receivedPieces, setReceivedPieces] = useState<number>(0);
   const { classes, loading: classesLoading } = useClasses();
   const { flagServiceEvents, loading: flagServicesLoading } = useServiceEvents();
+  const { locations: allLocations } = useLocations(shipment.warehouse_id || undefined);
+
+  // Fallback location when RPC can't resolve default
+  const [fallbackLocationId, setFallbackLocationId] = useState<string | null>(null);
 
   // Emit item-level matching params whenever items change
   useEffect(() => {
@@ -457,11 +462,15 @@ export function Stage2DetailedReceiving({
         console.warn('[Stage2] could not resolve receiving location');
       }
 
+      if (!receivingLocationId && fallbackLocationId) {
+        receivingLocationId = fallbackLocationId;
+      }
+
       if (!receivingLocationId) {
         toast({
           variant: 'destructive',
           title: 'No Receiving Location',
-          description: 'Could not resolve a default receiving location. Please configure one.',
+          description: 'Please select a receiving location below before completing.',
         });
         setCompleting(false);
         return;
@@ -1096,6 +1105,28 @@ export function Stage2DetailedReceiving({
                 Signed and received piece counts are different.
               </div>
             )}
+            <Separator />
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Receiving Location</Label>
+              <Select
+                value={fallbackLocationId || ''}
+                onValueChange={(val) => setFallbackLocationId(val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select location..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {allLocations.map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.code} — {loc.name || loc.location_type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose where received items will be placed. Configure a default in warehouse settings to skip this step.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
