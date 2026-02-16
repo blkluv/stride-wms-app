@@ -366,6 +366,10 @@ export function Stage2DetailedReceiving({
   // Validate before completion
   const validateCompletion = (): string[] => {
     const errors: string[] = [];
+    const dock = Number(dockCount) || 0;
+    if (dock <= 0) {
+      errors.push('Dock Count must be greater than 0 (set in Stage 1)');
+    }
     if (items.length === 0 && !isAdmin) {
       errors.push('At least 1 item line is required (admin can override)');
     }
@@ -412,18 +416,31 @@ export function Stage2DetailedReceiving({
         const requiredCode: ShipmentExceptionCode = entry > dock ? 'OVERAGE' : 'SHORTAGE';
 
         try {
-          const { data, error } = await (supabase as any)
-            .from('shipment_exceptions')
-            .select('note')
-            .eq('tenant_id', profile.tenant_id)
-            .eq('shipment_id', shipmentId)
-            .eq('status', 'open')
-            .eq('code', requiredCode)
-            .limit(1);
+          // Ensure any in-focus exception textarea persists its note before we validate against DB.
+          if (typeof document !== 'undefined') {
+            (document.activeElement as HTMLElement | null)?.blur?.();
+          }
 
-          if (error) throw error;
+          const fetchNote = async () => {
+            const { data, error } = await (supabase as any)
+              .from('shipment_exceptions')
+              .select('note')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('status', 'open')
+              .eq('code', requiredCode)
+              .limit(1);
 
-          const note = ((data?.[0]?.note as string | null) ?? '').trim();
+            if (error) throw error;
+            return (((data?.[0]?.note as string | null) ?? '') as string).trim();
+          };
+
+          // If the user just typed a note and clicked Complete, the save can still be in-flight; retry once.
+          let note = await fetchNote();
+          if (!note) {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            note = await fetchNote();
+          }
           if (!note) {
             toast({
               variant: 'destructive',

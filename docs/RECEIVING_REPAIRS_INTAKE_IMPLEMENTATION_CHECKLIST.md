@@ -5,44 +5,44 @@ This checklist is derived from docs/RECEIVING_REPAIRS_INTAKE_QA_LOG_2026-02-16.m
 and will be checked off during implementation so nothing is skipped.
 
 ## A) Stage 1 + Stage 2 combined page
-- [ ] Render Stage 1 + Stage 2 on the same page (legacy combined layout).
-- [ ] Implement "Complete Stage 1" button (sets inbound_status -> stage1_complete).
-- [ ] After Stage 1 complete, show Stage 2 section on same page (collapsed).
-- [ ] Add "Start Stage 2" button (persist to DB; inbound_status -> receiving).
-- [ ] Once Stage 2 started, default Stage 2 expanded on reloads (unless user collapses locally).
-- [ ] Keep Stage 1 visible/editable during Stage 2 (photos/docs/exceptions/notes/signature all editable).
+- [x] Render Stage 1 + Stage 2 on the same page (legacy combined layout).
+- [x] Implement "Complete Stage 1" button (sets inbound_status -> stage1_complete).
+- [x] After Stage 1 complete, show Stage 2 section on same page (collapsed).
+- [x] Add "Start Stage 2" button (persist to DB; inbound_status -> receiving).
+- [x] Once Stage 2 started, default Stage 2 expanded on reloads (unless user collapses locally).
+- [x] Keep Stage 1 visible/editable during Stage 2 (photos/docs/exceptions/notes/signature all editable).
 
 ## B) Piece counts redesign + mismatch prompting
-- [ ] Rename counts:
-  - [ ] "Carrier count" (manual, required) = what you sign for (paperwork).
-  - [ ] "Dock Count" (required) = Stage 1 actual count.
-  - [ ] "Entry Count" (read-only) = number of Stage 2 item rows (each row = 1 piece).
-- [ ] Add help icon tooltips to all 3 count fields.
-- [ ] Move Stage 2 "received pieces" input into Shipment Summary (and remove Stage 2 manual entry).
-- [ ] Stage 1 mismatch logic (Carrier vs Dock):
-  - [ ] Auto-sync Shortage/Overage chip based on mismatch direction.
-  - [ ] Lock auto-synced Shortage/Overage chip until mismatch corrected.
-  - [ ] Block Stage 1 completion if mismatch exists and required exception note missing.
-- [ ] Stage 2 mismatch logic (Dock vs Entry):
-  - [ ] On Complete Stage 2, if mismatch: prompt user to review.
-  - [ ] Require user to either fix discrepancy (counts match) OR select exception chip(s) + notes to proceed.
+- [x] Rename counts:
+  - [x] "Carrier count" (manual, required) = what you sign for (paperwork).
+  - [x] "Dock Count" (required) = Stage 1 actual count.
+  - [x] "Entry Count" (read-only) = number of Stage 2 item rows (each row = 1 piece).
+- [x] Add help icon tooltips to all 3 count fields.
+- [x] Move Stage 2 "received pieces" input into Shipment Summary (and remove Stage 2 manual entry).
+- [x] Stage 1 mismatch logic (Carrier vs Dock):
+  - [x] Auto-sync Shortage/Overage chip based on mismatch direction.
+  - [x] Lock auto-synced Shortage/Overage chip until mismatch corrected.
+  - [x] Block Stage 1 completion if mismatch exists and required exception note missing.
+- [x] Stage 2 mismatch logic (Dock vs Entry):
+  - [x] On Complete Stage 2, if mismatch: prompt user to review.
+  - [x] Require user to either fix discrepancy (counts match) OR select exception chip(s) + notes to proceed.
 
 ## C) Shipment-level exception chips (save + notes + persistence)
-- [ ] Implement shipment-level chip set:
-  - [ ] Damage
-  - [ ] Wet
-  - [ ] Open
-  - [ ] Missing Docs
-  - [ ] Crushed/Torn
-  - [ ] Mis-Ship
-  - [ ] Shortage
-  - [ ] Overage
-  - [ ] Other
-- [ ] Ensure multi-select behavior (no "No Exceptions" chip).
-- [ ] Fix persistence: selecting chip creates/saves exception; notes persist across reload.
-- [ ] Other requires note.
-- [ ] Notes required for all chips for stage completion requirements (client-visible exception notes).
-- [ ] Log chip add/remove and note add/remove in shipment activity/audit history.
+- [x] Implement shipment-level chip set:
+  - [x] Damage
+  - [x] Wet
+  - [x] Open
+  - [x] Missing Docs
+  - [x] Crushed/Torn
+  - [x] Mis-Ship
+  - [x] Shortage
+  - [x] Overage
+  - [x] Other
+- [x] Ensure multi-select behavior (no "No Exceptions" chip).
+- [x] Fix persistence: selecting chip creates/saves exception; notes persist across reload.
+- [x] Other requires note.
+- [x] Notes required for all chips for stage completion requirements (client-visible exception notes).
+- [x] Log chip add/remove and note add/remove in shipment activity/audit history.
 
 ## D) Item-level flags (Stage 2 rows + Item Detail) + alert tokens
 - [ ] Ensure Stage 2 item rows can apply item-level flags:
@@ -62,13 +62,13 @@ and will be checked off during implementation so nothing is skipped.
   - [ ] If user adds an Exception note from Notes tab directly, it may be untied to a chip.
 
 ## F) Signature UX (Stage 1 carrier sign-for)
-- [ ] Signature optional overall.
-- [ ] Support Draw OR Type signature.
-- [ ] If Draw is used: require Driver name.
+- [x] Signature optional overall.
+- [x] Support Draw OR Type signature.
+- [x] If Draw is used: require Driver name.
 - [ ] After capture/save:
-  - [ ] Render signature (image or typed) in the signature field.
-  - [ ] Button changes from "Capture" -> "Edit".
-  - [ ] Edit allows switching Draw/Type and allows Clear signature.
+  - [x] Render signature (image or typed) in the signature field.
+  - [x] Button changes from "Capture" -> "Edit".
+  - [x] Edit allows switching Draw/Type and allows Clear signature.
 - [ ] Persist signature + metadata; display on intake page AND Shipment Details:
   - [ ] Driver name (typed)
   - [ ] Signed at timestamp
