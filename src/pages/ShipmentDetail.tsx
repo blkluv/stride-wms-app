@@ -2306,7 +2306,7 @@ export default function ShipmentDetail() {
                 </div>
               )}
               {isOutbound ? (
-                <Tabs defaultValue="internal" className="w-full">
+                <Tabs defaultValue="public" className="w-full">
                   <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger
                       value="public"
