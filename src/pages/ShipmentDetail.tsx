@@ -714,13 +714,14 @@ export default function ShipmentDetail() {
       if (result.createdItemIds.length > 0) {
         const { data: createdItems } = await supabase
           .from('items')
-          .select('id, item_code, description, vendor, sidemark_id, room')
+          .select('id, item_code, sku, description, vendor, sidemark_id, room')
           .in('id', result.createdItemIds);
 
         if (createdItems) {
           const labelData: ItemLabelData[] = createdItems.map(item => ({
             id: item.id,
             itemCode: item.item_code || '',
+            sku: (item as any).sku || '',
             description: item.description || '',
             vendor: item.vendor || '',
             account: shipment?.accounts?.account_name || '',

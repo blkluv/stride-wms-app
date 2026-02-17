@@ -59,6 +59,7 @@ export function AddItemDialog({
   const [accountId, setAccountId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [vendor, setVendor] = useState('');
+  const [sku, setSku] = useState('');
   const [description, setDescription] = useState('');
   const [sidemarkId, setSidemarkId] = useState('');
   const [room, setRoom] = useState('');
@@ -69,7 +70,7 @@ export function AddItemDialog({
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
 
   // Track if form has been modified
-  const hasFormData = accountId || vendor || description || sidemarkId || room || notes || quantity !== '1';
+  const hasFormData = accountId || vendor || sku || description || sidemarkId || room || notes || quantity !== '1';
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -77,6 +78,7 @@ export function AddItemDialog({
       setAccountId('');
       setQuantity('1');
       setVendor('');
+      setSku('');
       setDescription('');
       setSidemarkId('');
       setRoom('');
@@ -114,12 +116,6 @@ export function AddItemDialog({
     if (!profile?.tenant_id) return;
 
     try {
-      // Generate item code
-      const prefix = 'INV';
-      const timestamp = Date.now().toString(36).toUpperCase();
-      const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-      const itemCode = `${prefix}-${timestamp}-${random}`;
-
       // Get default warehouse
       const defaultWarehouseId = warehouses?.[0]?.id;
       if (!defaultWarehouseId) {
@@ -129,15 +125,16 @@ export function AddItemDialog({
       const { data: newItem, error } = await supabase.from('items').insert([{
         tenant_id: profile.tenant_id,
         warehouse_id: defaultWarehouseId,
-        item_code: itemCode,
+        // item_code is assigned by DB trigger (sequential) when omitted.
         account_id: accountId,
         quantity: parseInt(quantity, 10) || 1,
         vendor: vendor || null,
+        sku: sku || null,
         description: description || null,
         sidemark_id: sidemarkId || null,
         room: room || null,
         status: 'in_storage',
-      }]).select('id').single();
+      }]).select('id, item_code').single();
 
       if (error) throw error;
 
@@ -157,7 +154,7 @@ export function AddItemDialog({
 
       toast({
         title: 'Item Added',
-        description: `Item ${itemCode} has been created.`,
+        description: `Item ${newItem?.item_code || ''} has been created.`,
       });
 
       onSuccess();
@@ -222,6 +219,17 @@ export function AddItemDialog({
                 onChange={setVendor}
                 suggestions={vendorSuggestions}
                 placeholder="Enter vendor name..."
+              />
+            </div>
+
+            {/* SKU */}
+            <div className="space-y-2">
+              <Label htmlFor="sku">SKU (optional)</Label>
+              <Input
+                id="sku"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="e.g., MFG-12345"
               />
             </div>
 

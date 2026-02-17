@@ -150,6 +150,14 @@ export function Stage1DockIntake({
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
   const canAddCredit = hasRole('admin') || hasRole('tenant_admin');
 
+  // If the shipment account changes, refresh billing preview/rates.
+  useEffect(() => {
+    if (!canSeeBilling) return;
+    if (!accountId) return;
+    setBillingRefreshKey((prev) => prev + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, canSeeBilling]);
+
   // Autosave - disable while completing to prevent race conditions
   const autosave = useReceivingAutosave(shipmentId, !completing);
 

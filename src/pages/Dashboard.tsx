@@ -110,14 +110,14 @@ export default function Dashboard() {
       },
       {
         key: 'incoming_shipments' as ExpandedCard,
-        title: 'INCOMING SHIPMENTS',
+        title: 'EXPECTED SHIPMENTS',
         emoji: '🚚',
         count: stats.incomingShipments,
         urgent: stats.incomingShipmentsUrgentCount,
         description: 'Expected / not received',
         bgColor: 'bg-card border border-border shadow-sm',
         countColor: 'text-orange-500 dark:text-orange-400',
-        onClick: () => navigate('/shipments/incoming'),
+        onClick: () => navigate('/incoming/manager?tab=expected'),
         timeEstimate: stats.incomingShipmentsTimeEstimate,
       },
       {
@@ -193,13 +193,25 @@ export default function Dashboard() {
 
     if (key === 'incoming_shipments') {
       const shipment = item as ShipmentItem;
+
+      const resolveIncomingRoute = () => {
+        // Prefer inbound_kind routing into the new Incoming Manager flows.
+        const kind = (shipment.inbound_kind || '').toLowerCase();
+        if (kind === 'manifest') return `/incoming/manifest/${shipment.id}`;
+        if (kind === 'dock_intake') return `/incoming/dock-intake/${shipment.id}`;
+        if (kind === 'expected') return `/incoming/expected/${shipment.id}`;
+
+        // Fallback: older records without inbound_kind
+        return `/incoming/expected/${shipment.id}`;
+      };
+
       return (
         <div
           key={shipment.id}
           className="flex items-center justify-between p-2 rounded-md hover:bg-muted cursor-pointer group"
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/shipments/${shipment.id}`);
+            navigate(resolveIncomingRoute());
           }}
           role="button"
         >
