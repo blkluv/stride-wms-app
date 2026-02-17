@@ -138,6 +138,7 @@ export default function OutboundCreate() {
   const [sidemarkId, setSidemarkId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [notesTouched, setNotesTouched] = useState(false);
   const [releasedTo, setReleasedTo] = useState('');
   const [releaseToEmail, setReleaseToEmail] = useState('');
   const [releaseToPhone, setReleaseToPhone] = useState('');
@@ -145,6 +146,9 @@ export default function OutboundCreate() {
   const [carrier, setCarrier] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [poNumber, setPoNumber] = useState('');
+
+  const [accountDefaultShipmentNotes, setAccountDefaultShipmentNotes] = useState<string | null>(null);
+  const [accountHighlightShipmentNotes, setAccountHighlightShipmentNotes] = useState(false);
 
   // Photos/Documents (match intake behavior)
   const [receivingPhotos, setReceivingPhotos] = useState<(string | TaggablePhoto)[]>([]);
@@ -295,6 +299,49 @@ export default function OutboundCreate() {
       void cleanupDraftShipment();
     };
   }, [cleanupDraftShipment]);
+
+  // Pull default shipment notes from Account Settings (accounts.default_shipment_notes)
+  useEffect(() => {
+    if (!profile?.tenant_id || !accountId) {
+      setAccountDefaultShipmentNotes(null);
+      setAccountHighlightShipmentNotes(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await (supabase.from('accounts') as any)
+        .select('default_shipment_notes, highlight_shipment_notes')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', accountId)
+        .single();
+
+      if (cancelled) return;
+      if (error) {
+        console.warn('[OutboundCreate] Failed to load account default shipment notes:', error.message);
+        setAccountDefaultShipmentNotes(null);
+        setAccountHighlightShipmentNotes(false);
+        return;
+      }
+
+      setAccountDefaultShipmentNotes((data?.default_shipment_notes as string | null) ?? null);
+      setAccountHighlightShipmentNotes(!!data?.highlight_shipment_notes);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.tenant_id, accountId]);
+
+  // Prefill notes if blank and user hasn't typed anything yet
+  useEffect(() => {
+    if (!accountId) return;
+    if (notesTouched) return;
+    if (notes.trim()) return;
+    if (!accountDefaultShipmentNotes?.trim()) return;
+    setNotes(accountDefaultShipmentNotes);
+  }, [accountId, notesTouched, notes, accountDefaultShipmentNotes]);
   // ------------------------------------------
   // Fetch reference data
   // ------------------------------------------
@@ -807,9 +854,18 @@ export default function OutboundCreate() {
               {/* Notes */}
               <div className="space-y-1.5">
                 <Label>Notes</Label>
+                {accountHighlightShipmentNotes && accountDefaultShipmentNotes?.trim() && (
+                  <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                    <div className="font-medium mb-1">Default Shipment Notes</div>
+                    <p className="whitespace-pre-wrap">{accountDefaultShipmentNotes}</p>
+                  </div>
+                )}
                 <Textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => {
+                    setNotesTouched(true);
+                    setNotes(e.target.value);
+                  }}
                   placeholder="Additional notes about this shipment..."
                   rows={2}
                 />

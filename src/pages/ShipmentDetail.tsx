@@ -2249,6 +2249,12 @@ export default function ShipmentDetail() {
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
+              {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
+                <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                  <div className="font-medium mb-1">Default Shipment Notes</div>
+                  <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
+                </div>
+              )}
               <Textarea
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
@@ -2401,21 +2407,6 @@ export default function ShipmentDetail() {
         </Card>
       )}
 
-      {/* Account Default Shipment Notes - Full width, only show if highlight enabled AND notes not blank */}
-      {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
-        <Card className="mb-6 bg-orange-50 dark:bg-orange-900/20 border-4 border-orange-500 dark:border-orange-400">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <span className="text-orange-600 dark:text-orange-400">⚠️</span>
-              Account Notes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm whitespace-pre-wrap font-bold text-orange-700 dark:text-orange-300">{accountSettings.default_shipment_notes}</p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Billing Calculator - Full width at top right area */}
       {canSeeBilling && shipment.account_id && (
         <div className="flex justify-end mb-6">
@@ -2546,6 +2537,13 @@ export default function ShipmentDetail() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
+              <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                <div className="font-medium mb-1">Default Shipment Notes</div>
+                <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
               </div>
             )}
 
