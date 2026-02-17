@@ -39,7 +39,7 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, autoCapitalize, ...props }, ref) => (
+>(({ className, autoCapitalize, onValueChange, ...props }, ref) => (
   <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
     <MaterialIcon name="search" size="sm" className="mr-2 shrink-0 opacity-50" />
     <CommandPrimitive.Input
@@ -49,6 +49,7 @@ const CommandInput = React.forwardRef<
         className,
       )}
       autoCapitalize={autoCapitalize ?? "characters"}
+      onValueChange={(value) => onValueChange?.(value.toUpperCase())}
       {...props}
     />
   </div>

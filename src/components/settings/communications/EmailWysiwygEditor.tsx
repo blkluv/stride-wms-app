@@ -737,6 +737,7 @@ function BlockEditorForm({ block, brandSettings, onUpdate }: BlockEditorFormProp
           <div className="space-y-2">
             <Label>Button URL</Label>
             <Input
+              type="url"
               value={(props.url as string) || ''}
               onChange={(e) => updateProps({ url: e.target.value })}
               placeholder="https://..."
@@ -771,6 +772,7 @@ function BlockEditorForm({ block, brandSettings, onUpdate }: BlockEditorFormProp
           <div className="space-y-2">
             <Label>Image URL</Label>
             <Input
+              type="url"
               value={(props.url as string) || ''}
               onChange={(e) => updateProps({ url: e.target.value })}
               placeholder="https://..."

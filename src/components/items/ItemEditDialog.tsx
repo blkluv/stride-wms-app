@@ -604,7 +604,7 @@ export function ItemEditDialog({
                   <FormItem>
                     <FormLabel>Link (URL)</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://..." {...field} />
+                      <Input type="url" placeholder="https://..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -42,7 +42,7 @@ export function MessageInputBar({ onSend, disabled, isSms }: MessageInputBarProp
         <input
           type="text"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => setText(e.target.value.toUpperCase())}
           onKeyDown={handleKeyDown}
           placeholder={isSms ? 'SMS Reply...' : 'Message...'}
           autoCapitalize="sentences"
