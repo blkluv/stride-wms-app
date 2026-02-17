@@ -390,6 +390,7 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     if (initialSubTab === 'intakes') return 'dock_intakes';
     if (initialSubTab === 'expected') return 'expected';
     if (initialSubTab === 'manifests') return 'manifests';
+    // Default inbound landing: Dock Intakes (most common operational workflow)
     return 'dock_intakes';
   };
 
