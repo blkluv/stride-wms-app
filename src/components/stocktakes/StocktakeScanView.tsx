@@ -622,7 +622,7 @@ export default function StocktakeScanView() {
                   <input
                     type="text"
                     value={manualItemCode}
-                    onChange={(e) => setManualItemCode(e.target.value)}
+                    onChange={(e) => setManualItemCode(e.target.value.toUpperCase())}
                     onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
                     placeholder="Enter item code..."
                     autoCapitalize="characters"
