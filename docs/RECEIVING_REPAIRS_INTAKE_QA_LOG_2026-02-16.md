@@ -257,3 +257,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 76. Q: Expanding "Expected Today" list should include what?
     A: Only scheduled inbound shipments for today (expected + manifests) (option A). Do not include unlinked dock intakes.
 
+77. Q: "Expected Today" list row click destination?
+    A: Navigate to the corresponding inbound detail page (expected/manifest) (option A), not the generic Shipment Details page.
+
