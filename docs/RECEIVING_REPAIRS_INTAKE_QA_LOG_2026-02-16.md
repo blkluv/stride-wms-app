@@ -272,3 +272,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 81. Q: "Shipped Today" should include which outbound statuses?
     A: Include outbound shipments in statuses released + completed + shipped (option A), using `completed_at` window.
 
+82. Q: "Shipped Today" expanded list row click destination?
+    A: Navigate to the outbound shipment details page for the order clicked.
+
