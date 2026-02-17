@@ -706,6 +706,7 @@ export function ShipmentItemRow({
             </span>
           )}
         </TableCell>
+
         {/* Status */}
         <TableCell className="w-24">
           <StatusIndicator status={item.status} size="sm" />
