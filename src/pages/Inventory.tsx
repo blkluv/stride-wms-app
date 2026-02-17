@@ -639,7 +639,16 @@ export default function Inventory() {
   const hasMultipleWarehouses = getSelectedItemsWarehouses().size > 1;
 
   const getSelectedItemsForLabels = (): ItemLabelData[] => items.filter(item => selectedItems.has(item.id)).map(item => ({
-    id: item.id, itemCode: item.item_code, description: item.description || '', vendor: item.vendor || '', account: item.client_account || '', sidemark: item.sidemark || '', room: item.room || '', warehouseName: item.warehouse_name || '', locationCode: item.location_code || '',
+    id: item.id,
+    itemCode: item.item_code,
+    sku: item.sku || '',
+    description: item.description || '',
+    vendor: item.vendor || '',
+    account: item.client_account || '',
+    sidemark: item.sidemark || '',
+    room: item.room || '',
+    warehouseName: item.warehouse_name || '',
+    locationCode: item.location_code || '',
   }));
 
   const handleExportExcel = () => {

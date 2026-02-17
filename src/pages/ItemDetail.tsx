@@ -1338,6 +1338,7 @@ export default function ItemDetail() {
         items={item ? [{
           id: item.id,
           itemCode: item.item_code,
+          sku: item.sku || '',
           description: item.description || '',
           vendor: item.vendor || '',
           account: item.account?.account_name || '',
