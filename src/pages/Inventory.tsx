@@ -152,16 +152,22 @@ function normalizeInventoryColumnPrefs(raw: unknown): InventoryColumnPrefs {
   const rawOrder = Array.isArray(rawObj.order) ? rawObj.order.filter(isKey) : [];
   const rawHidden = Array.isArray(rawObj.hidden) ? rawObj.hidden.filter(isKey) : [];
 
-  // Ensure required columns are visible and item_code stays first.
-  const orderWithoutRequired = rawOrder.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k));
-  const fullOrder = [
-    ...Array.from(INVENTORY_REQUIRED_COLUMNS),
-    ...orderWithoutRequired,
-    ...INVENTORY_ALL_COLUMNS.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k) && !orderWithoutRequired.includes(k)),
-  ];
+  // Preserve user order, de-dupe, and append any new columns.
+  const seen = new Set<InventoryColumnKey>();
+  const dedupedOrder: InventoryColumnKey[] = [];
+  for (const k of rawOrder) {
+    if (seen.has(k)) continue;
+    seen.add(k);
+    dedupedOrder.push(k);
+  }
+  for (const k of INVENTORY_ALL_COLUMNS) {
+    if (seen.has(k)) continue;
+    seen.add(k);
+    dedupedOrder.push(k);
+  }
 
   return {
-    order: fullOrder,
+    order: dedupedOrder,
     hidden: rawHidden.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k)),
   };
 }
@@ -666,7 +672,6 @@ export default function Inventory() {
   };
 
   const moveDraftColumn = (key: InventoryColumnKey, direction: -1 | 1) => {
-    if (INVENTORY_REQUIRED_COLUMNS.has(key)) return;
     setColumnsDraft((prev) => {
       const idx = prev.order.indexOf(key);
       if (idx === -1) return prev;
@@ -778,10 +783,12 @@ export default function Inventory() {
                 </SelectContent>
               </Select>
               <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
-              <Button variant="outline" onClick={() => setColumnsDialogOpen(true)}>
-                <MaterialIcon name="view_column" size="sm" className="mr-2" />
-                Columns
-              </Button>
+              {!isMobile && (
+                <Button variant="outline" onClick={() => setColumnsDialogOpen(true)}>
+                  <MaterialIcon name="view_column" size="sm" className="mr-2" />
+                  Columns
+                </Button>
+              )}
             </div>
 
             {loading ? (<div className="flex items-center justify-center h-48"><MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" /></div>
@@ -840,7 +847,7 @@ export default function Inventory() {
                       variant="ghost"
                       size="icon"
                       onClick={() => moveDraftColumn(key, -1)}
-                      disabled={isRequired || idx === 0}
+                      disabled={idx === 0}
                       aria-label="Move column up"
                     >
                       <MaterialIcon name="arrow_upward" size="sm" />
@@ -850,7 +857,7 @@ export default function Inventory() {
                       variant="ghost"
                       size="icon"
                       onClick={() => moveDraftColumn(key, 1)}
-                      disabled={isRequired || idx === columnsDraft.order.length - 1}
+                      disabled={idx === columnsDraft.order.length - 1}
                       aria-label="Move column down"
                     >
                       <MaterialIcon name="arrow_downward" size="sm" />
