@@ -96,7 +96,7 @@ export function ItemSearchOverlay({
             placeholder="Search Item Code"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            autoCapitalize="sentences"
+            autoCapitalize="characters"
             className="w-full h-12 pl-10 pr-4 text-lg bg-muted rounded-xl border-2 border-transparent focus:border-primary focus:outline-none"
             autoFocus
           />
@@ -217,7 +217,7 @@ export function LocationSearchOverlay({
             placeholder="Search storage locations..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            autoCapitalize="sentences"
+            autoCapitalize="characters"
             className="w-full h-12 pl-10 pr-4 text-lg bg-muted rounded-xl border-2 border-transparent focus:border-primary focus:outline-none"
             autoFocus
           />

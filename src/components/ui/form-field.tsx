@@ -200,7 +200,7 @@ export const FormField = React.forwardRef<
           readOnly={readOnly}
           autoFocus={autoFocus}
           required={required}
-          autoCapitalize={type === "text" ? "sentences" : "none"}
+          autoCapitalize={type === "text" ? "characters" : "none"}
           min={min}
           max={max}
           step={step}

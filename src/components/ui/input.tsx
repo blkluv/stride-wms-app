@@ -15,12 +15,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       onChange?.(e);
     };
 
-    // Default to sentence capitalization for short text inputs.
+    // Default to ALL CAPS for short text inputs.
     // Long text fields should use <Textarea> (which defaults to autoCapitalize="none").
     const resolvedAutoCapitalize =
       autoCapitalize ??
       (type === undefined || type === "text" || type === "search" || type === "tel"
-        ? "sentences"
+        ? "characters"
         : "none");
 
     return (
