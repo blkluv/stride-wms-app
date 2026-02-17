@@ -245,3 +245,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 72. Q: On /shipments/received (dock intakes only), default filter/sort?
     A: Show all received dock intakes (not limited to today) (option B) and default sort by received date (newest first).
 
+73. Q: Should /shipments/received include quick date filters (Today/7d/30d/All)?
+    A: No. Keep search + sort only.
+
