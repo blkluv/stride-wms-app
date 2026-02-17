@@ -19,6 +19,10 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { supabase } from '@/integrations/supabase/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { ActivityEntityType } from '@/lib/activity/logActivity';
+import { parseMessageWithLinks, extractEntityNumbers, type EntityMap } from '@/utils/parseEntityLinks';
+import { resolveEntities, buildEntityMap } from '@/services/entityResolver';
+import { useToast } from '@/hooks/use-toast';
+import { getDocumentSignedUrl } from '@/lib/scanner/uploadService';
 
 interface ActivityRow {
   id: string;
@@ -95,11 +99,54 @@ function getEventCategory(eventType: string): string {
   return 'update';
 }
 
-function ActivityDetailsDisplay({ details }: { details: Record<string, unknown> }) {
+function isDocumentRef(value: unknown): value is { storage_key: string; file_name?: string | null; label?: string | null } {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as any;
+  return typeof v.storage_key === 'string' && v.storage_key.length > 0;
+}
+
+function ActivityDetailsDisplay({ details, entityMap }: { details: Record<string, unknown>; entityMap?: EntityMap }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { toast } = useToast();
+  const [busyStorageKey, setBusyStorageKey] = useState<string | null>(null);
 
   const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
   if (entries.length === 0) return null;
+
+  const openDocument = async (storageKey: string) => {
+    setBusyStorageKey(storageKey);
+    try {
+      const url = await getDocumentSignedUrl(storageKey, 300);
+      window.open(url, '_blank');
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Document Error',
+        description: 'Failed to open document',
+      });
+    } finally {
+      setBusyStorageKey(null);
+    }
+  };
+
+  const downloadDocument = async (storageKey: string, fileName?: string | null) => {
+    setBusyStorageKey(storageKey);
+    try {
+      const url = await getDocumentSignedUrl(storageKey, 300);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName || storageKey.split('/').pop() || 'document';
+      link.click();
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Document Error',
+        description: 'Failed to download document',
+      });
+    } finally {
+      setBusyStorageKey(null);
+    }
+  };
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -112,14 +159,59 @@ function ActivityDetailsDisplay({ details }: { details: Record<string, unknown> 
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-1 p-2 bg-background rounded border text-xs space-y-1">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex justify-between gap-4">
-              <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-              <span className="font-medium text-right truncate max-w-[200px]">
-                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </span>
-            </div>
-          ))}
+          {entries.map(([key, value]) => {
+            if (isDocumentRef(value)) {
+              const displayName = value.label || value.file_name || value.storage_key.split('/').pop() || 'Document';
+              const isBusy = busyStorageKey === value.storage_key;
+              return (
+                <div key={key} className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium truncate max-w-[180px]" title={displayName}>
+                      {displayName}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      disabled={isBusy}
+                      onClick={() => void openDocument(value.storage_key)}
+                    >
+                      <MaterialIcon name={isBusy ? 'progress_activity' : 'open_in_new'} className={isBusy ? 'animate-spin text-[12px]' : 'text-[12px]'} />
+                      <span className="ml-1">Open</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      disabled={isBusy}
+                      onClick={() => void downloadDocument(value.storage_key, value.file_name)}
+                    >
+                      <MaterialIcon name="download" className="text-[12px]" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+
+            const display =
+              typeof value === 'string'
+                ? parseMessageWithLinks(value, entityMap)
+                : typeof value === 'number' || typeof value === 'boolean'
+                  ? String(value)
+                  : parseMessageWithLinks(JSON.stringify(value), entityMap);
+
+            return (
+              <div key={key} className="flex justify-between gap-4">
+                <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
+                <span className="font-medium text-right break-words max-w-[260px]">
+                  {display}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -494,6 +586,7 @@ async function fetchShipmentComprehensiveActivity(shipmentId: string): Promise<A
 export function EntityActivityFeed({ entityType, entityId, title, description }: EntityActivityFeedProps) {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [entityMap, setEntityMap] = useState<EntityMap | undefined>(undefined);
 
   const mapping = TABLE_MAP[entityType];
 
@@ -538,6 +631,42 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
+
+  // Resolve entity numbers to IDs for interactive navigation (items, shipments, etc).
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolve = async () => {
+      try {
+        const textBlobs: string[] = [];
+        for (const a of activities) {
+          if (a.event_label) textBlobs.push(a.event_label);
+          // Also scan simple string detail values (helps when codes are stored in details).
+          for (const v of Object.values(a.details || {})) {
+            if (typeof v === 'string' && v) textBlobs.push(v);
+          }
+        }
+
+        const numbers = [...new Set(textBlobs.flatMap((t) => extractEntityNumbers(t)))];
+        if (numbers.length === 0) {
+          if (!cancelled) setEntityMap(undefined);
+          return;
+        }
+
+        const resolved = await resolveEntities(numbers);
+        const map = buildEntityMap(resolved);
+        if (!cancelled) setEntityMap(map as unknown as EntityMap);
+      } catch (err) {
+        console.warn('[EntityActivityFeed] entity resolution failed:', err);
+        if (!cancelled) setEntityMap(undefined);
+      }
+    };
+
+    void resolve();
+    return () => {
+      cancelled = true;
+    };
+  }, [activities]);
 
   const displayTitle = title || 'Activity';
   const displayDescription = description || `Timeline of changes to this ${entityType}`;
@@ -601,7 +730,9 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
                     {/* Event content */}
                     <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-0.5">
-                        <span className="font-medium text-sm leading-tight">{activity.event_label}</span>
+                        <span className="font-medium text-sm leading-tight">
+                          {parseMessageWithLinks(activity.event_label, entityMap)}
+                        </span>
                         <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
                           {getEventCategory(activity.event_type)}
                         </Badge>
@@ -621,7 +752,7 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
                       </div>
 
                       {/* Expandable details */}
-                      <ActivityDetailsDisplay details={activity.details} />
+                      <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} />
                     </div>
                   </div>
                 ))}

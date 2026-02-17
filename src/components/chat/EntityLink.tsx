@@ -112,9 +112,32 @@ export function EntityLink({
     );
   }
 
+  // Compute navigation target.
+  // Some entities have multiple "detail" routes (e.g., inbound shipments),
+  // and some routes require UUIDs even when the UI shows a human-readable number.
+  const upper = number.toUpperCase();
+  let to = `${config.route}/${id || number}`;
+
+  if (type === 'item') {
+    // ItemDetail route expects UUID; fall back to scan redirect for item_code-only links.
+    to = id ? `/inventory/${id}` : `/scan/item/${encodeURIComponent(upper)}`;
+  }
+
+  if (type === 'shipment') {
+    const prefix = upper.split('-')[0] || 'SHP';
+    const base =
+      prefix === 'MAN' ? '/incoming/manifest'
+      : prefix === 'EXP' ? '/incoming/expected'
+      : prefix === 'INT' ? '/incoming/dock-intake'
+      : '/shipments';
+
+    // Prefer direct UUID route when available; otherwise use scan redirect by shipment_number.
+    to = id ? `${base}/${id}` : `/scan/shipment/${encodeURIComponent(upper)}`;
+  }
+
   const linkContent = (
     <Link
-      to={`${config.route}/${id || number}`}
+      to={to}
       className={cn(
         'inline-flex items-center px-2 py-0.5 rounded text-sm font-medium transition-colors focus:outline-none focus:ring-2',
         colors.bg,

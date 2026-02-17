@@ -170,3 +170,17 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 50. Q: Shipment-level exception chip list (final confirmation)?
     A: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
 
+51. Q: After an intake is completed/closed, can users return to view/edit it?
+    A: Yes. The same Dock Intake page (Stage 1 + Stage 2) should remain accessible.
+       It is read-only by default with an "Edit" button to unlock changes, without
+       reopening the intake status or re-running the completion flow.
+
+52. Q: Auto-generated Receiving Document PDF: when saved and how to handle re-generation?
+    A: Save immediately upon Stage 2 completion. If a Receiving Document already exists,
+       overwrite the visible version (keep only the latest visible) while keeping older
+       versions archived (not deleted from storage).
+
+53. Q: How do users revisit archived Receiving Document versions?
+    A: Via the Activity feed. Activity should be interactive globally across the app:
+       users can tap entity codes (item/shipment/etc) and documents to navigate/open them.
+

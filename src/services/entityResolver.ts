@@ -29,8 +29,16 @@ const resolvers: Record<EntityType, ResolverConfig> = {
   shipment: {
     table: 'shipments',
     numberField: 'shipment_number',
-    selectFields: 'id, shipment_number, status, direction',
-    summaryFn: (d) => `${d.direction} - ${d.status}`,
+    selectFields: 'id, shipment_number, status, shipment_type, inbound_kind, inbound_status',
+    summaryFn: (d) => {
+      const kind = d.shipment_type === 'inbound'
+        ? `Inbound${d.inbound_kind ? ` (${d.inbound_kind})` : ''}`
+        : d.shipment_type === 'outbound'
+          ? 'Outbound'
+          : 'Shipment';
+      const stage = d.inbound_status || d.status || 'unknown';
+      return `${kind} - ${stage}`;
+    },
   },
   repair_quote: {
     table: 'repair_quotes',
@@ -41,10 +49,12 @@ const resolvers: Record<EntityType, ResolverConfig> = {
   },
   item: {
     table: 'items',
-    numberField: 'item_number',
-    selectFields: 'id, item_number, description, status, location_code',
-    summaryFn: (d) =>
-      `${d.description || 'Item'} - ${d.location_code || 'No location'} (${d.status})`,
+    numberField: 'item_code',
+    selectFields: 'id, item_code, description, status, current_location',
+    summaryFn: (d) => {
+      const loc = d.current_location ? ` - ${d.current_location}` : '';
+      return `${d.description || 'Item'}${loc} (${d.status})`;
+    },
   },
   quote: {
     table: 'quotes',
@@ -88,13 +98,17 @@ export async function resolveEntities(
   for (const number of numbers) {
     const upperNumber = number.toUpperCase();
     for (const [type, config] of Object.entries(ENTITY_CONFIG)) {
-      if (upperNumber.startsWith(config.prefix + '-')) {
-        if (!grouped.has(type as EntityType)) {
-          grouped.set(type as EntityType, []);
-        }
-        grouped.get(type as EntityType)!.push(upperNumber);
-        break;
+      // Prefer pattern-based classification so "shipment" can match MAN/EXP/INT/OUT as well as SHP.
+      const flags = config.pattern.flags.replace('g', '');
+      const testPattern = new RegExp(config.pattern.source, flags);
+      testPattern.lastIndex = 0;
+      if (!testPattern.test(upperNumber)) continue;
+
+      if (!grouped.has(type as EntityType)) {
+        grouped.set(type as EntityType, []);
       }
+      grouped.get(type as EntityType)!.push(upperNumber);
+      break;
     }
   }
 

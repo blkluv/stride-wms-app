@@ -256,7 +256,14 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     if (shipment && profile?.tenant_id) {
       try {
         const pdfData = await buildPdfData(shipment);
-        await storeReceivingPdf(pdfData, shipmentId, profile.tenant_id, profile.id);
+        const result = await storeReceivingPdf(pdfData, shipmentId, profile.tenant_id, profile.id);
+        if (!result.success) {
+          toast({
+            variant: 'destructive',
+            title: 'Receiving Document not saved',
+            description: 'Receiving was completed, but the Receiving Document could not be saved. You can retry from the PDF section.',
+          });
+        }
       } catch {
         console.warn('[ReceivingStageRouter] PDF generation failed (non-blocking)');
       }
