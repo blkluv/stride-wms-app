@@ -26,6 +26,7 @@ import { ShipmentCoverageDialog } from '@/components/shipments/ShipmentCoverageD
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
@@ -48,6 +49,7 @@ import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { ExceptionsTab } from '@/components/receiving/ExceptionsTab';
 import { createCharges } from '@/services/billing';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
@@ -199,6 +201,7 @@ export default function ShipmentDetail() {
   const [editPoNumber, setEditPoNumber] = useState('');
   const [editExpectedArrival, setEditExpectedArrival] = useState<Date | undefined>(undefined);
   const [editNotes, setEditNotes] = useState('');
+  const [editInternalNotes, setEditInternalNotes] = useState('');
   const [editReleaseType, setEditReleaseType] = useState('');
   const [editReleasedTo, setEditReleasedTo] = useState('');
   const [editReleaseToName, setEditReleaseToName] = useState('');
@@ -1768,6 +1771,7 @@ export default function ShipmentDetail() {
               setEditPoNumber(shipment.po_number || '');
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
+              setEditInternalNotes(shipment.receiving_notes || '');
               if (shipment.shipment_type === 'outbound') {
                 setEditReleaseType(
                   shipment.release_type?.startsWith('will_call')
@@ -2255,12 +2259,38 @@ export default function ShipmentDetail() {
                   <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
                 </div>
               )}
-              <Textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Add notes about this shipment..."
-                rows={3}
-              />
+              <Tabs defaultValue="internal" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="internal">Internal</TabsTrigger>
+                  <TabsTrigger value="public">Public</TabsTrigger>
+                  <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                </TabsList>
+                <TabsContent value="internal" className="mt-2 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Internal notes are visible to staff only.
+                  </p>
+                  <Textarea
+                    value={editInternalNotes}
+                    onChange={(e) => setEditInternalNotes(e.target.value)}
+                    placeholder="Add internal notes..."
+                    rows={3}
+                  />
+                </TabsContent>
+                <TabsContent value="public" className="mt-2 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Public notes are visible to the client in the portal.
+                  </p>
+                  <Textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Add public notes..."
+                    rows={3}
+                  />
+                </TabsContent>
+                <TabsContent value="exceptions" className="mt-2">
+                  <ExceptionsTab shipmentId={shipment.id} />
+                </TabsContent>
+              </Tabs>
             </div>
 
             {/* Outbound-specific fields */}
@@ -2358,6 +2388,7 @@ export default function ShipmentDetail() {
                     po_number: editPoNumber.trim() || null,
                     expected_arrival_date: editExpectedArrival?.toISOString() || null,
                     notes: editNotes.trim() || null,
+                    receiving_notes: editInternalNotes.trim() || null,
                   };
 
                   // Add outbound-specific fields if this is an outbound shipment

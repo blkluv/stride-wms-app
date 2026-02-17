@@ -20,6 +20,8 @@ import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ExceptionsTab } from '@/components/receiving/ExceptionsTab';
 import {
   Table,
   TableBody,
@@ -149,6 +151,7 @@ export default function OutboundCreate() {
 
   const [accountDefaultShipmentNotes, setAccountDefaultShipmentNotes] = useState<string | null>(null);
   const [accountHighlightShipmentNotes, setAccountHighlightShipmentNotes] = useState(false);
+  const [internalNotes, setInternalNotes] = useState('');
 
   // Photos/Documents (match intake behavior)
   const [receivingPhotos, setReceivingPhotos] = useState<(string | TaggablePhoto)[]>([]);
@@ -561,6 +564,7 @@ export default function OutboundCreate() {
           sidemark_id: sidemarkId || null,
           expected_arrival_date: expectedDate || null,
           notes: notes || null,
+          receiving_notes: internalNotes.trim() || null,
           // Legacy field: derived from current outbound type
           release_type: derivedReleaseType,
           released_to: releasedTo.trim() || null,
@@ -693,6 +697,9 @@ export default function OutboundCreate() {
                     setAccountId(v);
                     setSidemarkId('');
                     setSelectedItemIds(new Set()); // Clear selection when account changes
+                    setNotes('');
+                    setNotesTouched(false);
+                    setInternalNotes('');
                     if (errors.account) setErrors({ ...errors, account: undefined });
                   }}
                   placeholder="Select account..."
@@ -860,15 +867,47 @@ export default function OutboundCreate() {
                     <p className="whitespace-pre-wrap">{accountDefaultShipmentNotes}</p>
                   </div>
                 )}
-                <Textarea
-                  value={notes}
-                  onChange={(e) => {
-                    setNotesTouched(true);
-                    setNotes(e.target.value);
-                  }}
-                  placeholder="Additional notes about this shipment..."
-                  rows={2}
-                />
+                <Tabs defaultValue="internal" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="internal">Internal</TabsTrigger>
+                    <TabsTrigger value="public">Public</TabsTrigger>
+                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="internal" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Internal notes are visible to staff only.
+                    </p>
+                    <Textarea
+                      value={internalNotes}
+                      onChange={(e) => setInternalNotes(e.target.value)}
+                      placeholder="Add internal notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="public" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Public notes are visible to the client in the portal.
+                    </p>
+                    <Textarea
+                      value={notes}
+                      onChange={(e) => {
+                        setNotesTouched(true);
+                        setNotes(e.target.value);
+                      }}
+                      placeholder="Add public notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="exceptions" className="mt-2">
+                    {draftShipmentId ? (
+                      <ExceptionsTab shipmentId={draftShipmentId} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground py-2">
+                        Creating draft shipment…
+                      </p>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </div>
             </CardContent>
           </Card>
