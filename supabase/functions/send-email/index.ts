@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolvePlatformEmailDefaults, type PlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { isValidEmail, resolvePlatformEmailDefaults, type PlatformEmailDefaults } from "../_shared/platformEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -17,12 +17,6 @@ function jsonResponse(payload: Record<string, unknown>, status = 200): Response 
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function isValidEmail(value: string | null | undefined): value is string {
-  if (!value) return false;
-  const trimmed = value.trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 async function authenticateRequest(req: Request): Promise<{ userId: string; authHeader: string }> {

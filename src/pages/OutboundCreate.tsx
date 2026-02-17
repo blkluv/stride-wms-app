@@ -186,7 +186,6 @@ export default function OutboundCreate() {
       void cleanupDraftShipment();
     };
   }, [cleanupDraftShipment]);
-
   // ------------------------------------------
   // Fetch reference data
   // ------------------------------------------

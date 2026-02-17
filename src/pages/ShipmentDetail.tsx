@@ -108,6 +108,14 @@ interface Shipment {
   status: string;
   account_id: string | null;
   warehouse_id: string | null;
+  // Outbound / release (SOP) fields
+  customer_authorized: boolean | null;
+  customer_authorized_at: string | null;
+  customer_authorized_by: string | null;
+  driver_name: string | null;
+  liability_accepted: boolean | null;
+  release_to_name: string | null;
+  release_to_email: string | null;
   carrier: string | null;
   tracking_number: string | null;
   po_number: string | null;
@@ -132,7 +140,6 @@ interface Shipment {
   signature_data: string | null;
   signature_name: string | null;
   signature_timestamp: string | null;
-  customer_authorized: boolean | null;
   created_at: string;
   accounts?: { id: string; account_name: string; account_code: string } | null;
   warehouses?: { id: string; name: string } | null;
@@ -1182,6 +1189,13 @@ export default function ShipmentDetail() {
     setCompletingOutbound(true);
     try {
       const now = new Date().toISOString();
+      const releasedToName =
+        signatureInfo.signatureName?.trim()
+        || shipment.released_to
+        || shipment.driver_name
+        || shipment.release_to_name
+        || null;
+
       // Update shipment with signature and completion data
       const { error: shipmentError } = await supabase
         .from('shipments')
@@ -1193,6 +1207,11 @@ export default function ShipmentDetail() {
           signature_data: signatureInfo.signatureData,
           signature_name: signatureInfo.signatureName,
           signature_timestamp: now,
+          // Persist release recipient (validation requires released_to OR driver_name)
+          released_to: releasedToName,
+          driver_name: releasedToName,
+          // Keep legacy contact field in sync for older UIs/exports
+          release_to_name: releasedToName,
         })
         .eq('id', shipment.id);
 
@@ -1248,6 +1267,12 @@ export default function ShipmentDetail() {
       // Generate release PDF and upload as a document
       try {
         const staffName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || null;
+        const releasedToForPdf =
+          signatureInfo.signatureName?.trim()
+          || shipment.released_to
+          || shipment.driver_name
+          || shipment.release_to_name
+          || null;
 
         const pdfItems: ReleasePdfItem[] = activeOutboundItems.map(si => ({
           itemCode: si.item?.item_code || si.expected_description || '-',
@@ -1268,7 +1293,7 @@ export default function ShipmentDetail() {
           shipmentNumber: shipment.shipment_number,
           shipmentType: shipment.shipment_type,
           releaseType: shipment.release_type,
-          releasedTo: shipment.released_to || null,
+          releasedTo: releasedToForPdf,
           releaseToPhone: shipment.release_to_phone || null,
           carrier: shipment.carrier,
           trackingNumber: shipment.tracking_number,
@@ -1314,7 +1339,7 @@ export default function ShipmentDetail() {
               page_count: 1,
               mime_type: 'application/pdf',
               label: `Release Document - ${shipment.shipment_number}`,
-              notes: `Release signed by ${signatureInfo.signatureName || shipment.released_to || 'Driver'}`,
+              notes: `Release signed by ${releasedToForPdf || 'Driver'}`,
               is_sensitive: false,
             },
           });
@@ -1364,14 +1389,18 @@ export default function ShipmentDetail() {
 
       const result = validationResult as { ok: boolean; blockers: SOPBlocker[] };
       const allBlockers = result?.blockers || [];
-      const hardBlockers = allBlockers.filter(
+      // "Released To / Driver Name" is captured in the Signature dialog immediately after validation,
+      // so don't block completion on it here.
+      const blockersForDialog = allBlockers.filter((b: SOPBlocker) => b.code !== 'NO_RELEASED_TO');
+
+      const hardBlockers = blockersForDialog.filter(
         (b: SOPBlocker) => b.severity === 'blocking' || !b.severity
       );
-      const warnings = allBlockers.filter((b: SOPBlocker) => b.severity === 'warning');
+      const warnings = blockersForDialog.filter((b: SOPBlocker) => b.severity === 'warning');
 
       // If there are hard blockers, show the dialog (no override)
       if (hardBlockers.length > 0) {
-        setSopBlockers(allBlockers);
+        setSopBlockers(blockersForDialog);
         setSopValidationOpen(true);
         setShowOutboundCompleteDialog(false);
         return;
@@ -1379,7 +1408,7 @@ export default function ShipmentDetail() {
 
       // If there are warnings (but no hard blockers), show the dialog with override option
       if (warnings.length > 0) {
-        setSopBlockers(allBlockers);
+        setSopBlockers(blockersForDialog);
         setSopValidationOpen(true);
         setShowOutboundCompleteDialog(false);
         return;
@@ -1414,10 +1443,12 @@ export default function ShipmentDetail() {
   // ------------------------------------------
   const shipmentStatusLabels: Record<string, string> = {
     expected: 'Expected',
+    pending: 'Pending',
     receiving: 'In Progress',
     in_progress: 'In Progress',
     received: 'Received',
     partial: 'Partial',
+    released: 'Released',
     shipped: 'Shipped',
     completed: 'Completed',
     cancelled: 'Cancelled',
@@ -1507,9 +1538,11 @@ export default function ShipmentDetail() {
               setEditNotes(shipment.notes || '');
               if (shipment.shipment_type === 'outbound') {
                 setEditReleaseType(
-                  shipment.release_type?.startsWith('will_call') ? 'will_call' : shipment.release_type || 'will_call'
+                  shipment.release_type?.startsWith('will_call')
+                    ? 'will_call'
+                    : (shipment.release_type || 'will_call')
                 );
-                setEditReleasedTo(shipment.released_to || '');
+                setEditReleasedTo(shipment.released_to || shipment.driver_name || shipment.release_to_name || '');
                 setEditReleaseToName(shipment.release_to_name || '');
                 setEditReleaseToEmail(shipment.release_to_email || '');
                 setEditReleaseToPhone(shipment.release_to_phone || '');
@@ -1812,47 +1845,50 @@ export default function ShipmentDetail() {
             <CardDescription>Update shipment details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Outbound-specific fields */}
+            {/* Outbound-specific fields (legacy outbound system parity) */}
             {isOutbound && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Release Type <span className="text-destructive">*</span></Label>
+                  <Label>Release Type</Label>
                   <Select value={editReleaseType} onValueChange={setEditReleaseType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select release type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="will_call">Will Call</SelectItem>
+                      <SelectItem value="will_call">Will Call (Pickup/Release)</SelectItem>
                       <SelectItem value="disposal">Disposal</SelectItem>
                       <SelectItem value="return">Return to Sender</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Released To / Company <span className="text-destructive">*</span></Label>
+                  <Label>Released To / Driver Name</Label>
                   <Input
                     value={editReleasedTo}
                     onChange={(e) => setEditReleasedTo(e.target.value)}
-                    placeholder="Company or person name"
+                    placeholder="Name of person picking up / driver"
                   />
                 </div>
+
                 <div className="sm:col-span-2 flex items-center gap-3 rounded-md border p-3">
                   <Checkbox
                     id="customer-authorized"
                     checked={editCustomerAuthorized}
-                    onCheckedChange={(checked) => setEditCustomerAuthorized(!!checked)}
+                    onCheckedChange={(checked) => setEditCustomerAuthorized(checked === true)}
                   />
                   <div>
                     <Label htmlFor="customer-authorized" className="cursor-pointer font-medium">
                       Customer Authorized
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Check if the client authorized this release (via portal, phone, or email)
+                      Mark when the client approved this outbound release (portal, email, or phone).
                     </p>
                   </div>
                 </div>
               </div>
             )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Carrier</Label>
@@ -2003,43 +2039,24 @@ export default function ShipmentDetail() {
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
-                  if (isOutbound) {
-                    if (!editReleaseType) {
-                      toast({
-                        variant: 'destructive',
-                        title: 'Validation Error',
-                        description: 'Release Type is required for outbound shipments.',
-                      });
-                      return;
-                    }
-                    if (!editReleasedTo.trim()) {
-                      toast({
-                        variant: 'destructive',
-                        title: 'Validation Error',
-                        description: 'Released To is required for outbound shipments.',
-                      });
-                      return;
-                    }
-                  }
-
                   const updates: Record<string, unknown> = {
-                    carrier: editCarrier || null,
-                    tracking_number: editTrackingNumber || null,
-                    po_number: editPoNumber || null,
+                    carrier: editCarrier.trim() || null,
+                    tracking_number: editTrackingNumber.trim() || null,
+                    po_number: editPoNumber.trim() || null,
                     expected_arrival_date: editExpectedArrival?.toISOString() || null,
-                    notes: editNotes || null,
+                    notes: editNotes.trim() || null,
                   };
 
                   // Add outbound-specific fields if this is an outbound shipment
                   if (isOutbound) {
-                    updates.release_type = editReleaseType;
-                    updates.released_to = editReleasedTo.trim();
-                    updates.release_to_name = editReleaseToName || null;
-                    updates.release_to_email = editReleaseToEmail || null;
-                    updates.release_to_phone = editReleaseToPhone || null;
-                    updates.driver_name = editDriverName || null;
-                    updates.destination_name = editDestinationName || null;
-                    updates.origin_name = editOriginName || null;
+                    updates.release_type = editReleaseType || null;
+                    updates.released_to = editReleasedTo.trim() || null;
+                    updates.release_to_name = editReleaseToName.trim() || null;
+                    updates.release_to_email = editReleaseToEmail.trim() || null;
+                    updates.release_to_phone = editReleaseToPhone.trim() || null;
+                    updates.driver_name = editDriverName.trim() || null;
+                    updates.destination_name = editDestinationName.trim() || null;
+                    updates.origin_name = editOriginName.trim() || null;
                     updates.scheduled_date = editScheduledDate?.toISOString() || null;
 
                     const wasCustomerAuthorized = !!shipment.customer_authorized;
@@ -2146,7 +2163,7 @@ export default function ShipmentDetail() {
                 </Label>
                 <p className="font-medium">
                   {isOutbound
-                    ? shipment.released_to || '-'
+                    ? shipment.released_to || shipment.driver_name || shipment.release_to_name || '-'
                     : shipment.received_at
                       ? format(new Date(shipment.received_at), 'MMM d, yyyy h:mm a')
                       : '-'}
