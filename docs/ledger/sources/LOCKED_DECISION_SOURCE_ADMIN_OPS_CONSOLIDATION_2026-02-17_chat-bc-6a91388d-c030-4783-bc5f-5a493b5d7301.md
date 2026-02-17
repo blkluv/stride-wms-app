@@ -67,3 +67,8 @@ User decision (AI help delivery):
 - Do not integrate the in-app AI bot for email setup instructions.
 - Instead, provide a copy/paste prompt inside the help tool UI so users can paste it into ChatGPT (or similar) to get tailored step-by-step DNS instructions.
 
+### QA-2026-02-17-ADMINOPS-011
+User decision (prompt content):
+- The help prompt should be generic (not auto-filled with tenant DNS records).
+- The prompt must be detailed enough that ChatGPT asks the user questions about their domain registrar/DNS/email provider and then gives clear step-by-step instructions.
+
