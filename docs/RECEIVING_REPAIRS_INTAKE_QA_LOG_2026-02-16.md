@@ -233,3 +233,9 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 68. Q: "Received Today" card: should it combine received dock intakes with other inbound types (expected/manifest) in one list?
     A: No (option B). Keep dock intakes separate from other inbound types.
 
+69. Q: On the Shipments Hub, what should the "Received Today" card show?
+    A: Only Dock Intakes received today (inbound_kind = dock_intake).
+
+70. Q: On the Shipments Hub, what should the "Expected Today" card show?
+    A: Expected shipments scheduled for today regardless of current status/stage (e.g., closed, pending, etc).
+
