@@ -33,8 +33,9 @@ import { ShipmentCoverageDialog } from '@/components/shipments/ShipmentCoverageD
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
-import { ScanDocumentButton, DocumentUploadButton, DocumentList } from '@/components/scanner';
+import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -50,10 +51,12 @@ import { SignatureDialog } from '@/components/shipments/SignatureDialog';
 import { generateReleasePdf, ReleasePdfData, ReleasePdfItem } from '@/lib/releasePdf';
 import { QRScanner } from '@/components/scan/QRScanner';
 import { useLocations } from '@/hooks/useLocations';
+import { useDocuments } from '@/hooks/useDocuments';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { ShipmentExceptionsChips } from '@/components/shipments/ShipmentExceptionsChips';
 import { createCharges } from '@/services/billing';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
@@ -226,6 +229,7 @@ export default function ShipmentDetail() {
   const [editPoNumber, setEditPoNumber] = useState('');
   const [editExpectedArrival, setEditExpectedArrival] = useState<Date | undefined>(undefined);
   const [editNotes, setEditNotes] = useState('');
+  const [editInternalNotes, setEditInternalNotes] = useState('');
   const [editReleaseType, setEditReleaseType] = useState('');
   const [editReleasedTo, setEditReleasedTo] = useState('');
   const [editReleaseToName, setEditReleaseToName] = useState('');
@@ -271,6 +275,11 @@ export default function ShipmentDetail() {
     default_shipment_notes: string | null;
     highlight_shipment_notes: boolean;
   } | null>(null);
+
+  const { documents, refetch: refetchDocuments } = useDocuments({
+    contextType: 'shipment',
+    contextId: shipment?.id,
+  });
 
   // Receiving session hook
   const {
@@ -1794,6 +1803,7 @@ export default function ShipmentDetail() {
               setEditPoNumber(shipment.po_number || '');
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
+              setEditInternalNotes(shipment.receiving_notes || '');
               if (shipment.shipment_type === 'outbound') {
                 setEditReleaseType(
                   shipment.release_type?.startsWith('will_call')
@@ -2275,12 +2285,53 @@ export default function ShipmentDetail() {
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
-              <Textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Add notes about this shipment..."
-                rows={3}
-              />
+              {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
+                <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                  <div className="font-medium mb-1">Default Shipment Notes</div>
+                  <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
+                </div>
+              )}
+              {isOutbound ? (
+                <Tabs defaultValue="public" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="public">Public</TabsTrigger>
+                    <TabsTrigger value="internal">Internal</TabsTrigger>
+                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="public" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Public notes are visible to the client in the portal.
+                    </p>
+                    <Textarea
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Add public notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="internal" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Internal notes are visible to staff only.
+                    </p>
+                    <Textarea
+                      value={editInternalNotes}
+                      onChange={(e) => setEditInternalNotes(e.target.value)}
+                      placeholder="Add internal notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="exceptions" className="mt-2">
+                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <Textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add notes about this shipment..."
+                  rows={3}
+                />
+              )}
             </div>
 
             {/* Outbound-specific fields */}
@@ -2382,6 +2433,7 @@ export default function ShipmentDetail() {
 
                   // Add outbound-specific fields if this is an outbound shipment
                   if (isOutbound) {
+                    updates.receiving_notes = editInternalNotes.trim() || null;
                     updates.release_type = editReleaseType || null;
                     updates.released_to = editReleasedTo.trim() || null;
                     updates.release_to_name = editReleaseToName.trim() || null;
@@ -2423,21 +2475,6 @@ export default function ShipmentDetail() {
                 Cancel
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Account Default Shipment Notes - Full width, only show if highlight enabled AND notes not blank */}
-      {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
-        <Card className="mb-6 bg-orange-50 dark:bg-orange-900/20 border-4 border-orange-500 dark:border-orange-400">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <span className="text-orange-600 dark:text-orange-400">⚠️</span>
-              Account Notes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm whitespace-pre-wrap font-bold text-orange-700 dark:text-orange-300">{accountSettings.default_shipment_notes}</p>
           </CardContent>
         </Card>
       )}
@@ -2575,12 +2612,47 @@ export default function ShipmentDetail() {
               </div>
             )}
 
-            {shipment.notes && (
-              <div>
-                <Label className="text-muted-foreground">Notes</Label>
-                <p className="mt-1">{shipment.notes}</p>
+            {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
+              <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                <div className="font-medium mb-1">Default Shipment Notes</div>
+                <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
               </div>
             )}
+
+            {isOutbound ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Notes</Label>
+                <Tabs defaultValue="public" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="public">Public</TabsTrigger>
+                    <TabsTrigger value="internal">Internal</TabsTrigger>
+                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="public" className="mt-2">
+                    {shipment.notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No public notes.</p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="internal" className="mt-2">
+                    {shipment.receiving_notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No internal notes.</p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="exceptions" className="mt-2">
+                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : shipment.notes?.trim() ? (
+              <div>
+                <Label className="text-muted-foreground">Notes</Label>
+                <p className="mt-1 whitespace-pre-wrap">{shipment.notes}</p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -2876,35 +2948,30 @@ export default function ShipmentDetail() {
 
       {/* Documents Section */}
       <Card className="mt-6">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <div>
-            <CardTitle>Documents</CardTitle>
-            <CardDescription>Scan or upload receiving paperwork, BOLs, and delivery receipts</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <ScanDocumentButton
-              context={{ type: 'shipment', shipmentId: shipment.id }}
-              onSuccess={() => {
-                setDocumentRefreshKey(prev => prev + 1);
-              }}
-              label="Scan"
-              size="sm"
-              directToCamera
-            />
-            <DocumentUploadButton
-              context={{ type: 'shipment', shipmentId: shipment.id }}
-              onSuccess={() => {
-                setDocumentRefreshKey(prev => prev + 1);
-              }}
-              size="sm"
-            />
-          </div>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MaterialIcon name="description" size="sm" />
+            Documents
+            <Badge variant="outline">{documents.length}</Badge>
+          </CardTitle>
+          <CardDescription>
+            Capture or upload paperwork and supporting shipment documents.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <DocumentList
-            contextType="shipment"
-            contextId={shipment.id}
-            refetchKey={documentRefreshKey}
+          <DocumentCapture
+            key={documentRefreshKey}
+            context={{ type: 'shipment', shipmentId: shipment.id }}
+            maxDocuments={12}
+            ocrEnabled={true}
+            onDocumentAdded={() => {
+              setDocumentRefreshKey((prev) => prev + 1);
+              void refetchDocuments();
+            }}
+            onDocumentRemoved={() => {
+              setDocumentRefreshKey((prev) => prev + 1);
+              void refetchDocuments();
+            }}
           />
         </CardContent>
       </Card>
