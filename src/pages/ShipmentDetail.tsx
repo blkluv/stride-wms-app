@@ -1622,6 +1622,7 @@ export default function ShipmentDetail() {
       setShowSignatureDialog(false);
       setPendingOverrideWarnings(undefined);
       setDocumentRefreshKey(prev => prev + 1);
+      void refetchDocuments();
       fetchShipment();
     } catch (error) {
       console.error('Error completing outbound shipment:', error);
@@ -1767,50 +1768,47 @@ export default function ShipmentDetail() {
   return (
     <DashboardLayout>
       {/* Header / Billing / Actions (keep stable during sidebar expand/collapse) */}
-      <div className="grid gap-6 lg:grid-cols-3 items-start mb-6">
+      <div className="mb-6 grid gap-6 lg:grid-cols-3 lg:items-start">
         {/* Left: shipment identity */}
-        <div className="lg:col-span-2">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
-                <MaterialIcon name="arrow_back" size="md" />
-              </Button>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
-                  <ShipmentExceptionBadge
-                    shipmentId={shipment.id}
-                    onClick={
-                      isDockIntakeShipment
-                        ? () => navigate(`/incoming/dock-intake/${shipment.id}?tab=exceptions`)
-                        : undefined
-                    }
-                  />
-                  <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
-                  {shipment.release_type && (
-                    <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
-                  )}
-                </div>
-                <p className="text-muted-foreground text-sm truncate">
-                  {shipment.accounts?.account_name || 'No account'} • {shipment.warehouses?.name || 'No warehouse'}
-                </p>
-              </div>
+        <div className="flex items-center gap-3 lg:col-span-2 min-w-0">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
+            <MaterialIcon name="arrow_back" size="md" />
+          </Button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
+              <ShipmentExceptionBadge
+                shipmentId={shipment.id}
+                onClick={
+                  isDockIntakeShipment
+                    ? () => navigate(`/incoming/dock-intake/${shipment.id}?tab=exceptions`)
+                    : undefined
+                }
+              />
+              <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
+              {shipment.release_type && (
+                <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
+              )}
             </div>
+            <p className="text-muted-foreground text-sm truncate">
+              {shipment.accounts?.account_name || 'No account'} • {shipment.warehouses?.name || 'No warehouse'}
+            </p>
           </div>
         </div>
 
         {/* Right: billing (top) + actions (below) */}
-        <div className="space-y-3">
-          {canSeeBilling && shipment.account_id ? (
+        <div className="lg:col-span-1 min-w-0 space-y-3">
+          {canSeeBilling && shipment.account_id && (
             <BillingCalculator
               shipmentId={shipment.id}
               shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
               refreshKey={billingRefreshKey}
               title="Billing Calculator"
             />
-          ) : null}
+          )}
 
-          <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+          {/* Action Buttons (below calculator) */}
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             <Button variant="outline" size="sm" onClick={() => {
               if (!isEditing) {
                 setEditCarrier(shipment.carrier || '');
@@ -2328,53 +2326,72 @@ export default function ShipmentDetail() {
                       value="exceptions"
                       className="gap-2 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
                     >
-                      <MaterialIcon name="report_problem" size="sm" />
+                      <MaterialIcon name="warning" size="sm" />
                       Exceptions
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="public" className="mt-2">
-                    <div className="rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/30 p-3 space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-200">
-                        <MaterialIcon name="public" size="sm" />
-                        Public notes (Client Visible)
+                  <TabsContent value="public" className="mt-2 space-y-2">
+                    <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="public" size="sm" className="mt-0.5 text-blue-700 dark:text-blue-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            Public (Client-visible)
+                          </div>
+                          <p className="text-xs text-blue-800/90 dark:text-blue-200/90">
+                            Visible in the client portal and client-facing communications. Do not include internal process notes.
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-blue-800/80 dark:text-blue-200/80">
-                        Visible to the client in the portal. Do not include staff-only or sensitive info.
-                      </p>
-                      <Textarea
-                        value={editNotes}
-                        onChange={(e) => setEditNotes(e.target.value)}
-                        placeholder="Add PUBLIC notes for the client..."
-                        rows={3}
-                        className="border-blue-300 focus-visible:ring-blue-200 dark:border-blue-800"
-                      />
                     </div>
+                    <Textarea
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Add PUBLIC notes for the client..."
+                      rows={3}
+                      className="border-blue-300 focus-visible:ring-blue-500"
+                    />
                   </TabsContent>
 
-                  <TabsContent value="internal" className="mt-2">
-                    <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30 p-3 space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
-                        <MaterialIcon name="lock" size="sm" />
-                        Internal notes (Staff Only)
+                  <TabsContent value="internal" className="mt-2 space-y-2">
+                    <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="lock" size="sm" className="mt-0.5 text-amber-700 dark:text-amber-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            Internal (Staff only)
+                          </div>
+                          <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
+                            Only visible to staff. Use for internal instructions, troubleshooting, and operational notes.
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
-                        Visible to staff only. Preferred place for operational notes and internal context.
-                      </p>
-                      <Textarea
-                        value={editInternalNotes}
-                        onChange={(e) => setEditInternalNotes(e.target.value)}
-                        placeholder="Add INTERNAL notes for staff..."
-                        rows={3}
-                        className="border-amber-300 focus-visible:ring-amber-200 dark:border-amber-800"
-                      />
                     </div>
+                    <Textarea
+                      value={editInternalNotes}
+                      onChange={(e) => setEditInternalNotes(e.target.value)}
+                      placeholder="Add INTERNAL staff-only notes..."
+                      rows={3}
+                      className="border-amber-300 focus-visible:ring-amber-500"
+                    />
                   </TabsContent>
 
                   <TabsContent value="exceptions" className="mt-2">
-                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                      <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="warning" size="sm" className="mt-0.5 text-red-700 dark:text-red-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-red-900 dark:text-red-100">
+                            Exceptions
+                          </div>
+                          <p className="text-xs text-red-800/90 dark:text-red-200/90">
+                            System and workflow exceptions for this shipment.
+                          </p>
+                        </div>
+                      </div>
                     </div>
+                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
                   </TabsContent>
                 </Tabs>
               ) : (
@@ -2681,35 +2698,65 @@ export default function ShipmentDetail() {
                       value="exceptions"
                       className="gap-2 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
                     >
-                      <MaterialIcon name="report_problem" size="sm" />
+                      <MaterialIcon name="warning" size="sm" />
                       Exceptions
                     </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="public" className="mt-2">
-                    <div className="rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/30 p-3">
-                      {shipment.notes?.trim() ? (
-                        <p className="whitespace-pre-wrap">{shipment.notes}</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No public notes.</p>
-                      )}
+                    <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="public" size="sm" className="mt-0.5 text-blue-700 dark:text-blue-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            Public (Client-visible)
+                          </div>
+                          <p className="text-xs text-blue-800/90 dark:text-blue-200/90">
+                            Visible in client portal and client-facing communications.
+                          </p>
+                        </div>
+                      </div>
                     </div>
+                    {shipment.notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No public notes.</p>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="internal" className="mt-2">
-                    <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30 p-3">
-                      {shipment.receiving_notes?.trim() ? (
-                        <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No internal notes.</p>
-                      )}
+                    <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="lock" size="sm" className="mt-0.5 text-amber-700 dark:text-amber-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            Internal (Staff only)
+                          </div>
+                          <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
+                            Only visible to staff.
+                          </p>
+                        </div>
+                      </div>
                     </div>
+                    {shipment.receiving_notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No internal notes.</p>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="exceptions" className="mt-2">
-                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                      <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="warning" size="sm" className="mt-0.5 text-red-700 dark:text-red-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-red-900 dark:text-red-100">
+                            Exceptions
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
                   </TabsContent>
                 </Tabs>
               </div>
@@ -3026,16 +3073,14 @@ export default function ShipmentDetail() {
         </CardHeader>
         <CardContent>
           <DocumentCapture
-            key={documentRefreshKey}
+            refetchKey={documentRefreshKey}
             context={{ type: 'shipment', shipmentId: shipment.id }}
             maxDocuments={12}
             ocrEnabled={true}
             onDocumentAdded={() => {
-              setDocumentRefreshKey((prev) => prev + 1);
               void refetchDocuments();
             }}
             onDocumentRemoved={() => {
-              setDocumentRefreshKey((prev) => prev + 1);
               void refetchDocuments();
             }}
           />
