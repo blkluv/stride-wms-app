@@ -83,6 +83,26 @@ export default function OutboundCreate() {
     try {
       const now = new Date().toISOString();
 
+      // If anything allocated items for this draft, restore them before removing draft rows.
+      const { data: draftItems, error: draftItemsError } = await (supabase.from('shipment_items') as any)
+        .select('item_id')
+        .eq('shipment_id', draftShipmentId);
+
+      if (!draftItemsError) {
+        const draftItemIds: string[] = (Array.isArray(draftItems) ? draftItems : [])
+          .map((r: any) => r?.item_id)
+          .filter((v: any) => typeof v === 'string');
+
+        if (draftItemIds.length > 0) {
+          await (supabase.from('items') as any)
+            .update({ status: 'stored' })
+            .in('id', draftItemIds)
+            .eq('status', 'allocated');
+        }
+      } else {
+        console.warn('[OutboundCreate] draft cleanup fetch items error:', draftItemsError);
+      }
+
       // Best-effort cleanup so abandoned drafts don't appear in outbound lists.
       await (supabase.from('shipment_items') as any)
         .delete()
@@ -441,15 +461,7 @@ export default function OutboundCreate() {
         if (insertError) throw insertError;
       }
 
-      // 4) Mark selected items as allocated
-      if (itemIds.length > 0) {
-        const { error: allocateError } = await (supabase.from('items') as any)
-          .update({ status: 'allocated' })
-          .in('id', itemIds);
-        if (allocateError) throw allocateError;
-      }
-
-      // 5) Best-effort: un-allocate items removed from the draft selection
+      // 4) Best-effort: un-allocate items removed from the draft selection
       if (removedItemIds.length > 0) {
         const { error: deallocateError } = await (supabase.from('items') as any)
           .update({ status: 'stored' })
@@ -458,11 +470,19 @@ export default function OutboundCreate() {
         if (deallocateError) throw deallocateError;
       }
 
-      // 6) Finalize the draft by un-deleting it (only after all steps succeed)
+      // 5) Finalize the draft by un-deleting it before allocating inventory
       const { error: finalizeError } = await (supabase.from('shipments') as any)
         .update({ deleted_at: null })
         .eq('id', draftShipmentId);
       if (finalizeError) throw finalizeError;
+
+      // 6) Mark selected items as allocated (after the shipment is visible)
+      if (itemIds.length > 0) {
+        const { error: allocateError } = await (supabase.from('items') as any)
+          .update({ status: 'allocated' })
+          .in('id', itemIds);
+        if (allocateError) throw allocateError;
+      }
 
       toast({
         title: 'Outbound Shipment Created',
