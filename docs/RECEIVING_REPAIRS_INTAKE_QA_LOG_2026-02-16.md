@@ -224,3 +224,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 65. Q: Hub card expanded lists: clicking a shipment row should navigate where?
     A: To the Shipment Details page (`/shipments/:id`), even for dock intakes.
 
+66. Q: "Intakes In Progress" card: should it include dock intakes with inbound_status = closed?
+    A: No (option A). Closed is not in-progress; include only draft/stage1_complete/receiving.
+
