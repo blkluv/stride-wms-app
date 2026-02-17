@@ -230,3 +230,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 67. Q: "Intakes In Progress" card list: status label for those rows?
     A: Show a single label "In Progress" for all in-progress intake stages (option B).
 
+68. Q: "Received Today" card: should it combine received dock intakes with other inbound types (expected/manifest) in one list?
+    A: No (option B). Keep dock intakes separate from other inbound types.
+
