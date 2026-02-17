@@ -515,7 +515,6 @@ export function ShipmentItemRow({
               </TableCell>
             );
           }
-
           switch (col as BuiltinItemColumnKey) {
             case 'photo': {
               const node = item.item?.primary_photo_url ? (
