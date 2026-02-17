@@ -586,12 +586,15 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           />
         </TabsContent>
 
-        <TabsContent value="expected" className="mt-4">
-          <ExpectedList
-            shipments={shipments}
-            loading={loading}
-            onRowClick={handleRowClick}
-          />
+        <TabsContent value="expected" className="mt-4 space-y-6">
+          <div>
+            <h3 className="font-medium text-sm text-muted-foreground mb-3">All Expected Shipments</h3>
+            <ExpectedList
+              shipments={shipments}
+              loading={loading}
+              onRowClick={handleRowClick}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="dock_intakes" className="mt-4 space-y-6">
