@@ -13,8 +13,8 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { supabase } from '@/integrations/supabase/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { ActivityEntityType } from '@/lib/activity/logActivity';
-import { parseMessageWithLinks, extractEntityNumbers, type EntityMap } from '@/utils/parseEntityLinks';
-import { resolveEntities, buildEntityMap } from '@/services/entityResolver';
+import { parseMessageWithLinks } from '@/utils/parseEntityLinks';
+import { useEntityMap } from '@/hooks/useEntityMap';
 import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 
 interface ActivityRow {
@@ -460,7 +460,7 @@ async function fetchShipmentComprehensiveActivity(shipmentId: string): Promise<A
 export function EntityActivityFeed({ entityType, entityId, title, description }: EntityActivityFeedProps) {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [entityMap, setEntityMap] = useState<EntityMap | undefined>(undefined);
+  const entityMap = useEntityMap(activities, '[EntityActivityFeed] entity resolution failed:');
 
   const mapping = TABLE_MAP[entityType];
 
@@ -505,42 +505,6 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
-
-  // Resolve entity numbers to IDs for interactive navigation (items, shipments, etc).
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolve = async () => {
-      try {
-        const textBlobs: string[] = [];
-        for (const a of activities) {
-          if (a.event_label) textBlobs.push(a.event_label);
-          // Also scan simple string detail values (helps when codes are stored in details).
-          for (const v of Object.values(a.details || {})) {
-            if (typeof v === 'string' && v) textBlobs.push(v);
-          }
-        }
-
-        const numbers = [...new Set(textBlobs.flatMap((t) => extractEntityNumbers(t)))];
-        if (numbers.length === 0) {
-          if (!cancelled) setEntityMap(undefined);
-          return;
-        }
-
-        const resolved = await resolveEntities(numbers);
-        const map = buildEntityMap(resolved);
-        if (!cancelled) setEntityMap(map as unknown as EntityMap);
-      } catch (err) {
-        console.warn('[EntityActivityFeed] entity resolution failed:', err);
-        if (!cancelled) setEntityMap(undefined);
-      }
-    };
-
-    void resolve();
-    return () => {
-      cancelled = true;
-    };
-  }, [activities]);
 
   const displayTitle = title || 'Activity';
   const displayDescription = description || `Timeline of changes to this ${entityType}`;

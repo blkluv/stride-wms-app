@@ -95,39 +95,8 @@ serve(async (req: Request): Promise<Response> => {
       // Ignore: older DBs may not have get_user_role yet.
     }
 
-    // Insert document record using service role (bypasses RLS)
-    // We DO NOT trust tenant_id/created_by coming from the client.
-    const { data: doc, error: insertError } = await supabase
-      .from("documents")
-      .insert({
-        tenant_id: profile.tenant_id,
-        created_by: user.id,
-        context_type: body.context_type,
-        context_id: body.context_id ?? null,
-        file_name: body.file_name,
-        storage_key: body.storage_key,
-        file_size: body.file_size ?? null,
-        page_count: body.page_count ?? null,
-        mime_type: body.mime_type ?? null,
-        ocr_text: body.ocr_text ?? null,
-        ocr_pages: body.ocr_pages ?? null,
-        ocr_status: body.ocr_status ?? null,
-        label: body.label ?? null,
-        notes: body.notes ?? null,
-        is_sensitive: body.is_sensitive ?? false,
-      })
-      .select("id, tenant_id, storage_key")
-      .single();
-
-    if (insertError || !doc) {
-      console.error("create-document insert failed", insertError);
-      return new Response(
-        JSON.stringify({ ok: false, error: insertError?.message || "Failed to create document" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    // Optional archive/replace step (post-insert so we never hide the prior doc if insert fails)
+    // Optional: validate archive/replace inputs BEFORE insert so we don't create orphan records
+    // if we later return an error response.
     const replaceKey = typeof body.replace_storage_key === "string" ? body.replace_storage_key.trim() : "";
     if (replaceKey) {
       // Replacement is only supported for shipment-scoped documents with a context_id.
@@ -169,7 +138,42 @@ serve(async (req: Request): Promise<Response> => {
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
+    }
 
+    // Insert document record using service role (bypasses RLS)
+    // We DO NOT trust tenant_id/created_by coming from the client.
+    const { data: doc, error: insertError } = await supabase
+      .from("documents")
+      .insert({
+        tenant_id: profile.tenant_id,
+        created_by: user.id,
+        context_type: body.context_type,
+        context_id: body.context_id ?? null,
+        file_name: body.file_name,
+        storage_key: body.storage_key,
+        file_size: body.file_size ?? null,
+        page_count: body.page_count ?? null,
+        mime_type: body.mime_type ?? null,
+        ocr_text: body.ocr_text ?? null,
+        ocr_pages: body.ocr_pages ?? null,
+        ocr_status: body.ocr_status ?? null,
+        label: body.label ?? null,
+        notes: body.notes ?? null,
+        is_sensitive: body.is_sensitive ?? false,
+      })
+      .select("id, tenant_id, storage_key")
+      .single();
+
+    if (insertError || !doc) {
+      console.error("create-document insert failed", insertError);
+      return new Response(
+        JSON.stringify({ ok: false, error: insertError?.message || "Failed to create document" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Optional archive/replace step (post-insert so we never hide the prior doc if insert fails)
+    if (replaceKey) {
       // Soft delete ONLY the specified storage_key within the same shipment context.
       // Keep the storage object intact for audit access via Activity links.
       try {

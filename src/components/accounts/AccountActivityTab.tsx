@@ -6,7 +6,7 @@
  * and "load more" pagination.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,8 +20,8 @@ import {
   type UnifiedActivity,
 } from '@/hooks/useAccountActivity';
 import { format, formatDistanceToNow } from 'date-fns';
-import { parseMessageWithLinks, extractEntityNumbers, type EntityMap } from '@/utils/parseEntityLinks';
-import { resolveEntities, buildEntityMap } from '@/services/entityResolver';
+import { parseMessageWithLinks, type EntityMap } from '@/utils/parseEntityLinks';
+import { useEntityMap } from '@/hooks/useEntityMap';
 import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 
 interface AccountActivityTabProps {
@@ -202,42 +202,7 @@ export function AccountActivityTab({ accountId }: AccountActivityTabProps) {
   } = useAccountActivity(accountId);
 
   const [showDateRange, setShowDateRange] = useState(false);
-  const [entityMap, setEntityMap] = useState<EntityMap | undefined>(undefined);
-
-  // Resolve entity numbers to IDs for improved deep linking (best-effort).
-  // Links still work via scan routes when IDs are unknown.
-  useEffect(() => {
-    let cancelled = false;
-
-    const resolve = async () => {
-      try {
-        const textBlobs: string[] = [];
-        for (const a of activities) {
-          if (a.event_label) textBlobs.push(a.event_label);
-          for (const v of Object.values(a.details || {})) {
-            if (typeof v === 'string' && v) textBlobs.push(v);
-          }
-        }
-
-        const numbers = [...new Set(textBlobs.flatMap((t) => extractEntityNumbers(t)))];
-        if (numbers.length === 0) {
-          if (!cancelled) setEntityMap(undefined);
-          return;
-        }
-
-        const resolved = await resolveEntities(numbers);
-        const map = buildEntityMap(resolved);
-        if (!cancelled) setEntityMap(map as unknown as EntityMap);
-      } catch {
-        if (!cancelled) setEntityMap(undefined);
-      }
-    };
-
-    void resolve();
-    return () => {
-      cancelled = true;
-    };
-  }, [activities]);
+  const entityMap = useEntityMap(activities);
 
   if (loading) {
     return (

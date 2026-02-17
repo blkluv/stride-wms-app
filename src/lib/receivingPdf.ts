@@ -387,11 +387,25 @@ export async function storeReceivingPdf(
 
       // Store reference in shipment metadata (used for "Download PDF" and overwrite authorization)
       const nowIso = new Date().toISOString();
+      // Re-fetch metadata right before the update to avoid overwriting concurrent metadata changes
+      // made while we were generating/uploading the PDF and calling the edge function.
+      const { data: latestShipmentRow, error: latestShipmentFetchError } = await supabase
+        .from('shipments')
+        .select('metadata')
+        .eq('id', shipmentId)
+        .single();
+
+      if (latestShipmentFetchError) {
+        console.warn('[storeReceivingPdf] failed to re-fetch shipment metadata:', latestShipmentFetchError);
+      }
+
+      const latestMetadata =
+        (latestShipmentRow?.metadata as Record<string, unknown>) || currentMetadata || {};
       await supabase
         .from('shipments')
         .update({
           metadata: {
-            ...currentMetadata,
+            ...latestMetadata,
             receiving_pdf_key: storageKey,
             receiving_pdf_generated_at: nowIso,
             receiving_pdf_document_id: createdDocumentId,
