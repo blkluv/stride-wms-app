@@ -239,3 +239,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 70. Q: On the Shipments Hub, what should the "Expected Today" card show?
     A: Expected shipments scheduled for today regardless of current status/stage (e.g., closed, pending, etc).
 
+71. Q: What should the /shipments/received page show?
+    A: Only received Dock Intakes (option B), to align with the Hub's "Received Today" card behavior.
+
