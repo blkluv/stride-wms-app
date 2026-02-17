@@ -400,7 +400,9 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
   const mapInitialTab = (): TabValue => {
     if (initialSubTab === 'intakes') return 'dock_intakes';
     if (initialSubTab === 'expected') return 'expected';
-    return 'manifests';
+    if (initialSubTab === 'manifests') return 'manifests';
+    // Default inbound landing: Dock Intakes (most common operational workflow)
+    return 'dock_intakes';
   };
 
   const [activeTab, setActiveTab] = useState<TabValue>(mapInitialTab);
