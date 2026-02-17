@@ -221,3 +221,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 64. Q: In Hub cards / list rows, what status label should dock intakes show after Stage 2 completion?
     A: Show "Received" (option A). ("Closed" is an internal inbound stage marker; the user-facing status should be received.)
 
+65. Q: Hub card expanded lists: clicking a shipment row should navigate where?
+    A: To the Shipment Details page (`/shipments/:id`), even for dock intakes.
+
