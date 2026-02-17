@@ -177,7 +177,7 @@ export const FormField = React.forwardRef<
             readOnly={readOnly}
             autoFocus={autoFocus}
             required={required}
-            autoCapitalize="sentences"
+            autoCapitalize="none"
             aria-invalid={!!error}
             aria-describedby={cn(error && errorId, helpText && helpId)}
             className={cn(baseInputClasses, "resize-none overflow-y-auto")}
@@ -200,7 +200,7 @@ export const FormField = React.forwardRef<
           readOnly={readOnly}
           autoFocus={autoFocus}
           required={required}
-          autoCapitalize={type === "text" ? "sentences" : "off"}
+          autoCapitalize={type === "text" ? "sentences" : "none"}
           min={min}
           max={max}
           step={step}

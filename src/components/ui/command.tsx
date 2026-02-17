@@ -39,7 +39,7 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, ...props }, ref) => (
+>(({ className, autoCapitalize, ...props }, ref) => (
   <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
     <MaterialIcon name="search" size="sm" className="mr-2 shrink-0 opacity-50" />
     <CommandPrimitive.Input
@@ -48,6 +48,7 @@ const CommandInput = React.forwardRef<
         "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
+      autoCapitalize={autoCapitalize ?? "sentences"}
       {...props}
     />
   </div>
