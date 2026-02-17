@@ -1767,8 +1767,9 @@ export default function ShipmentDetail() {
 
   return (
     <DashboardLayout>
-      {/* Header */}
+      {/* Header / Billing / Actions (keep stable during sidebar expand/collapse) */}
       <div className="mb-6 grid gap-6 lg:grid-cols-3 lg:items-start">
+        {/* Left: shipment identity */}
         <div className="flex items-center gap-3 lg:col-span-2 min-w-0">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
             <MaterialIcon name="arrow_back" size="md" />
@@ -1795,8 +1796,8 @@ export default function ShipmentDetail() {
           </div>
         </div>
 
+        {/* Right: billing (top) + actions (below) */}
         <div className="lg:col-span-1 min-w-0 space-y-3">
-          {/* Billing Calculator - top-right, aligned with shipment number */}
           {canSeeBilling && shipment.account_id && (
             <BillingCalculator
               shipmentId={shipment.id}
@@ -2306,7 +2307,7 @@ export default function ShipmentDetail() {
               )}
               {isOutbound ? (
                 <Tabs defaultValue="public" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger
                       value="public"
                       className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
@@ -2329,6 +2330,7 @@ export default function ShipmentDetail() {
                       Exceptions
                     </TabsTrigger>
                   </TabsList>
+
                   <TabsContent value="public" className="mt-2 space-y-2">
                     <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
                       <div className="flex items-start gap-2">
@@ -2351,6 +2353,7 @@ export default function ShipmentDetail() {
                       className="border-blue-300 focus-visible:ring-blue-500"
                     />
                   </TabsContent>
+
                   <TabsContent value="internal" className="mt-2 space-y-2">
                     <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
                       <div className="flex items-start gap-2">
@@ -2373,6 +2376,7 @@ export default function ShipmentDetail() {
                       className="border-amber-300 focus-visible:ring-amber-500"
                     />
                   </TabsContent>
+
                   <TabsContent value="exceptions" className="mt-2">
                     <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-3 mb-2">
                       <div className="flex items-start gap-2">
@@ -2675,7 +2679,7 @@ export default function ShipmentDetail() {
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Notes</Label>
                 <Tabs defaultValue="public" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger
                       value="public"
                       className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
@@ -2698,6 +2702,7 @@ export default function ShipmentDetail() {
                       Exceptions
                     </TabsTrigger>
                   </TabsList>
+
                   <TabsContent value="public" className="mt-2">
                     <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3 mb-2">
                       <div className="flex items-start gap-2">
@@ -2718,6 +2723,7 @@ export default function ShipmentDetail() {
                       <p className="text-sm text-muted-foreground">No public notes.</p>
                     )}
                   </TabsContent>
+
                   <TabsContent value="internal" className="mt-2">
                     <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 mb-2">
                       <div className="flex items-start gap-2">
@@ -2738,6 +2744,7 @@ export default function ShipmentDetail() {
                       <p className="text-sm text-muted-foreground">No internal notes.</p>
                     )}
                   </TabsContent>
+
                   <TabsContent value="exceptions" className="mt-2">
                     <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-3 mb-2">
                       <div className="flex items-start gap-2">

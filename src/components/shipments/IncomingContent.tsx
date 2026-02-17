@@ -219,9 +219,9 @@ function ExpectedList({
                   {formatStatus(s.inbound_status)}
                 </Badge>
               </div>
-              <div className="text-sm text-muted-foreground">{s.account_name || '-'}</div>
+              <div className="text-sm text-muted-foreground">{s.account_name || 'Unknown'}</div>
               <div className="text-xs text-muted-foreground">
-                {s.expected_pieces ?? '-'} pcs / {s.open_items_count ?? '-'} items
+                {s.expected_pieces ?? '-'} expected pcs
               </div>
             </CardContent>
           </Card>
@@ -235,10 +235,9 @@ function ExpectedList({
               <TableHead>Expected #</TableHead>
               <TableHead>Account</TableHead>
               <TableHead>Vendor</TableHead>
-              <TableHead>ETA</TableHead>
-              <TableHead className="text-right">Pieces</TableHead>
+              <TableHead className="text-right">Expected Pieces</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead>ETA</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -254,31 +253,20 @@ function ExpectedList({
                     <ShipmentExceptionBadge shipmentId={s.id} count={s.exception_count} />
                   </div>
                 </TableCell>
-                <TableCell>{s.account_name || '-'}</TableCell>
-                <TableCell>{s.vendor_name || '-'}</TableCell>
                 <TableCell>
-                  {s.eta_start || s.eta_end ? (
-                    <span className="text-sm">
-                      {formatDate(s.eta_start)}
-                      {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
-                    </span>
-                  ) : (
-                    '-'
+                  {s.account_name || (
+                    <span className="text-muted-foreground italic">Unknown</span>
                   )}
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="tabular-nums">{s.expected_pieces ?? '-'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Items: {s.open_items_count ?? '-'}
-                  </div>
-                </TableCell>
+                <TableCell>{s.vendor_name || '-'}</TableCell>
+                <TableCell className="text-right">{s.expected_pieces ?? '-'}</TableCell>
                 <TableCell>
                   <Badge variant={statusBadgeVariant(s.inbound_status)}>
                     {formatStatus(s.inbound_status)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
-                  {formatDate(s.created_at)}
+                  {formatDate(s.eta_start)}
                 </TableCell>
               </TableRow>
             ))}
@@ -401,7 +389,8 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
   const mapInitialTab = (): TabValue => {
     if (initialSubTab === 'intakes') return 'dock_intakes';
     if (initialSubTab === 'expected') return 'expected';
-    return 'manifests';
+    if (initialSubTab === 'manifests') return 'manifests';
+    return 'dock_intakes';
   };
 
   const [activeTab, setActiveTab] = useState<TabValue>(mapInitialTab);
