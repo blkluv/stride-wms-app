@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, type ReactNode } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -31,6 +31,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -53,6 +61,7 @@ import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantPreferences } from '@/hooks/useTenantPreferences';
+import { useUserPreferences } from '@/hooks/useUserPreferences';
 import {
   MobileDataCard,
   MobileDataCardHeader,
@@ -64,6 +73,7 @@ import {
 interface Item {
   id: string;
   item_code: string;
+  sku: string | null;
   description: string | null;
   status: string;
   quantity: number;
@@ -82,8 +92,79 @@ interface Item {
   has_indicator_flags?: boolean;
 }
 
-type SortField = 'item_code' | 'vendor' | 'description' | 'quantity' | 'location_code' | 'client_account' | 'sidemark' | 'room';
+type SortField =
+  | 'item_code'
+  | 'sku'
+  | 'vendor'
+  | 'description'
+  | 'quantity'
+  | 'location_code'
+  | 'client_account'
+  | 'sidemark'
+  | 'room';
 type SortDirection = 'asc' | 'desc' | null;
+
+type InventoryColumnKey =
+  | 'photo'
+  | 'item_code'
+  | 'sku'
+  | 'quantity'
+  | 'vendor'
+  | 'description'
+  | 'location'
+  | 'client_account'
+  | 'sidemark'
+  | 'room';
+
+interface InventoryColumnPrefs {
+  order: InventoryColumnKey[];
+  hidden: InventoryColumnKey[];
+}
+
+const INVENTORY_COLUMNS_PREF_KEY = 'table_columns_inventory_items_v1';
+
+const INVENTORY_ALL_COLUMNS: InventoryColumnKey[] = [
+  'photo',
+  'item_code',
+  'sku',
+  'quantity',
+  'vendor',
+  'description',
+  'location',
+  'client_account',
+  'sidemark',
+  'room',
+];
+
+const INVENTORY_REQUIRED_COLUMNS = new Set<InventoryColumnKey>(['item_code']);
+
+const DEFAULT_INVENTORY_COLUMN_PREFS: InventoryColumnPrefs = {
+  order: [...INVENTORY_ALL_COLUMNS],
+  // SKU is optional and hidden by default (can be enabled per user).
+  hidden: ['sku'],
+};
+
+function normalizeInventoryColumnPrefs(raw: unknown): InventoryColumnPrefs {
+  const rawObj = (raw || {}) as Partial<InventoryColumnPrefs>;
+  const isKey = (k: unknown): k is InventoryColumnKey =>
+    typeof k === 'string' && (INVENTORY_ALL_COLUMNS as readonly string[]).includes(k);
+
+  const rawOrder = Array.isArray(rawObj.order) ? rawObj.order.filter(isKey) : [];
+  const rawHidden = Array.isArray(rawObj.hidden) ? rawObj.hidden.filter(isKey) : [];
+
+  // Ensure required columns are visible and item_code stays first.
+  const orderWithoutRequired = rawOrder.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k));
+  const fullOrder = [
+    ...Array.from(INVENTORY_REQUIRED_COLUMNS),
+    ...orderWithoutRequired,
+    ...INVENTORY_ALL_COLUMNS.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k) && !orderWithoutRequired.includes(k)),
+  ];
+
+  return {
+    order: fullOrder,
+    hidden: rawHidden.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k)),
+  };
+}
 
 export default function Inventory() {
   const isMobile = useIsMobile();
@@ -121,7 +202,31 @@ export default function Inventory() {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { preferences } = useTenantPreferences();
+  const { getPreference, setPreference } = useUserPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
+
+  // Per-user column visibility/order (desktop table only)
+  const savedColumnPrefs = getPreference<InventoryColumnPrefs>(INVENTORY_COLUMNS_PREF_KEY);
+  const [columnPrefs, setColumnPrefs] = useState<InventoryColumnPrefs>(DEFAULT_INVENTORY_COLUMN_PREFS);
+  const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
+  const [columnsDraft, setColumnsDraft] = useState<InventoryColumnPrefs>(DEFAULT_INVENTORY_COLUMN_PREFS);
+
+  useEffect(() => {
+    if (savedColumnPrefs) {
+      setColumnPrefs(normalizeInventoryColumnPrefs(savedColumnPrefs));
+    }
+  }, [savedColumnPrefs]);
+
+  useEffect(() => {
+    if (columnsDialogOpen) {
+      setColumnsDraft({ order: [...columnPrefs.order], hidden: [...columnPrefs.hidden] });
+    }
+  }, [columnsDialogOpen, columnPrefs]);
+
+  const visibleColumns = useMemo(
+    () => columnPrefs.order.filter((k) => !columnPrefs.hidden.includes(k)),
+    [columnPrefs.order, columnPrefs.hidden]
+  );
 
   // Compute unique suggestions for inline editing autocomplete
   const vendorSuggestions = useMemo(() => {
@@ -151,7 +256,7 @@ export default function Inventory() {
   // Handle inline field updates
   const handleInlineUpdate = async (
     itemId: string,
-    field: 'quantity' | 'vendor' | 'description' | 'sidemark' | 'room',
+    field: 'quantity' | 'vendor' | 'sku' | 'description' | 'sidemark' | 'room',
     value: string
   ) => {
     // Convert to appropriate type for database
@@ -183,7 +288,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, description, status, quantity, client_account, sidemark, vendor, room,
+          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -199,6 +304,7 @@ export default function Inventory() {
       const transformedData: Item[] = (data || []).map((item: any) => ({
         id: item.id,
         item_code: item.item_code,
+        sku: item.sku ?? null,
         description: item.description,
         status: item.status,
         quantity: item.quantity,
@@ -246,10 +352,11 @@ export default function Inventory() {
 
   const filteredAndSortedItems = useMemo(() => {
     let result = items.filter((item) => {
-      // Enhanced search - includes vendor, sidemark, description, item_code, client_account
+      // Enhanced search - includes vendor, sidemark, description, item_code, SKU, client_account
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery ||
         item.item_code.toLowerCase().includes(searchLower) ||
+        item.sku?.toLowerCase().includes(searchLower) ||
         item.description?.toLowerCase().includes(searchLower) ||
         item.client_account?.toLowerCase().includes(searchLower) ||
         item.sidemark?.toLowerCase().includes(searchLower) ||
@@ -304,6 +411,206 @@ export default function Inventory() {
     return <MaterialIcon name={sortDirection === 'asc' ? 'expand_less' : 'expand_more'} size="sm" />;
   };
 
+  type ColumnDef = {
+    label: string;
+    sortField?: SortField;
+    headClassName?: string;
+    cellClassName?: string;
+    /** Stops row navigation click when interacting with cell content */
+    stopPropagation?: boolean;
+    /** Renders the body cell content */
+    renderCell: (item: Item) => ReactNode;
+    /** Header label container class (for align) */
+    headLabelClassName?: string;
+  };
+
+  const columnDefs: Record<InventoryColumnKey, ColumnDef> = {
+    photo: {
+      label: 'Photo',
+      headClassName: 'w-12',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <ItemPreviewCard itemId={item.id}>
+          {item.primary_photo_url ? (
+            <img src={item.primary_photo_url} alt={item.item_code} className="h-8 w-8 rounded object-cover cursor-pointer" />
+          ) : (
+            <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+          )}
+        </ItemPreviewCard>
+      ),
+    },
+    item_code: {
+      label: 'Item Code',
+      sortField: 'item_code',
+      renderCell: (item) => (
+        <ItemPreviewCard itemId={item.id}>
+          <span
+            className="text-primary hover:underline cursor-pointer inline-flex items-center gap-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/inventory/${item.id}`);
+            }}
+          >
+            {item.has_indicator_flags && <span title="Has indicator flags">{'\u26A0\uFE0F'}</span>}
+            {item.item_code}
+          </span>
+        </ItemPreviewCard>
+      ),
+      cellClassName: 'font-medium',
+    },
+    sku: {
+      label: 'SKU',
+      sortField: 'sku',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.sku}
+          onSave={(val) => handleInlineUpdate(item.id, 'sku', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+    quantity: {
+      label: 'Qty',
+      sortField: 'quantity',
+      headClassName: 'text-right',
+      headLabelClassName: 'flex items-center justify-end gap-1',
+      cellClassName: 'text-right',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.quantity}
+          type="number"
+          onSave={(val) => handleInlineUpdate(item.id, 'quantity', val)}
+          placeholder="0"
+          align="right"
+          showEditIcon={false}
+        />
+      ),
+    },
+    vendor: {
+      label: 'Vendor',
+      sortField: 'vendor',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.vendor}
+          suggestions={vendorSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'vendor', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+    description: {
+      label: 'Description',
+      sortField: 'description',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.description}
+          suggestions={descriptionSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'description', val)}
+          placeholder="-"
+          className="max-w-[200px]"
+          showEditIcon={false}
+        />
+      ),
+    },
+    location: {
+      label: 'Location',
+      sortField: 'location_code',
+      renderCell: (item) =>
+        item.location_code ? (
+          <span className="text-sm">
+            {item.location_code}
+            {showWarehouseInLocation && item.warehouse_name && <span className="text-muted-foreground ml-1">({item.warehouse_name})</span>}
+          </span>
+        ) : (
+          '-'
+        ),
+    },
+    client_account: {
+      label: 'Account',
+      sortField: 'client_account',
+      renderCell: (item) => item.client_account || '-',
+    },
+    sidemark: {
+      label: 'Sidemark',
+      sortField: 'sidemark',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.sidemark}
+          suggestions={sidemarkSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'sidemark', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+    room: {
+      label: 'Room',
+      sortField: 'room',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.room}
+          suggestions={roomSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'room', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+  };
+
+  const renderTableHead = (key: InventoryColumnKey) => {
+    const def = columnDefs[key];
+    const isSortable = !!def.sortField;
+
+    const labelWrapClass =
+      def.headLabelClassName || (def.headClassName?.includes('text-right') ? 'flex items-center justify-end gap-1' : 'flex items-center gap-1');
+
+    return (
+      <TableHead
+        key={key}
+        className={[
+          def.headClassName,
+          isSortable ? 'cursor-pointer hover:bg-muted/50' : null,
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        onClick={isSortable ? () => handleSort(def.sortField as SortField) : undefined}
+      >
+        <div className={labelWrapClass}>
+          {def.label}
+          {def.sortField && <SortIcon field={def.sortField} />}
+        </div>
+      </TableHead>
+    );
+  };
+
+  const renderTableCell = (key: InventoryColumnKey, item: Item) => {
+    const def = columnDefs[key];
+    return (
+      <TableCell
+        key={key}
+        className={def.cellClassName}
+        onClick={
+          def.stopPropagation
+            ? (e) => {
+                e.stopPropagation();
+              }
+            : undefined
+        }
+      >
+        {def.renderCell(item)}
+      </TableCell>
+    );
+  };
+
   const toggleItemSelection = (itemId: string) => {
     const newSelected = new Set(selectedItems);
     if (newSelected.has(itemId)) newSelected.delete(itemId);
@@ -331,12 +638,66 @@ export default function Inventory() {
 
   const handleExportExcel = () => {
     const selectedData = items.filter(item => selectedItems.has(item.id)).map(item => ({
-      'Item Code': item.item_code, 'Vendor': item.vendor || '', 'Description': item.description || '', 'Qty': item.quantity, 'Location': item.location_code || '', 'Client': item.client_account || '', 'Sidemark': item.sidemark || '', 'Room': item.room || '',
+      'Item Code': item.item_code,
+      'SKU': item.sku || '',
+      'Vendor': item.vendor || '',
+      'Description': item.description || '',
+      'Qty': item.quantity,
+      'Location': item.location_code || '',
+      'Client': item.client_account || '',
+      'Sidemark': item.sidemark || '',
+      'Room': item.room || '',
     }));
     const ws = XLSX.utils.json_to_sheet(selectedData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
     XLSX.writeFile(wb, `inventory-export-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+  };
+
+  const toggleDraftColumn = (key: InventoryColumnKey) => {
+    if (INVENTORY_REQUIRED_COLUMNS.has(key)) return;
+    setColumnsDraft((prev) => {
+      const isHidden = prev.hidden.includes(key);
+      return {
+        ...prev,
+        hidden: isHidden ? prev.hidden.filter((k) => k !== key) : [...prev.hidden, key],
+      };
+    });
+  };
+
+  const moveDraftColumn = (key: InventoryColumnKey, direction: -1 | 1) => {
+    if (INVENTORY_REQUIRED_COLUMNS.has(key)) return;
+    setColumnsDraft((prev) => {
+      const idx = prev.order.indexOf(key);
+      if (idx === -1) return prev;
+      const nextIdx = idx + direction;
+      if (nextIdx < 0 || nextIdx >= prev.order.length) return prev;
+
+      const nextOrder = [...prev.order];
+      const tmp = nextOrder[nextIdx];
+      nextOrder[nextIdx] = nextOrder[idx];
+      nextOrder[idx] = tmp;
+      return { ...prev, order: nextOrder };
+    });
+  };
+
+  const handleResetColumns = () => {
+    setColumnsDraft({ order: [...DEFAULT_INVENTORY_COLUMN_PREFS.order], hidden: [...DEFAULT_INVENTORY_COLUMN_PREFS.hidden] });
+  };
+
+  const handleSaveColumns = async () => {
+    const normalized = normalizeInventoryColumnPrefs(columnsDraft);
+    setColumnPrefs(normalized);
+    const ok = await setPreference(INVENTORY_COLUMNS_PREF_KEY, normalized as unknown as Record<string, unknown>);
+    if (!ok) {
+      toast({
+        title: 'Could not save columns',
+        description: 'Your column settings could not be saved. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setColumnsDialogOpen(false);
   };
 
   const handleTaskSuccess = (createdTaskId?: string) => { 
@@ -384,7 +745,7 @@ export default function Inventory() {
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="relative flex-1">
                 <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search item code, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+                <Input placeholder="Search item code, SKU, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
               </div>
               <Select 
                 value={filters.locationId || '__all__'} 
@@ -417,6 +778,10 @@ export default function Inventory() {
                 </SelectContent>
               </Select>
               <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
+              <Button variant="outline" onClick={() => setColumnsDialogOpen(true)}>
+                <MaterialIcon name="view_column" size="sm" className="mr-2" />
+                Columns
+              </Button>
             </div>
 
             {loading ? (<div className="flex items-center justify-center h-48"><MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" /></div>
@@ -428,81 +793,12 @@ export default function Inventory() {
                 <Table>
                   <TableHeader><TableRow>
                     <TableHead className="w-10"><Checkbox checked={selectedItems.size === filteredAndSortedItems.length && filteredAndSortedItems.length > 0} onCheckedChange={toggleSelectAll} className="h-3.5 w-3.5" /></TableHead>
-                    <TableHead className="w-12">Photo</TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('item_code')}><div className="flex items-center gap-1">Item Code<SortIcon field="item_code" /></div></TableHead>
-                    <TableHead className="text-right cursor-pointer hover:bg-muted/50" onClick={() => handleSort('quantity')}><div className="flex items-center justify-end gap-1">Qty<SortIcon field="quantity" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('vendor')}><div className="flex items-center gap-1">Vendor<SortIcon field="vendor" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('description')}><div className="flex items-center gap-1">Description<SortIcon field="description" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('location_code')}><div className="flex items-center gap-1">Location<SortIcon field="location_code" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('client_account')}><div className="flex items-center gap-1">Account<SortIcon field="client_account" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('sidemark')}><div className="flex items-center gap-1">Sidemark<SortIcon field="sidemark" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('room')}><div className="flex items-center gap-1">Room<SortIcon field="room" /></div></TableHead>
+                    {visibleColumns.map(renderTableHead)}
                   </TableRow></TableHeader>
                   <TableBody>{filteredAndSortedItems.map((item) => (
                     <TableRow key={item.id} className={`cursor-pointer hover:bg-muted/50 ${selectedItems.has(item.id) ? 'bg-muted/30' : ''}`} onClick={() => navigate(`/inventory/${item.id}`)}>
                       <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-3.5 w-3.5" /></TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <ItemPreviewCard itemId={item.id}>
-                          {item.primary_photo_url ? <img src={item.primary_photo_url} alt={item.item_code} className="h-8 w-8 rounded object-cover cursor-pointer" /> : <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>}
-                        </ItemPreviewCard>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <ItemPreviewCard itemId={item.id}>
-                          <span className="text-primary hover:underline cursor-pointer inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); navigate(`/inventory/${item.id}`); }}>
-                            {item.has_indicator_flags && <span title="Has indicator flags">{'\u26A0\uFE0F'}</span>}
-                            {item.item_code}
-                          </span>
-                        </ItemPreviewCard>
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.quantity}
-                          type="number"
-                          onSave={(val) => handleInlineUpdate(item.id, 'quantity', val)}
-                          placeholder="0"
-                          align="right"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.vendor}
-                          suggestions={vendorSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'vendor', val)}
-                          placeholder="-"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.description}
-                          suggestions={descriptionSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'description', val)}
-                          placeholder="-"
-                          className="max-w-[200px]"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell>{item.location_code ? <span className="text-sm">{item.location_code}{showWarehouseInLocation && item.warehouse_name && <span className="text-muted-foreground ml-1">({item.warehouse_name})</span>}</span> : '-'}</TableCell>
-                      <TableCell>{item.client_account || '-'}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.sidemark}
-                          suggestions={sidemarkSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'sidemark', val)}
-                          placeholder="-"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.room}
-                          suggestions={roomSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'room', val)}
-                          placeholder="-"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
+                      {visibleColumns.map((key) => renderTableCell(key, item))}
                     </TableRow>
                   ))}</TableBody>
                 </Table>
@@ -511,6 +807,75 @@ export default function Inventory() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={columnsDialogOpen} onOpenChange={setColumnsDialogOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Inventory Columns</DialogTitle>
+            <DialogDescription>
+              Choose which columns to show and their order. Saved per user (desktop table only).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            {columnsDraft.order.map((key, idx) => {
+              const def = columnDefs[key];
+              const isRequired = INVENTORY_REQUIRED_COLUMNS.has(key);
+              const isHidden = columnsDraft.hidden.includes(key);
+              return (
+                <div key={key} className="flex items-center gap-3 rounded-md border px-3 py-2">
+                  <Checkbox
+                    checked={!isHidden}
+                    disabled={isRequired}
+                    onCheckedChange={() => toggleDraftColumn(key)}
+                    className="h-4 w-4"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{def.label}</div>
+                    {isRequired && <div className="text-xs text-muted-foreground">Required</div>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => moveDraftColumn(key, -1)}
+                      disabled={isRequired || idx === 0}
+                      aria-label="Move column up"
+                    >
+                      <MaterialIcon name="arrow_upward" size="sm" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => moveDraftColumn(key, 1)}
+                      disabled={isRequired || idx === columnsDraft.order.length - 1}
+                      aria-label="Move column down"
+                    >
+                      <MaterialIcon name="arrow_downward" size="sm" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <Button type="button" variant="outline" onClick={handleResetColumns}>
+              Reset
+            </Button>
+            <div className="flex gap-2 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setColumnsDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={() => void handleSaveColumns()}>
+                Save
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <TaskDialog open={taskDialogOpen} onOpenChange={(open) => { setTaskDialogOpen(open); if (!open) setPreSelectedTaskType(''); }} selectedItemIds={Array.from(selectedItems)} preSelectedTaskType={preSelectedTaskType} onSuccess={handleTaskSuccess} />
       <InventoryImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} file={importFile} warehouses={warehouses} locations={locations} onSuccess={handleImportSuccess} />
