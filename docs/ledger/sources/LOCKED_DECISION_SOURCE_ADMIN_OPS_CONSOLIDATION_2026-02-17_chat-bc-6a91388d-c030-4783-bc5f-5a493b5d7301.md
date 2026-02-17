@@ -17,3 +17,9 @@ User request:
 - Fix Stripe dashboard button behavior: currently shows an error when opening the new page.
 - Process requirement: before implementing any changes, ask questions one at a time and log decisions during Q&A; implement only after Q&A is complete.
 
+### QA-2026-02-17-ADMINOPS-002
+User clarification:
+- The failing button is the "Stripe dashboard" button.
+- Error shown: "navigation was blocked by Cross-Origin-Opener-Policy".
+- User question: whether they need to provide a Stripe account id to build a Stripe dashboard link.
+

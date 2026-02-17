@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `1`
+- Q&A items extracted: `2`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003`
 - Unresolved/open (draft): `DL-2026-02-17-002`
 - Supersedes: `-`
 
@@ -22,6 +22,7 @@
 
 | DL-2026-02-17-001 | Admin ops UI changes require Q&A-first decision logging (no implementation until Q&A complete) | Ledger Workflow | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-001` | - | - |
 | DL-2026-02-17-002 | Consolidate Stripe Ops + Pricing Ops into one admin dashboard with overview and clear navigation | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-001` | - | - |
+| DL-2026-02-17-003 | Stripe dashboard links do not require user-provided Stripe account id | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-002` | - | - |
 
 ## Detailed Decision Entries
 
@@ -64,6 +65,26 @@ The current ops pages are developer-oriented and harder to navigate for non-tech
 - Update navigation links and possibly keep old routes as redirects.
 - Fix the Stripe dashboard link/button behavior that is currently producing an error for users.
 
+### DL-2026-02-17-003: Stripe dashboard links do not require user-provided Stripe account id
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-002`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The app does not require the operator to provide a Stripe "account id" to build Stripe dashboard links. The UI can link to the Stripe dashboard root (`https://dashboard.stripe.com/`) and, when available, to specific Stripe objects (customer/subscription) using the stored `stripe_customer_id` / `stripe_subscription_id`.
+
+#### Why
+Stripe authentication and account selection happens within Stripe; requiring additional account identifiers in the app would be confusing for non-technical users and is unnecessary for basic operational navigation.
+
+#### Implementation impact
+- Admin ops links can remain simple: dashboard root + object links when ids are present.
+- Consolidated ops page should explain that the operator must be logged into Stripe to view these links.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
+| DLE-2026-02-17-002 | 2026-02-17 | DL-2026-02-17-003 | planned | - | builder | Ensure consolidated ops UI uses Stripe dashboard root + stored object id links without requiring manual Stripe account id input. |
