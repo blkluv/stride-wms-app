@@ -132,6 +132,7 @@ export function ExceptionsTab({ shipmentId }: ExceptionsTabProps) {
 
                   {exception.status === 'open' ? (
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => setResolveTarget(exception)}
@@ -140,6 +141,7 @@ export function ExceptionsTab({ shipmentId }: ExceptionsTabProps) {
                     </Button>
                   ) : (
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => handleReopen(exception.id)}
@@ -184,10 +186,11 @@ export function ExceptionsTab({ shipmentId }: ExceptionsTabProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResolveTarget(null)}>
+            <Button type="button" variant="outline" onClick={() => setResolveTarget(null)}>
               Cancel
             </Button>
             <Button
+              type="button"
               onClick={handleResolve}
               disabled={!resolutionNotes.trim() || resolving}
             >
