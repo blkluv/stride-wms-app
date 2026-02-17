@@ -248,3 +248,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 73. Q: Should /shipments/received include quick date filters (Today/7d/30d/All)?
     A: No. Keep search + sort only.
 
+74. Q: "Expected Today" should use which date field to determine "today"?
+    A: Use `expected_arrival_date` (not eta_start/eta_end).
+
