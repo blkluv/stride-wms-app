@@ -114,12 +114,6 @@ export function AddItemDialog({
     if (!profile?.tenant_id) return;
 
     try {
-      // Generate item code
-      const prefix = 'INV';
-      const timestamp = Date.now().toString(36).toUpperCase();
-      const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-      const itemCode = `${prefix}-${timestamp}-${random}`;
-
       // Get default warehouse
       const defaultWarehouseId = warehouses?.[0]?.id;
       if (!defaultWarehouseId) {
@@ -129,7 +123,7 @@ export function AddItemDialog({
       const { data: newItem, error } = await supabase.from('items').insert([{
         tenant_id: profile.tenant_id,
         warehouse_id: defaultWarehouseId,
-        item_code: itemCode,
+        // item_code is assigned by DB trigger (sequential) when omitted.
         account_id: accountId,
         quantity: parseInt(quantity, 10) || 1,
         vendor: vendor || null,
@@ -137,7 +131,7 @@ export function AddItemDialog({
         sidemark_id: sidemarkId || null,
         room: room || null,
         status: 'in_storage',
-      }]).select('id').single();
+      }]).select('id, item_code').single();
 
       if (error) throw error;
 
@@ -157,7 +151,7 @@ export function AddItemDialog({
 
       toast({
         title: 'Item Added',
-        description: `Item ${itemCode} has been created.`,
+        description: `Item ${newItem?.item_code || ''} has been created.`,
       });
 
       onSuccess();
