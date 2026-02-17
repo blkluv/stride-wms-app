@@ -308,7 +308,11 @@ export default function OutboundCreate() {
     const query = searchQuery.toLowerCase();
     return accountItems.filter(item =>
       item.item_code?.toLowerCase().includes(query) ||
-      item.description?.toLowerCase().includes(query)
+      item.description?.toLowerCase().includes(query) ||
+      item.vendor?.toLowerCase().includes(query) ||
+      item.location?.code?.toLowerCase().includes(query) ||
+      item.sidemark?.sidemark_name?.toLowerCase().includes(query) ||
+      item.room?.toLowerCase().includes(query)
     );
   }, [accountItems, searchQuery]);
 
@@ -804,19 +808,18 @@ export default function OutboundCreate() {
                         <TableRow>
                           <TableHead className="w-12"></TableHead>
                           <TableHead>Item Code</TableHead>
-                          <TableHead className="hidden sm:table-cell w-16 text-right">Qty</TableHead>
-                          <TableHead className="hidden sm:table-cell">Description</TableHead>
-                          <TableHead className="hidden md:table-cell">Location</TableHead>
+                          <TableHead className="w-16 text-right">Qty</TableHead>
+                          <TableHead className="hidden md:table-cell">Vendor</TableHead>
+                          <TableHead className="hidden md:table-cell">Description</TableHead>
+                          <TableHead className="hidden sm:table-cell">Location</TableHead>
+                          <TableHead className="hidden md:table-cell">Sidemark</TableHead>
                           <TableHead className="hidden lg:table-cell">Room</TableHead>
-                          <TableHead className="hidden md:table-cell">Class</TableHead>
-                          <TableHead className="hidden lg:table-cell">Type</TableHead>
-                          <TableHead className="hidden lg:table-cell">Sidemark</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                               No items match your search
                             </TableCell>
                           </TableRow>
@@ -837,30 +840,23 @@ export default function OutboundCreate() {
                                 />
                               </TableCell>
                               <TableCell className="font-medium">{item.item_code}</TableCell>
-                              <TableCell className="hidden sm:table-cell text-right">
+                              <TableCell className="text-right">
                                 {typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}
                               </TableCell>
-                              <TableCell className="hidden sm:table-cell max-w-[200px] truncate">
+                              <TableCell className="hidden md:table-cell">
+                                {item.vendor || '-'}
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell max-w-[240px] truncate">
                                 {item.description || '-'}
                               </TableCell>
-                              <TableCell className="hidden md:table-cell">
+                              <TableCell className="hidden sm:table-cell">
                                 {item.location?.code || '-'}
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                {item.sidemark?.sidemark_name || '-'}
                               </TableCell>
                               <TableCell className="hidden lg:table-cell">
                                 {item.room || '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {item.class?.code ? (
-                                  <Badge variant="outline">{item.class.code}</Badge>
-                                ) : '-'}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                {item.item_type?.name ? (
-                                  <Badge variant="outline">{item.item_type.name}</Badge>
-                                ) : '-'}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                {item.sidemark?.sidemark_name || '-'}
                               </TableCell>
                             </TableRow>
                           ))
