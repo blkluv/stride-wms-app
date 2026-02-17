@@ -266,3 +266,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 79. Q: Hub cards expanded list click behavior should be card-specific or always Shipment Details?
     A: Card-specific. Expected Today -> inbound detail pages; Intakes In Progress -> Shipment Details; Received Today -> Dock Intake page.
 
+80. Q: "Shipped Today" should use which timestamp to determine "today"?
+    A: Use `completed_at` (option A). Treat completion timestamp as the shipped timestamp for dashboard purposes.
+
