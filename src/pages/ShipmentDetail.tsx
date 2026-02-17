@@ -1774,7 +1774,7 @@ export default function ShipmentDetail() {
           </Button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{shipment.shipment_number}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
               <ShipmentExceptionBadge
                 shipmentId={shipment.id}
                 onClick={
@@ -1785,7 +1785,7 @@ export default function ShipmentDetail() {
               />
               <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
               {shipment.release_type && (
-                <Badge variant="outline" className="text-xs">{shipment.release_type}</Badge>
+                <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
               )}
             </div>
             <p className="text-muted-foreground text-sm truncate">
