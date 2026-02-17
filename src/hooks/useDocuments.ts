@@ -31,6 +31,15 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
   const [error, setError] = useState<string | null>(null);
 
   const fetchDocuments = useCallback(async () => {
+    // Guard: do not fetch the entire documents table when a caller hasn't
+    // provided a contextId yet (common during "draft" creation flows).
+    if (contextType && !contextId) {
+      setDocuments([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 

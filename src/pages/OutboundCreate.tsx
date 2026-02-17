@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useOutboundTypes, useAccountItems } from '@/hooks/useOutbound';
 import { useSidemarks } from '@/hooks/useSidemarks';
+import { useDocuments } from '@/hooks/useDocuments';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +16,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect, SelectOption } from '@/components/ui/searchable-select';
+import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
+import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
+import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
+import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import {
   Table,
   TableBody,
@@ -140,6 +146,13 @@ export default function OutboundCreate() {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [poNumber, setPoNumber] = useState('');
 
+  // Photos/Documents (match intake behavior)
+  const [receivingPhotos, setReceivingPhotos] = useState<(string | TaggablePhoto)[]>([]);
+  const {
+    documents,
+    refetch: refetchDocuments,
+  } = useDocuments({ contextType: 'shipment', contextId: draftShipmentId || undefined });
+
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,6 +230,64 @@ export default function OutboundCreate() {
 
     void createDraft();
   }, [profile?.tenant_id, profile?.id, draftShipmentId, preSelectedAccountId, toast]);
+
+  // Load draft photos (if any) once the draft exists.
+  useEffect(() => {
+    if (!profile?.tenant_id || !draftShipmentId) return;
+
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('shipments')
+        .select('receiving_photos')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', draftShipmentId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) return;
+
+      const existing = (data as any)?.receiving_photos;
+      if (Array.isArray(existing)) {
+        setReceivingPhotos(existing as (string | TaggablePhoto)[]);
+      } else {
+        setReceivingPhotos([]);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [draftShipmentId, profile?.tenant_id]);
+
+  const saveReceivingPhotosToShipment = useCallback(async (photos: (string | TaggablePhoto)[]) => {
+    if (!profile?.tenant_id || !draftShipmentId) return;
+    await supabase
+      .from('shipments')
+      .update({ receiving_photos: photos as unknown as Json })
+      .eq('tenant_id', profile.tenant_id)
+      .eq('id', draftShipmentId);
+  }, [draftShipmentId, profile?.tenant_id]);
+
+  const mergeAndSaveReceivingPhotoUrls = useCallback(async (urls: string[]) => {
+    const existingUrls = getPhotoUrls(receivingPhotos);
+    const newUrls = urls.filter(u => !existingUrls.includes(u));
+    const newTaggablePhotos: TaggablePhoto[] = newUrls.map(url => ({
+      url,
+      isPrimary: false,
+      needsAttention: false,
+      isRepair: false,
+    }));
+    const normalizedExisting: TaggablePhoto[] = receivingPhotos.map(p =>
+      typeof p === 'string'
+        ? { url: p, isPrimary: false, needsAttention: false, isRepair: false }
+        : p
+    );
+    const allPhotos = [...normalizedExisting, ...newTaggablePhotos];
+    setReceivingPhotos(allPhotos);
+    await saveReceivingPhotosToShipment(allPhotos);
+  }, [receivingPhotos, saveReceivingPhotosToShipment]);
 
   // Cleanup draft shipment if the user abandons the page.
   useEffect(() => {
@@ -743,6 +814,118 @@ export default function OutboundCreate() {
                   rows={2}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Photos (match intake shipment page) */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MaterialIcon name="photo_camera" size="sm" />
+                  Photos
+                  <Badge variant="outline">{getPhotoUrls(receivingPhotos).length}</Badge>
+                </CardTitle>
+                <CardDescription>Capture or upload photos (paperwork, condition, etc.).</CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <PhotoScannerButton
+                  entityType="shipment"
+                  entityId={draftShipmentId || undefined}
+                  tenantId={profile?.tenant_id}
+                  existingPhotos={getPhotoUrls(receivingPhotos)}
+                  maxPhotos={20}
+                  size="sm"
+                  label="Add"
+                  showCount={false}
+                  onPhotosSaved={async (urls) => {
+                    try {
+                      await mergeAndSaveReceivingPhotoUrls(urls);
+                    } catch (err: any) {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Photo Error',
+                        description: err?.message || 'Failed to save photos',
+                      });
+                    }
+                  }}
+                />
+                <PhotoUploadButton
+                  entityType="shipment"
+                  entityId={draftShipmentId || undefined}
+                  tenantId={profile?.tenant_id}
+                  existingPhotos={getPhotoUrls(receivingPhotos)}
+                  maxPhotos={20}
+                  size="sm"
+                  onPhotosSaved={async (urls) => {
+                    try {
+                      await mergeAndSaveReceivingPhotoUrls(urls);
+                    } catch (err: any) {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Photo Error',
+                        description: err?.message || 'Failed to save photos',
+                      });
+                    }
+                  }}
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {getPhotoUrls(receivingPhotos).length > 0 ? (
+                <TaggablePhotoGrid
+                  photos={receivingPhotos}
+                  enableTagging={true}
+                  onPhotosChange={async (photos) => {
+                    try {
+                      await saveReceivingPhotosToShipment(photos);
+                    } catch (err: any) {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Photo Error',
+                        description: err?.message || 'Failed to save photos',
+                      });
+                    }
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No photos yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Documents (match intake shipment page) */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MaterialIcon name="description" size="sm" />
+                Documents
+                <Badge variant="outline">{documents.length}</Badge>
+              </CardTitle>
+              <CardDescription>
+                Capture or upload delivery paperwork and supporting outbound documents.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {draftShipmentId ? (
+                <DocumentCapture
+                  context={{ type: 'shipment', shipmentId: draftShipmentId }}
+                  maxDocuments={12}
+                  ocrEnabled={true}
+                  onDocumentAdded={() => {
+                    void refetchDocuments();
+                  }}
+                  onDocumentRemoved={() => {
+                    void refetchDocuments();
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Creating draft shipment…
+                </p>
+              )}
             </CardContent>
           </Card>
 

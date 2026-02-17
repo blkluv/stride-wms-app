@@ -27,7 +27,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
-import { ScanDocumentButton, DocumentUploadButton, DocumentList } from '@/components/scanner';
+import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -43,6 +43,7 @@ import { SignatureDialog } from '@/components/shipments/SignatureDialog';
 import { generateReleasePdf, ReleasePdfData, ReleasePdfItem } from '@/lib/releasePdf';
 import { QRScanner } from '@/components/scan/QRScanner';
 import { useLocations } from '@/hooks/useLocations';
+import { useDocuments } from '@/hooks/useDocuments';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
@@ -243,6 +244,11 @@ export default function ShipmentDetail() {
     default_shipment_notes: string | null;
     highlight_shipment_notes: boolean;
   } | null>(null);
+
+  const { documents, refetch: refetchDocuments } = useDocuments({
+    contextType: 'shipment',
+    contextId: shipment?.id,
+  });
 
   // Receiving session hook
   const {
@@ -2827,35 +2833,30 @@ export default function ShipmentDetail() {
 
       {/* Documents Section */}
       <Card className="mt-6">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <div>
-            <CardTitle>Documents</CardTitle>
-            <CardDescription>Scan or upload receiving paperwork, BOLs, and delivery receipts</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <ScanDocumentButton
-              context={{ type: 'shipment', shipmentId: shipment.id }}
-              onSuccess={() => {
-                setDocumentRefreshKey(prev => prev + 1);
-              }}
-              label="Scan"
-              size="sm"
-              directToCamera
-            />
-            <DocumentUploadButton
-              context={{ type: 'shipment', shipmentId: shipment.id }}
-              onSuccess={() => {
-                setDocumentRefreshKey(prev => prev + 1);
-              }}
-              size="sm"
-            />
-          </div>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MaterialIcon name="description" size="sm" />
+            Documents
+            <Badge variant="outline">{documents.length}</Badge>
+          </CardTitle>
+          <CardDescription>
+            Capture or upload paperwork and supporting shipment documents.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <DocumentList
-            contextType="shipment"
-            contextId={shipment.id}
-            refetchKey={documentRefreshKey}
+          <DocumentCapture
+            key={documentRefreshKey}
+            context={{ type: 'shipment', shipmentId: shipment.id }}
+            maxDocuments={12}
+            ocrEnabled={true}
+            onDocumentAdded={() => {
+              setDocumentRefreshKey((prev) => prev + 1);
+              void refetchDocuments();
+            }}
+            onDocumentRemoved={() => {
+              setDocumentRefreshKey((prev) => prev + 1);
+              void refetchDocuments();
+            }}
           />
         </CardContent>
       </Card>

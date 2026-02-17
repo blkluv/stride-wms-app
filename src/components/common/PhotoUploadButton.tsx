@@ -109,6 +109,7 @@ export function PhotoUploadButton({
       hint="Drag and drop photos here, or click to upload"
     >
       <Button
+        type="button"
         variant={variant}
         size={size}
         onClick={() => fileInputRef.current?.click()}
