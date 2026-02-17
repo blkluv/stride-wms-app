@@ -41,3 +41,41 @@ User decision:
 User decision:
 - Canonical route for the consolidated SaaS admin ops dashboard will be: `/admin/saas-ops`.
 
+### QA-2026-02-17-ADMINOPS-007
+User decision + new request:
+- Old routes `/admin/stripe-ops` and `/admin/pricing-ops` can be discarded; only the new consolidated `/admin/saas-ops` will be used.
+- User reports `/admin/email-ops` is not visible while logged in as `admin_dev` and requests it be added into `/admin/saas-ops` with the same UX simplicity.
+
+### QA-2026-02-17-ADMINOPS-008
+User requirements (Email Ops / Resend):
+- Build email management analogous to the platform-managed Twilio SMS approach.
+- Use the platform Resend account to support tenant-branded sending so clients can send emails from the app using their own domains.
+- Tenant workflow intent: clients update DNS records and fill out fields in the app (self-service) to configure sending.
+- Admin intent: “admin/email-ops” capability is for the operator (admin_dev) to ensure Resend is configured correctly to support this for tenants.
+
+### QA-2026-02-17-ADMINOPS-009
+User request (tenant-facing email setup UX + AI help):
+- Check Settings → Organization → Company Info email settings to align with the new platform-managed Resend system.
+- Build/revise tenant email setup fields + guide so non-technical users can set up email sending easily.
+- Copy must be in layman’s terms.
+- Add a help tool (“i”) that uses an AI prompt (ChatGPT-style) to:
+  - Ask the user questions about their domain and/or email/DNS provider.
+  - Provide tailored step-by-step DNS setup instructions.
+
+### QA-2026-02-17-ADMINOPS-010
+User decision (AI help delivery):
+- Do not integrate the in-app AI bot for email setup instructions.
+- Instead, provide a copy/paste prompt inside the help tool UI so users can paste it into ChatGPT (or similar) to get tailored step-by-step DNS instructions.
+
+### QA-2026-02-17-ADMINOPS-011
+User decision (prompt content):
+- The help prompt should be generic (not auto-filled with tenant DNS records).
+- The prompt must be detailed enough that ChatGPT asks the user questions about their domain registrar/DNS/email provider and then gives clear step-by-step instructions.
+
+### QA-2026-02-17-ADMINOPS-012
+User decision + requirements (email setup UX + Resend sync):
+- Replace the existing email sender wizard with a simpler, extremely easy, step-by-step setup UI (single-page preferred).
+- Treat the user as non-technical (“a child can figure it out”); use layman’s terms and a guided checklist-like flow.
+- Every field should have a help tooltip/icon with simple tips.
+- Build/complete the Resend API integration so when tenants enter info, the app syncs with Resend to configure/verify their sending domain (platform-managed Resend account).
+
