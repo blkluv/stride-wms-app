@@ -72,3 +72,10 @@ User decision (prompt content):
 - The help prompt should be generic (not auto-filled with tenant DNS records).
 - The prompt must be detailed enough that ChatGPT asks the user questions about their domain registrar/DNS/email provider and then gives clear step-by-step instructions.
 
+### QA-2026-02-17-ADMINOPS-012
+User decision + requirements (email setup UX + Resend sync):
+- Replace the existing email sender wizard with a simpler, extremely easy, step-by-step setup UI (single-page preferred).
+- Treat the user as non-technical (“a child can figure it out”); use layman’s terms and a guided checklist-like flow.
+- Every field should have a help tooltip/icon with simple tips.
+- Build/complete the Resend API integration so when tenants enter info, the app syncs with Resend to configure/verify their sending domain (platform-managed Resend account).
+

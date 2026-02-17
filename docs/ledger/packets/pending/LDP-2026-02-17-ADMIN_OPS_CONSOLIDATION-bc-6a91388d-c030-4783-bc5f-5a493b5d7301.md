@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `11`
+- Q&A items extracted: `12`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -35,6 +35,7 @@
 | DL-2026-02-17-013 | Tenant admins self-serve email sender domain setup in Settings → Organization | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-009` | - | - |
 | DL-2026-02-17-014 | Add copy/paste ChatGPT prompt help tool to tailor DNS instructions for non-technical users | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-010` | - | - |
 | DL-2026-02-17-015 | Help prompt is generic but instructs ChatGPT to ask provider questions and produce tailored DNS steps | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-011` | - | - |
+| DL-2026-02-17-016 | Simplify tenant email sender setup UI to single-page guided steps with help tips on every field | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-012` | - | - |
 
 ## Detailed Decision Entries
 
@@ -326,6 +327,29 @@ Keeping the prompt generic avoids copying sensitive/complex values into an exter
 #### Implementation impact
 - Prompt copy must include: what the user is trying to do, what questions the AI should ask first, what the AI should output, and common pitfalls (proxying, TTL, propagation time).
 
+### DL-2026-02-17-016: Simplify tenant email sender setup UI to single-page guided steps with help tips on every field
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-012`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Replace the existing multi-step email sender wizard UI with a simpler single-page, checklist-like setup flow written in layman’s terms. The flow should be extremely easy (assume a non-technical user), and every field must include a help tooltip/icon with short, clear tips.
+
+#### Why
+Email domain verification is a common onboarding blocker for non-technical users. A simplified, guided UI reduces confusion and support load.
+
+#### Implementation impact
+- Refactor `src/components/settings/preferences/EmailDomainSection.tsx` UI into a single-page guided layout:
+  - Step 1: choose default sender vs custom sender
+  - Step 2: enter desired From email (or domain)
+  - Step 3: show DNS records to add + provider tips + copy buttons
+  - Step 4: verify + show status
+- Use consistent help-tip patterns (e.g., `HelpTip` / tooltips) on each input and section.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -342,3 +366,4 @@ Keeping the prompt generic avoids copying sensitive/complex values into an exter
 | DLE-2026-02-17-012 | 2026-02-17 | DL-2026-02-17-013 | in_progress | `src/components/settings/preferences/EmailDomainSection.tsx` | builder | Existing tenant email sender setup wizard is present; evaluate copy + field alignment and ensure sending pipeline uses verified tenant sender settings. |
 | DLE-2026-02-17-013 | 2026-02-17 | DL-2026-02-17-014 | planned | - | builder | Add help tool that shows a copy/paste ChatGPT prompt tailored to the tenant’s domain + DNS records (no in-app LLM integration). |
 | DLE-2026-02-17-014 | 2026-02-17 | DL-2026-02-17-015 | planned | - | builder | Write a generic-but-detailed ChatGPT prompt that instructs the AI to ask about registrar/DNS provider and produce provider-specific DNS verification steps in layman terms. |
+| DLE-2026-02-17-015 | 2026-02-17 | DL-2026-02-17-016 | planned | `src/components/settings/preferences/EmailDomainSection.tsx` | builder | Refactor Email Sender Configuration to a single-page guided flow with help tips on every field and layman copy. |
