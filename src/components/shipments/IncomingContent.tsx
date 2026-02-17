@@ -219,20 +219,9 @@ function ExpectedList({
                   {formatStatus(s.inbound_status)}
                 </Badge>
               </div>
-              <div className="text-sm text-muted-foreground">{s.account_name || '-'}</div>
+              <div className="text-sm text-muted-foreground">{s.account_name || 'Unknown'}</div>
               <div className="text-xs text-muted-foreground">
                 {s.expected_pieces ?? '-'} expected pcs
-                {' '}
-                • ETA {s.eta_start || s.eta_end ? (
-                  <>
-                    {formatDate(s.eta_start)}
-                    {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
-                  </>
-                ) : (
-                  '-'
-                )}
-                {' '}
-                • {s.open_items_count ?? '-'} items
               </div>
             </CardContent>
           </Card>
@@ -264,7 +253,11 @@ function ExpectedList({
                     <ShipmentExceptionBadge shipmentId={s.id} count={s.exception_count} />
                   </div>
                 </TableCell>
-                <TableCell>{s.account_name || '-'}</TableCell>
+                <TableCell>
+                  {s.account_name || (
+                    <span className="text-muted-foreground italic">Unknown</span>
+                  )}
+                </TableCell>
                 <TableCell>{s.vendor_name || '-'}</TableCell>
                 <TableCell className="text-right">{s.expected_pieces ?? '-'}</TableCell>
                 <TableCell>
@@ -273,14 +266,7 @@ function ExpectedList({
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
-                  {s.eta_start || s.eta_end ? (
-                    <>
-                      {formatDate(s.eta_start)}
-                      {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
-                    </>
-                  ) : (
-                    '-'
-                  )}
+                  {formatDate(s.eta_start)}
                 </TableCell>
               </TableRow>
             ))}
