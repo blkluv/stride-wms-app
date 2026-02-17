@@ -1766,36 +1766,51 @@ export default function ShipmentDetail() {
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
-            <MaterialIcon name="arrow_back" size="md" />
-          </Button>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
-              <ShipmentExceptionBadge
-                shipmentId={shipment.id}
-                onClick={
-                  isDockIntakeShipment
-                    ? () => navigate(`/incoming/dock-intake/${shipment.id}?tab=exceptions`)
-                    : undefined
-                }
-              />
-              <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
-              {shipment.release_type && (
-                <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
-              )}
+      {/* Header row: order number + billing calculator aligned */}
+      <div className="flex flex-col gap-4 mb-6 overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+          {/* Left: Order number & status */}
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
+              <MaterialIcon name="arrow_back" size="md" />
+            </Button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
+                <ShipmentExceptionBadge
+                  shipmentId={shipment.id}
+                  onClick={
+                    isDockIntakeShipment
+                      ? () => navigate(`/incoming/dock-intake/${shipment.id}?tab=exceptions`)
+                      : undefined
+                  }
+                />
+                <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
+                {shipment.release_type && (
+                  <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground text-sm truncate">
+                {shipment.accounts?.account_name || 'No account'} • {shipment.warehouses?.name || 'No warehouse'}
+              </p>
             </div>
-            <p className="text-muted-foreground text-sm truncate">
-              {shipment.accounts?.account_name || 'No account'} • {shipment.warehouses?.name || 'No warehouse'}
-            </p>
           </div>
+
+          {/* Right: Billing Calculator aligned with order number */}
+          {canSeeBilling && shipment.account_id && (
+            <div className="w-full lg:w-[33.333%] flex-shrink-0">
+              <BillingCalculator
+                shipmentId={shipment.id}
+                shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
+                refreshKey={billingRefreshKey}
+                title="Billing Calculator"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+        {/* Action Buttons - below the header row */}
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => {
             if (!isEditing) {
               setEditCarrier(shipment.carrier || '');
@@ -1890,7 +1905,6 @@ export default function ShipmentDetail() {
               <span className="sm:hidden">Coverage</span>
             </Button>
           )}
-          {/* Reassign Account - moved to selected items bar */}
           {/* Cancel Shipment - only for expected, pending, or receiving shipments */}
           {['expected', 'pending', 'receiving', 'in_progress'].includes(shipment.status) && (
             <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)}>
@@ -2293,32 +2307,49 @@ export default function ShipmentDetail() {
               )}
               {isOutbound ? (
                 <Tabs defaultValue="public" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="public">Public</TabsTrigger>
-                    <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <TabsTrigger value="public" className="gap-1.5 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-900/40 dark:data-[state=active]:text-blue-300">
+                      <MaterialIcon name="public" className="text-[14px]" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger value="internal" className="gap-1.5 data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700 dark:data-[state=active]:bg-amber-900/40 dark:data-[state=active]:text-amber-300">
+                      <MaterialIcon name="lock" className="text-[14px]" />
+                      Internal
+                    </TabsTrigger>
+                    <TabsTrigger value="exceptions" className="gap-1.5">
+                      <MaterialIcon name="warning" className="text-[14px]" />
+                      Exceptions
+                    </TabsTrigger>
                   </TabsList>
                   <TabsContent value="public" className="mt-2 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Public notes are visible to the client in the portal.
-                    </p>
-                    <Textarea
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="Add public notes..."
-                      rows={3}
-                    />
+                    <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                      <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-2">
+                        <MaterialIcon name="public" className="text-[12px] mr-1 inline" />
+                        Visible to clients in the portal
+                      </p>
+                      <Textarea
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        placeholder="Add public notes..."
+                        rows={3}
+                        className="border-blue-300 focus:border-blue-500 dark:border-blue-700"
+                      />
+                    </div>
                   </TabsContent>
                   <TabsContent value="internal" className="mt-2 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Internal notes are visible to staff only.
-                    </p>
-                    <Textarea
-                      value={editInternalNotes}
-                      onChange={(e) => setEditInternalNotes(e.target.value)}
-                      placeholder="Add internal notes..."
-                      rows={3}
-                    />
+                    <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2">
+                        <MaterialIcon name="lock" className="text-[12px] mr-1 inline" />
+                        Staff only - not visible to clients
+                      </p>
+                      <Textarea
+                        value={editInternalNotes}
+                        onChange={(e) => setEditInternalNotes(e.target.value)}
+                        placeholder="Add internal notes..."
+                        rows={3}
+                        className="border-amber-300 focus:border-amber-500 dark:border-amber-700"
+                      />
+                    </div>
                   </TabsContent>
                   <TabsContent value="exceptions" className="mt-2">
                     <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
@@ -2479,20 +2510,6 @@ export default function ShipmentDetail() {
         </Card>
       )}
 
-      {/* Billing Calculator - Full width at top right area */}
-      {canSeeBilling && shipment.account_id && (
-        <div className="flex justify-end mb-6">
-          <div className="w-full lg:w-1/3">
-            <BillingCalculator
-              shipmentId={shipment.id}
-              shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
-              refreshKey={billingRefreshKey}
-              title="Billing Calculator"
-            />
-          </div>
-        </div>
-      )}
-
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Shipment Details */}
         <Card className="lg:col-span-2">
@@ -2623,24 +2640,39 @@ export default function ShipmentDetail() {
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Notes</Label>
                 <Tabs defaultValue="public" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="public">Public</TabsTrigger>
-                    <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <TabsTrigger value="public" className="gap-1.5 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-900/40 dark:data-[state=active]:text-blue-300">
+                      <MaterialIcon name="public" className="text-[14px]" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger value="internal" className="gap-1.5 data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700 dark:data-[state=active]:bg-amber-900/40 dark:data-[state=active]:text-amber-300">
+                      <MaterialIcon name="lock" className="text-[14px]" />
+                      Internal
+                    </TabsTrigger>
+                    <TabsTrigger value="exceptions" className="gap-1.5">
+                      <MaterialIcon name="warning" className="text-[14px]" />
+                      Exceptions
+                    </TabsTrigger>
                   </TabsList>
                   <TabsContent value="public" className="mt-2">
-                    {shipment.notes?.trim() ? (
-                      <p className="whitespace-pre-wrap">{shipment.notes}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No public notes.</p>
-                    )}
+                    <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                      <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">Visible to clients in the portal</p>
+                      {shipment.notes?.trim() ? (
+                        <p className="whitespace-pre-wrap text-sm">{shipment.notes}</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No public notes.</p>
+                      )}
+                    </div>
                   </TabsContent>
                   <TabsContent value="internal" className="mt-2">
-                    {shipment.receiving_notes?.trim() ? (
-                      <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No internal notes.</p>
-                    )}
+                    <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">Staff only - not visible to clients</p>
+                      {shipment.receiving_notes?.trim() ? (
+                        <p className="whitespace-pre-wrap text-sm">{shipment.receiving_notes}</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No internal notes.</p>
+                      )}
+                    </div>
                   </TabsContent>
                   <TabsContent value="exceptions" className="mt-2">
                     <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
