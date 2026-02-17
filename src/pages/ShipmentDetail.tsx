@@ -47,6 +47,9 @@ import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { createCharges } from '@/services/billing';
+import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
+import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 
 // ============================================
 // TYPES
@@ -128,7 +131,13 @@ interface Shipment {
   receiving_documents: string[] | null;
   release_type: string | null;
   released_to: string | null;
+  release_to_name: string | null;
+  release_to_email: string | null;
   release_to_phone: string | null;
+  driver_name: string | null;
+  destination_name: string | null;
+  origin_name: string | null;
+  scheduled_date: string | null;
   sidemark_id: string | null;
   sidemark: string | null;
   signature_data: string | null;
@@ -189,8 +198,13 @@ export default function ShipmentDetail() {
   const [editNotes, setEditNotes] = useState('');
   const [editReleaseType, setEditReleaseType] = useState('');
   const [editReleasedTo, setEditReleasedTo] = useState('');
+  const [editReleaseToName, setEditReleaseToName] = useState('');
   const [editReleaseToEmail, setEditReleaseToEmail] = useState('');
   const [editReleaseToPhone, setEditReleaseToPhone] = useState('');
+  const [editDriverName, setEditDriverName] = useState('');
+  const [editDestinationName, setEditDestinationName] = useState('');
+  const [editOriginName, setEditOriginName] = useState('');
+  const [editScheduledDate, setEditScheduledDate] = useState<Date | undefined>(undefined);
   const [editCustomerAuthorized, setEditCustomerAuthorized] = useState(false);
   const [addAddonDialogOpen, setAddAddonDialogOpen] = useState(false);
   const [addCreditDialogOpen, setAddCreditDialogOpen] = useState(false);
@@ -1253,6 +1267,225 @@ export default function ShipmentDetail() {
         }),
       });
 
+      // Will-call billing + client alert (non-blocking; completion should still succeed)
+      if (
+        shipment.shipment_type === 'outbound' &&
+        shipment.release_type === 'will_call' &&
+        profile?.tenant_id &&
+        profile?.id &&
+        shipment.account_id
+      ) {
+        try {
+          // Fetch shipment_items + item details for rate lookup and billing context.
+          // Do not rely on the page's local item state here (it may be stale after updates).
+          const { data: shipmentItemsForBilling, error: shipmentItemsBillingError } = await (supabase
+            .from('shipment_items') as any)
+            .select(`
+              id,
+              expected_quantity,
+              item_id,
+              items:item_id(
+                id,
+                item_code,
+                class_id,
+                sidemark_id,
+                account_id,
+                account:accounts(account_name)
+              )
+            `)
+            .eq('shipment_id', shipment.id)
+            .neq('status', 'cancelled')
+            .is('deleted_at', null);
+
+          if (shipmentItemsBillingError) throw shipmentItemsBillingError;
+
+          const rawItems = (shipmentItemsForBilling || []) as any[];
+          const uniqueItemIds = [
+            ...new Set(rawItems.map((si) => si?.items?.id).filter(Boolean) as string[]),
+          ];
+
+          // Deduplicate: skip items already billed for this shipment (avoid accidental double-charges).
+          const existingBilledItemIds = new Set<string>();
+          if (uniqueItemIds.length > 0) {
+            const { data: existingEvents, error: existingError } = await supabase
+              .from('billing_events')
+              .select('item_id')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipment.id)
+              .eq('event_type', 'will_call')
+              .eq('charge_type', 'Will_Call')
+              .neq('status', 'void')
+              .in('item_id', uniqueItemIds);
+
+            if (existingError) {
+              console.warn('[ShipmentDetail] Unable to check existing billing events (will proceed):', existingError);
+            } else {
+              (existingEvents || []).forEach((e: any) => {
+                if (e?.item_id) existingBilledItemIds.add(e.item_id);
+              });
+            }
+          }
+
+          // Fetch only the classes we need to map class_id → class_code
+          const classIds = [
+            ...new Set(rawItems.map((si) => si?.items?.class_id).filter(Boolean) as string[]),
+          ];
+          const classMap = new Map<string, string>();
+          if (classIds.length > 0) {
+            const { data: classesData, error: classesError } = await supabase
+              .from('classes')
+              .select('id, code')
+              .eq('tenant_id', profile.tenant_id)
+              .in('id', classIds);
+
+            if (classesError) throw classesError;
+            (classesData || []).forEach((c: any) => {
+              if (c?.id) classMap.set(c.id, c.code);
+            });
+          }
+
+          const chargeRequests: Parameters<typeof createCharges>[0] = [];
+          const alertRequests: Array<{
+            index: number;
+            tenantId: string;
+            serviceName: string;
+            itemCode: string;
+            accountName: string;
+            amount: number;
+            description: string;
+          }> = [];
+
+          for (const si of rawItems) {
+            const item = si?.items;
+            if (!item?.id || existingBilledItemIds.has(item.id)) continue;
+
+            const accountId: string | null = item.account_id || shipment.account_id;
+            if (!accountId) continue;
+
+            const classCode: string | null = item.class_id ? (classMap.get(item.class_id) ?? null) : null;
+
+            // Rate lookup via unified pricing (new system first, legacy fallback)
+            let rate = 0;
+            let serviceName = 'Will Call';
+            let alertRule: string = 'none';
+            let hasError = false;
+            let errorMessage: string | undefined = undefined;
+
+            try {
+              const rateResult = await getEffectiveRate({
+                tenantId: profile.tenant_id,
+                chargeCode: 'Will_Call',
+                accountId,
+                classCode: classCode || undefined,
+              });
+
+              serviceName = rateResult.charge_name || serviceName;
+              alertRule = rateResult.alert_rule || 'none';
+
+              if (rateResult.has_error) {
+                rate = 0;
+                hasError = true;
+                errorMessage = rateResult.error_message || 'Rate lookup error';
+              } else {
+                rate = rateResult.effective_rate || 0;
+              }
+            } catch (rateErr: any) {
+              const msg = rateErr instanceof Error ? rateErr.message : String(rateErr);
+              if (msg === BILLING_DISABLED_ERROR) {
+                throw new Error(BILLING_DISABLED_ERROR);
+              }
+              rate = 0;
+              hasError = true;
+              errorMessage = msg;
+            }
+
+            const quantityRaw = Number(si?.expected_quantity ?? 1);
+            const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw : 1;
+            const description = `Will Call: ${item.item_code}`;
+            const totalAmount = quantity * rate;
+
+            const requestIndex = chargeRequests.length;
+
+            chargeRequests.push({
+              tenantId: profile.tenant_id,
+              accountId,
+              chargeCode: 'Will_Call',
+              eventType: 'will_call',
+              context: { type: 'shipment', shipmentId: shipment.id, itemId: item.id },
+              description,
+              quantity,
+              classCode,
+              rateOverride: rate,
+              hasRateError: hasError,
+              rateErrorMessage: errorMessage,
+              sidemarkId: item.sidemark_id || shipment.sidemark_id || null,
+              classId: item.class_id || null,
+              metadata: { class_code: classCode },
+              userId: profile.id,
+            });
+
+            // Track alerts to queue for services with alert_rule: 'email_office'
+            if (alertRule === 'email_office') {
+              alertRequests.push({
+                index: requestIndex,
+                tenantId: profile.tenant_id,
+                serviceName,
+                itemCode: item.item_code,
+                accountName:
+                  item.account?.account_name ||
+                  shipment.accounts?.account_name ||
+                  'Unknown Account',
+                amount: totalAmount,
+                description,
+              });
+            }
+          }
+
+          if (chargeRequests.length > 0) {
+            const results = await createCharges(chargeRequests);
+
+            for (const alert of alertRequests) {
+              const res = results[alert.index];
+              if (res?.success && res.billingEventId) {
+                await queueBillingEventAlert(
+                  alert.tenantId,
+                  res.billingEventId,
+                  alert.serviceName,
+                  alert.itemCode,
+                  alert.accountName,
+                  // Use persisted amount if available (promos may adjust totals)
+                  typeof res.amount === 'number' ? res.amount : alert.amount,
+                  alert.description
+                );
+              }
+            }
+          }
+        } catch (billingErr: any) {
+          if (billingErr?.message === BILLING_DISABLED_ERROR) {
+            toast({
+              variant: 'destructive',
+              title: 'Billing Disabled',
+              description: BILLING_DISABLED_ERROR,
+            });
+          } else {
+            console.error('[ShipmentDetail] Outbound billing failed (non-blocking):', billingErr);
+          }
+        }
+
+        // Queue client-facing "Will Call Released" communication trigger
+        try {
+          await queueAlert({
+            tenantId: profile.tenant_id,
+            alertType: 'will_call_released',
+            entityType: 'shipment',
+            entityId: shipment.id,
+            subject: `Will-Call Released — ${shipment.shipment_number}`,
+          });
+        } catch (alertErr) {
+          console.error('[ShipmentDetail] Failed to queue will-call released alert (non-blocking):', alertErr);
+        }
+      }
+
       // Generate release PDF and upload as a document
       try {
         const staffName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || null;
@@ -1526,16 +1759,30 @@ export default function ShipmentDetail() {
               setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
               setEditNotes(shipment.notes || '');
               if (shipment.shipment_type === 'outbound') {
-                setEditReleaseType(shipment.release_type || 'will_call');
+                setEditReleaseType(
+                  shipment.release_type?.startsWith('will_call')
+                    ? 'will_call'
+                    : (shipment.release_type || 'will_call')
+                );
                 setEditReleasedTo(shipment.released_to || shipment.driver_name || shipment.release_to_name || '');
+                setEditReleaseToName(shipment.release_to_name || '');
                 setEditReleaseToEmail(shipment.release_to_email || '');
                 setEditReleaseToPhone(shipment.release_to_phone || '');
+                setEditDriverName(shipment.driver_name || '');
+                setEditDestinationName(shipment.destination_name || '');
+                setEditOriginName(shipment.origin_name || '');
+                setEditScheduledDate(shipment.scheduled_date ? new Date(shipment.scheduled_date) : undefined);
                 setEditCustomerAuthorized(!!shipment.customer_authorized);
               } else {
                 setEditReleaseType('');
                 setEditReleasedTo('');
+                setEditReleaseToName('');
                 setEditReleaseToEmail('');
                 setEditReleaseToPhone('');
+                setEditDriverName('');
+                setEditDestinationName('');
+                setEditOriginName('');
+                setEditScheduledDate(undefined);
                 setEditCustomerAuthorized(false);
               }
             }
@@ -1846,25 +2093,6 @@ export default function ShipmentDetail() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Release Contact Email</Label>
-                  <Input
-                    type="email"
-                    value={editReleaseToEmail}
-                    onChange={(e) => setEditReleaseToEmail(e.target.value)}
-                    placeholder="email@example.com"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Release Contact Phone</Label>
-                  <Input
-                    value={editReleaseToPhone}
-                    onChange={(e) => setEditReleaseToPhone(e.target.value)}
-                    placeholder="(555) 555-5555"
-                  />
-                </div>
-
                 <div className="sm:col-span-2 flex items-center gap-3 rounded-md border p-3">
                   <Checkbox
                     id="customer-authorized"
@@ -1943,34 +2171,126 @@ export default function ShipmentDetail() {
                 rows={3}
               />
             </div>
+
+            {/* Outbound-specific fields */}
+            {isOutbound && (
+              <>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium text-sm mb-3">Outbound / Release Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Contact Name</Label>
+                      <Input
+                        value={editReleaseToName}
+                        onChange={(e) => setEditReleaseToName(e.target.value)}
+                        placeholder="Contact person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Email</Label>
+                      <Input
+                        type="email"
+                        value={editReleaseToEmail}
+                        onChange={(e) => setEditReleaseToEmail(e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Phone</Label>
+                      <Input
+                        type="tel"
+                        value={editReleaseToPhone}
+                        onChange={(e) => setEditReleaseToPhone(e.target.value)}
+                        placeholder="Phone number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Driver Name</Label>
+                      <Input
+                        value={editDriverName}
+                        onChange={(e) => setEditDriverName(e.target.value)}
+                        placeholder="Driver or pickup person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Scheduled Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              'w-full justify-start text-left font-normal',
+                              !editScheduledDate && 'text-muted-foreground'
+                            )}
+                          >
+                            <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
+                            {editScheduledDate ? format(editScheduledDate, 'PPP') : 'Select date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={editScheduledDate}
+                            onSelect={setEditScheduledDate}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Origin Name</Label>
+                      <Input
+                        value={editOriginName}
+                        onChange={(e) => setEditOriginName(e.target.value)}
+                        placeholder="Pickup location or origin"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Destination Name</Label>
+                      <Input
+                        value={editDestinationName}
+                        onChange={(e) => setEditDestinationName(e.target.value)}
+                        placeholder="Delivery location or destination"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
-                  const releasedToValue = editReleasedTo.trim() || null;
                   const updates: Record<string, unknown> = {
-                    carrier: editCarrier || null,
-                    tracking_number: editTrackingNumber || null,
-                    po_number: editPoNumber || null,
+                    carrier: editCarrier.trim() || null,
+                    tracking_number: editTrackingNumber.trim() || null,
+                    po_number: editPoNumber.trim() || null,
                     expected_arrival_date: editExpectedArrival?.toISOString() || null,
-                    notes: editNotes || null,
+                    notes: editNotes.trim() || null,
                   };
 
+                  // Add outbound-specific fields if this is an outbound shipment
                   if (isOutbound) {
                     updates.release_type = editReleaseType || null;
-                    updates.released_to = releasedToValue;
-                    updates.driver_name = releasedToValue;
-                    // Keep contact fields in sync (used by legacy flows)
-                    updates.release_to_name = releasedToValue;
+                    updates.released_to = editReleasedTo.trim() || null;
+                    updates.release_to_name = editReleaseToName.trim() || null;
                     updates.release_to_email = editReleaseToEmail.trim() || null;
                     updates.release_to_phone = editReleaseToPhone.trim() || null;
+                    updates.driver_name = editDriverName.trim() || null;
+                    updates.destination_name = editDestinationName.trim() || null;
+                    updates.origin_name = editOriginName.trim() || null;
+                    updates.scheduled_date = editScheduledDate?.toISOString() || null;
 
+                    const wasCustomerAuthorized = !!shipment.customer_authorized;
                     updates.customer_authorized = editCustomerAuthorized;
-                    if (editCustomerAuthorized) {
-                      updates.customer_authorized_at = new Date().toISOString();
-                      updates.customer_authorized_by = profile?.id || null;
-                    } else {
-                      updates.customer_authorized_at = null;
-                      updates.customer_authorized_by = null;
+                    if (editCustomerAuthorized !== wasCustomerAuthorized) {
+                      if (editCustomerAuthorized) {
+                        updates.customer_authorized_at = new Date().toISOString();
+                        updates.customer_authorized_by = profile?.id || null;
+                      } else {
+                        updates.customer_authorized_at = null;
+                        updates.customer_authorized_by = null;
+                      }
                     }
                   }
 
@@ -1979,8 +2299,11 @@ export default function ShipmentDetail() {
                     .update(updates)
                     .eq('id', shipment.id);
                   if (error) throw error;
+                  
+                  await logShipmentAudit('shipment_updated', updates);
                   toast({ title: 'Shipment Updated' });
                   fetchShipment();
+                  setIsEditing(false);
                 }}
                 label="Save Changes"
                 savedLabel="Saved"
@@ -2071,28 +2394,76 @@ export default function ShipmentDetail() {
               {isOutbound && (
                 <div>
                   <Label className="text-muted-foreground">Release Type</Label>
-                  <p className="font-medium">{shipment.release_type || '-'}</p>
+                  <p className="font-medium capitalize">{shipment.release_type?.replace(/_/g, ' ') || '-'}</p>
                 </div>
               )}
               {isOutbound && (
                 <div>
                   <Label className="text-muted-foreground">Customer Authorized</Label>
-                  <p className="font-medium">{shipment.customer_authorized ? 'Yes' : 'No'}</p>
-                </div>
-              )}
-              {isOutbound && (
-                <div>
-                  <Label className="text-muted-foreground">Release Phone</Label>
-                  <p className="font-medium">{shipment.release_to_phone || '-'}</p>
-                </div>
-              )}
-              {isOutbound && (
-                <div>
-                  <Label className="text-muted-foreground">Release Email</Label>
-                  <p className="font-medium">{shipment.release_to_email || '-'}</p>
+                  <p className="font-medium">
+                    {shipment.customer_authorized ? (
+                      <Badge variant="outline" className="text-green-600 border-green-300">Authorized</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-yellow-600 border-yellow-300">Not Authorized</Badge>
+                    )}
+                  </p>
                 </div>
               )}
             </div>
+
+            {/* Outbound-specific fields */}
+            {isOutbound && (
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-sm mb-3">Release Details</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {shipment.release_to_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Name</Label>
+                      <p className="font-medium">{shipment.release_to_name}</p>
+                    </div>
+                  )}
+                  {shipment.release_to_email && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Email</Label>
+                      <p className="font-medium">{shipment.release_to_email}</p>
+                    </div>
+                  )}
+                  {shipment.release_to_phone && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Phone</Label>
+                      <p className="font-medium">{shipment.release_to_phone}</p>
+                    </div>
+                  )}
+                  {shipment.driver_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Driver Name</Label>
+                      <p className="font-medium">{shipment.driver_name}</p>
+                    </div>
+                  )}
+                  {shipment.scheduled_date && (
+                    <div>
+                      <Label className="text-muted-foreground">Scheduled Date</Label>
+                      <p className="font-medium">
+                        {format(new Date(shipment.scheduled_date), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                  )}
+                  {shipment.origin_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Origin</Label>
+                      <p className="font-medium">{shipment.origin_name}</p>
+                    </div>
+                  )}
+                  {shipment.destination_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Destination</Label>
+                      <p className="font-medium">{shipment.destination_name}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {shipment.notes && (
               <div>
                 <Label className="text-muted-foreground">Notes</Label>

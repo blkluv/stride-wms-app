@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -70,6 +70,52 @@ export default function OutboundCreate() {
   const [draftShipmentNumber, setDraftShipmentNumber] = useState<string | null>(null);
   const [draftCreating, setDraftCreating] = useState(false);
   const draftCreateStartedRef = useRef(false);
+  const draftFinalizedRef = useRef(false);
+  const draftCleanupStartedRef = useRef(false);
+
+  const cleanupDraftShipment = useCallback(async () => {
+    if (!profile?.tenant_id) return;
+    if (!draftShipmentId) return;
+    if (draftFinalizedRef.current) return;
+    if (draftCleanupStartedRef.current) return;
+    draftCleanupStartedRef.current = true;
+
+    try {
+      const now = new Date().toISOString();
+
+      // If anything allocated items for this draft, restore them before removing draft rows.
+      const { data: draftItems, error: draftItemsError } = await (supabase.from('shipment_items') as any)
+        .select('item_id')
+        .eq('shipment_id', draftShipmentId);
+
+      if (!draftItemsError) {
+        const draftItemIds: string[] = (Array.isArray(draftItems) ? draftItems : [])
+          .map((r: any) => r?.item_id)
+          .filter((v: any) => typeof v === 'string');
+
+        if (draftItemIds.length > 0) {
+          await (supabase.from('items') as any)
+            .update({ status: 'stored' })
+            .in('id', draftItemIds)
+            .eq('status', 'allocated');
+        }
+      } else {
+        console.warn('[OutboundCreate] draft cleanup fetch items error:', draftItemsError);
+      }
+
+      // Best-effort cleanup so abandoned drafts don't appear in outbound lists.
+      await (supabase.from('shipment_items') as any)
+        .delete()
+        .eq('shipment_id', draftShipmentId);
+
+      await (supabase.from('shipments') as any)
+        .update({ deleted_at: now, status: 'cancelled' })
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', draftShipmentId);
+    } catch (err) {
+      console.warn('[OutboundCreate] draft cleanup error:', err);
+    }
+  }, [draftShipmentId, profile?.tenant_id]);
 
   // Form state
   const [loading, setLoading] = useState(false);
@@ -120,6 +166,9 @@ export default function OutboundCreate() {
             tenant_id: profile.tenant_id,
             shipment_type: 'outbound',
             status: 'pending',
+            // Create as soft-deleted so abandoned drafts don't surface as real shipments.
+            // We'll "un-delete" it on successful submit.
+            deleted_at: now,
             // Seed account if the user navigated here from an item context
             account_id: preSelectedAccountId || null,
             created_by: profile.id,
@@ -151,6 +200,12 @@ export default function OutboundCreate() {
     void createDraft();
   }, [profile?.tenant_id, profile?.id, draftShipmentId, preSelectedAccountId, toast]);
 
+  // Cleanup draft shipment if the user abandons the page.
+  useEffect(() => {
+    return () => {
+      void cleanupDraftShipment();
+    };
+  }, [cleanupDraftShipment]);
   // ------------------------------------------
   // Fetch reference data
   // ------------------------------------------
@@ -347,7 +402,21 @@ export default function OutboundCreate() {
     setSaving(true);
 
     try {
-      // 1) Update the draft shipment details
+      const itemIds = Array.from(selectedItemIds);
+
+      // 1) Fetch existing items so retries are idempotent (and can reconcile deselections)
+      const { data: existingItems, error: existingError } = await (supabase.from('shipment_items') as any)
+        .select('item_id')
+        .eq('shipment_id', draftShipmentId);
+
+      if (existingError) throw existingError;
+      const existingItemIds: string[] = (Array.isArray(existingItems) ? existingItems : [])
+        .map((r: any) => r?.item_id)
+        .filter((v: any) => typeof v === 'string');
+
+      const removedItemIds = existingItemIds.filter((id) => !selectedItemIds.has(id));
+
+      // 2) Update the draft shipment details (keep it soft-deleted until everything succeeds)
       const { error: updateError } = await (supabase.from('shipments') as any)
         .update({
           account_id: accountId,
@@ -374,44 +443,53 @@ export default function OutboundCreate() {
 
       if (updateError) throw updateError;
 
-      // 2) Add selected items to shipment_items (avoid duplicates)
-      const itemIds = Array.from(selectedItemIds);
-      const { data: existingItems, error: existingError } = await (supabase.from('shipment_items') as any)
-        .select('item_id')
-        .eq('shipment_id', draftShipmentId)
-        .in('item_id', itemIds);
+      // 3) Replace shipment_items to exactly match the current selection
+      const { error: deleteItemsError } = await (supabase.from('shipment_items') as any)
+        .delete()
+        .eq('shipment_id', draftShipmentId);
+      if (deleteItemsError) throw deleteItemsError;
 
-      if (existingError) throw existingError;
-      const existingSet = new Set<string>(
-        (Array.isArray(existingItems) ? existingItems : [])
-          .map((r: any) => r.item_id)
-          .filter((v: any) => typeof v === 'string')
-      );
-
-      const toInsert = itemIds
-        .filter((id) => !existingSet.has(id))
-        .map((item_id) => ({
-          shipment_id: draftShipmentId,
-          item_id,
-          expected_quantity: itemQuantityById.get(item_id) ?? 1,
-          status: 'pending',
-        }));
+      const toInsert = itemIds.map((item_id) => ({
+        shipment_id: draftShipmentId,
+        item_id,
+        expected_quantity: itemQuantityById.get(item_id) ?? 1,
+        status: 'pending',
+      }));
 
       if (toInsert.length > 0) {
         const { error: insertError } = await (supabase.from('shipment_items') as any).insert(toInsert);
         if (insertError) throw insertError;
       }
 
-      // 3) Mark items as allocated
-      await (supabase.from('items') as any)
-        .update({ status: 'allocated' })
-        .in('id', itemIds);
+      // 4) Best-effort: un-allocate items removed from the draft selection
+      if (removedItemIds.length > 0) {
+        const { error: deallocateError } = await (supabase.from('items') as any)
+          .update({ status: 'stored' })
+          .in('id', removedItemIds)
+          .eq('status', 'allocated');
+        if (deallocateError) throw deallocateError;
+      }
+
+      // 5) Finalize the draft by un-deleting it before allocating inventory
+      const { error: finalizeError } = await (supabase.from('shipments') as any)
+        .update({ deleted_at: null })
+        .eq('id', draftShipmentId);
+      if (finalizeError) throw finalizeError;
+
+      // 6) Mark selected items as allocated (after the shipment is visible)
+      if (itemIds.length > 0) {
+        const { error: allocateError } = await (supabase.from('items') as any)
+          .update({ status: 'allocated' })
+          .in('id', itemIds);
+        if (allocateError) throw allocateError;
+      }
 
       toast({
         title: 'Outbound Shipment Created',
         description: draftShipmentNumber ? `Shipment ${draftShipmentNumber} created.` : 'Outbound shipment created.',
       });
 
+      draftFinalizedRef.current = true;
       navigate(`/shipments/${draftShipmentId}`);
     } catch (err: any) {
       console.error('[OutboundCreate] submit error:', err);

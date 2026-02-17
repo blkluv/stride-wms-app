@@ -701,6 +701,33 @@ async function buildTemplateVariables(
           variables.portal_account_url = portalBase ? `${portalBase}/accounts/${shipment.account_id}` : '';
         }
 
+        // Backward-compatible token aliases for will-call communication templates.
+        // Will-call is modeled as an OUTBOUND SHIPMENT in Stride WMS, but the templates
+        // use legacy [[release_*]] variables. Populate those from shipment fields.
+        if (alertType === 'will_call_ready' || alertType === 'will_call_released') {
+          variables.release_number = variables.shipment_number;
+          variables.release_link = variables.shipment_link;
+          variables.portal_release_url = variables.shipment_link;
+          variables.release_type = shipment.release_type || 'Will Call';
+
+          const releasedAtRaw = shipment.completed_at || shipment.shipped_at || shipment.signature_timestamp || null;
+          const releasedAt = releasedAtRaw
+            ? new Date(releasedAtRaw).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            : '';
+          variables.release_completed_at = releasedAt;
+          variables.released_at = releasedAt;
+
+          // Not currently tracked on shipments; leave blank tokens for now.
+          variables.pickup_hours = variables.pickup_hours || '';
+          variables.amount_due = variables.amount_due || '';
+        }
+
         const { data: shipmentItems } = await supabase
           .from('items')
           .select('id')
