@@ -41,6 +41,7 @@ import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
 
 const itemSchema = z.object({
   description: z.string().optional(),
+  sku: z.string().optional(),
   quantity: z.coerce.number().min(1).default(1),
   sidemark: z.string().optional(),
   sidemark_id: z.string().optional(),
@@ -77,6 +78,7 @@ interface ItemEditDialogProps {
     id: string;
     item_code: string;
     description: string | null;
+    sku?: string | null;
     quantity: number;
     sidemark: string | null;
     sidemark_id?: string | null;
@@ -138,6 +140,7 @@ export function ItemEditDialog({
     resolver: zodResolver(itemSchema),
     defaultValues: {
       description: '',
+      sku: '',
       quantity: 1,
       sidemark: '',
       sidemark_id: '',
@@ -164,6 +167,7 @@ export function ItemEditDialog({
     if (open && item) {
       form.reset({
         description: item.description || '',
+        sku: item.sku || '',
         quantity: item.quantity || 1,
         sidemark: item.sidemark || '',
         sidemark_id: item.sidemark_id || '',
@@ -192,6 +196,7 @@ export function ItemEditDialog({
 
       const updateData = {
         description: data.description || null,
+        sku: data.sku || null,
         quantity: data.quantity,
         sidemark: data.sidemark || null,
         class_id: data.class_id || null,
@@ -355,6 +360,21 @@ export function ItemEditDialog({
                     <FormLabel>Vendor</FormLabel>
                     <FormControl>
                       <Input placeholder="Vendor" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* SKU */}
+              <FormField
+                control={form.control}
+                name="sku"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>SKU (optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="SKU" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -71,6 +71,7 @@ interface ItemDetail {
   id: string;
   item_code: string;
   description: string | null;
+  sku: string | null;
   status: string;
   quantity: number;
   client_account: string | null;
@@ -247,6 +248,7 @@ export default function ItemDetail() {
 
   // Inline edit state for autocomplete fields
   const [editVendor, setEditVendor] = useState('');
+  const [editSku, setEditSku] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editSidemark, setEditSidemark] = useState('');
   const [editRoom, setEditRoom] = useState('');
@@ -314,11 +316,12 @@ export default function ItemDetail() {
   useEffect(() => {
     if (item) {
       setEditVendor(item.vendor || '');
+      setEditSku(item.sku || '');
       setEditDescription(item.description || '');
       setEditSidemark(item.sidemark || '');
       setEditRoom(item.room || '');
     }
-  }, [item?.vendor, item?.description, item?.sidemark, item?.room]);
+  }, [item?.vendor, item?.sku, item?.description, item?.sidemark, item?.room]);
 
   // Fetch account settings when item is loaded
   useEffect(() => {
@@ -380,6 +383,7 @@ export default function ItemDetail() {
 
       setItem({
         ...data,
+        sku: data.sku ?? null,
         location: data.locations,
         warehouse: data.warehouses,
         item_type: data.item_types,
@@ -618,6 +622,33 @@ export default function ItemDetail() {
     } catch (error) {
       console.error('Error updating vendor:', error);
       toast({ title: 'Error', description: 'Failed to update vendor', variant: 'destructive' });
+      return false;
+    }
+  };
+
+  const handleSkuSave = async (newValue: string): Promise<boolean> => {
+    if (!item) return false;
+    try {
+      const { error } = await (supabase.from('items') as any)
+        .update({ sku: newValue || null })
+        .eq('id', item.id);
+
+      if (error) throw error;
+      if (profile?.tenant_id && (newValue || null) !== (item.sku || null)) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: item.id,
+          actorUserId: profile.id,
+          eventType: 'item_field_updated',
+          eventLabel: `SKU updated`,
+          details: { field: 'sku', from: item.sku, to: newValue || null },
+        });
+      }
+      setItem({ ...item, sku: newValue || null });
+      return true;
+    } catch (error) {
+      console.error('Error updating sku:', error);
+      toast({ title: 'Error', description: 'Failed to update SKU', variant: 'destructive' });
       return false;
     }
   };
@@ -937,6 +968,25 @@ export default function ItemDetail() {
                           }}
                           suggestions={vendorSuggestions.map(s => ({ value: s.value }))}
                           placeholder="Add vendor"
+                          className="h-7 mt-1 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                        />
+                      )}
+                    </div>
+                    {/* SKU */}
+                    <div>
+                      <span className="text-muted-foreground">SKU</span>
+                      {isClientUser ? (
+                        <p className="font-medium">{item.sku || '-'}</p>
+                      ) : (
+                        <Input
+                          value={editSku}
+                          onChange={(e) => setEditSku(e.target.value)}
+                          onBlur={() => {
+                            if (editSku !== (item.sku || '')) {
+                              handleSkuSave(editSku);
+                            }
+                          }}
+                          placeholder="Add SKU"
                           className="h-7 mt-1 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
                         />
                       )}

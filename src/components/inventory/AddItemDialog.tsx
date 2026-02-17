@@ -59,6 +59,7 @@ export function AddItemDialog({
   const [accountId, setAccountId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [vendor, setVendor] = useState('');
+  const [sku, setSku] = useState('');
   const [description, setDescription] = useState('');
   const [sidemarkId, setSidemarkId] = useState('');
   const [room, setRoom] = useState('');
@@ -69,7 +70,7 @@ export function AddItemDialog({
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
 
   // Track if form has been modified
-  const hasFormData = accountId || vendor || description || sidemarkId || room || notes || quantity !== '1';
+  const hasFormData = accountId || vendor || sku || description || sidemarkId || room || notes || quantity !== '1';
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -77,6 +78,7 @@ export function AddItemDialog({
       setAccountId('');
       setQuantity('1');
       setVendor('');
+      setSku('');
       setDescription('');
       setSidemarkId('');
       setRoom('');
@@ -127,6 +129,7 @@ export function AddItemDialog({
         account_id: accountId,
         quantity: parseInt(quantity, 10) || 1,
         vendor: vendor || null,
+        sku: sku || null,
         description: description || null,
         sidemark_id: sidemarkId || null,
         room: room || null,
@@ -216,6 +219,17 @@ export function AddItemDialog({
                 onChange={setVendor}
                 suggestions={vendorSuggestions}
                 placeholder="Enter vendor name..."
+              />
+            </div>
+
+            {/* SKU */}
+            <div className="space-y-2">
+              <Label htmlFor="sku">SKU (optional)</Label>
+              <Input
+                id="sku"
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="e.g., MFG-12345"
               />
             </div>
 
