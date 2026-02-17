@@ -37,3 +37,7 @@ User decision:
 User decision:
 - Access control for the consolidated admin ops page remains `admin_dev` only (do not expand to tenant_admin).
 
+### QA-2026-02-17-ADMINOPS-006
+User decision:
+- Canonical route for the consolidated SaaS admin ops dashboard will be: `/admin/saas-ops`.
+

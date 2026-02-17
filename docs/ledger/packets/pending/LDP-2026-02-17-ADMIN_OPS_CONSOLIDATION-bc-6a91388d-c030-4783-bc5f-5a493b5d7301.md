@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `5`
+- Q&A items extracted: `6`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007`
 - Unresolved/open (draft): `DL-2026-02-17-002`
 - Supersedes: `-`
 
@@ -26,6 +26,7 @@
 | DL-2026-02-17-004 | Stripe dashboard navigation blocks in Lovable preview are environment constraints (not app bugs) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-003` | - | - |
 | DL-2026-02-17-005 | Do not add Lovable-preview-specific workaround or note for Stripe dashboard navigation | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-004` | - | - |
 | DL-2026-02-17-006 | Consolidated admin ops page remains restricted to admin_dev only | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-005` | - | - |
+| DL-2026-02-17-007 | Canonical consolidated SaaS ops route is /admin/saas-ops | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-006` | - | - |
 
 ## Detailed Decision Entries
 
@@ -143,6 +144,25 @@ These ops tools are internal/advanced and not intended for tenant-facing non-tec
 - Routing must keep `RequireRole role={['admin_dev']}` (or equivalent) on the consolidated route.
 - Avoid adding tenant-visible navigation to these ops screens.
 
+### DL-2026-02-17-007: Canonical consolidated SaaS ops route is /admin/saas-ops
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-006`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The canonical route for the consolidated SaaS admin ops dashboard will be `/admin/saas-ops`.
+
+#### Why
+It is clearer and more future-proof than `/admin/stripe-ops` or `/admin/pricing-ops`, and it matches the intent to consolidate SaaS operational controls into a single entry point.
+
+#### Implementation impact
+- Add route `/admin/saas-ops` guarded by `admin_dev`.
+- Decide what to do with legacy routes `/admin/stripe-ops` and `/admin/pricing-ops` (redirect or keep as aliases) in a follow-up decision.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -150,3 +170,4 @@ These ops tools are internal/advanced and not intended for tenant-facing non-tec
 | DLE-2026-02-17-003 | 2026-02-17 | DL-2026-02-17-004 | planned | - | builder | Add operator-friendly guidance (if desired) that embedded previews may block Stripe navigation; confirm behavior works on real domain. |
 | DLE-2026-02-17-004 | 2026-02-17 | DL-2026-02-17-005 | completed | - | builder | Confirmed: no Lovable-preview workaround/note will be added; focus on consolidation + usability improvements. |
 | DLE-2026-02-17-005 | 2026-02-17 | DL-2026-02-17-006 | completed | - | builder | Confirmed: consolidated ops access remains admin_dev only. |
+| DLE-2026-02-17-006 | 2026-02-17 | DL-2026-02-17-007 | completed | - | builder | Confirmed: canonical consolidated SaaS ops route will be `/admin/saas-ops`. |
