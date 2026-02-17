@@ -184,3 +184,31 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
     A: Via the Activity feed. Activity should be interactive globally across the app:
        users can tap entity codes (item/shipment/etc) and documents to navigate/open them.
 
+54. Q: Activity link rendering style (when codes appear in the text)?
+    A: Inline clickable text within the sentence (option B), not separate chips under the row.
+
+55. Q: Should the redesigned Documents field (grid thumbnails + viewer + upload/download permissions)
+       be reused outside Dock Intake (e.g., Quote detail)?
+    A: Yes — apply the same redesigned Documents field to the Quote detail page as well.
+
+56. Q: Which Quote detail page should receive the redesigned Documents field?
+    A: Quote Builder / Quote detail (`/quotes/:id`) (option B).
+
+57. Q: Quote Builder currently uses a legacy "Attachments" section. Keep it or replace it?
+    A: Replace it with the redesigned Documents field (option A).
+
+58. Q: For existing quotes with legacy attachments, should we migrate/surface them in the new Documents grid?
+    A: No (option B). It's fine to leave legacy attachments out since there aren't quotes with attachments in the system.
+
+59. Q: Quote Builder Documents field permissions (and client access)?
+    A: Staff only (admin + manager). Client users should not have access to the Quotes list or Quote Builder/detail pages.
+
+60. Q: What does "Closed" mean for Dock Intake receiving?
+    A: It refers to `shipments.inbound_status = 'closed'` (not the global `shipments.status`).
+       This is set when Stage 2 is completed: the dock intake has been fully received,
+       `received_at` is set, and the intake workflow is considered finished.
+
+61. Q: When Stage 2 is completed, what should the shipment's visible status be, and how should "Received Today" work?
+    A: Stage 2 completion should set the shipment's visible status to "received" (i.e., update `shipments.status = 'received'`).
+       Intakes/shipments with `status = 'received'` should appear on the "Received Today" card when `received_at` is today.
+
