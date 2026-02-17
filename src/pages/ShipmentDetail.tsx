@@ -1766,140 +1766,156 @@ export default function ShipmentDetail() {
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
-            <MaterialIcon name="arrow_back" size="md" />
-          </Button>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
-              <ShipmentExceptionBadge
-                shipmentId={shipment.id}
-                onClick={
-                  isDockIntakeShipment
-                    ? () => navigate(`/incoming/dock-intake/${shipment.id}?tab=exceptions`)
-                    : undefined
-                }
-              />
-              <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
-              {shipment.release_type && (
-                <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
-              )}
+      {/* Header / Billing / Actions (keep stable during sidebar expand/collapse) */}
+      <div className="grid gap-6 lg:grid-cols-3 items-start mb-6">
+        {/* Left: shipment identity */}
+        <div className="lg:col-span-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
+                <MaterialIcon name="arrow_back" size="md" />
+              </Button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
+                  <ShipmentExceptionBadge
+                    shipmentId={shipment.id}
+                    onClick={
+                      isDockIntakeShipment
+                        ? () => navigate(`/incoming/dock-intake/${shipment.id}?tab=exceptions`)
+                        : undefined
+                    }
+                  />
+                  <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
+                  {shipment.release_type && (
+                    <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-sm truncate">
+                  {shipment.accounts?.account_name || 'No account'} • {shipment.warehouses?.name || 'No warehouse'}
+                </p>
+              </div>
             </div>
-            <p className="text-muted-foreground text-sm truncate">
-              {shipment.accounts?.account_name || 'No account'} • {shipment.warehouses?.name || 'No warehouse'}
-            </p>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap gap-2 sm:flex-nowrap">
-          <Button variant="outline" size="sm" onClick={() => {
-            if (!isEditing) {
-              setEditCarrier(shipment.carrier || '');
-              setEditTrackingNumber(shipment.tracking_number || '');
-              setEditPoNumber(shipment.po_number || '');
-              setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
-              setEditNotes(shipment.notes || '');
-              setEditInternalNotes(shipment.receiving_notes || '');
-              if (shipment.shipment_type === 'outbound') {
-                setEditReleaseType(
-                  shipment.release_type?.startsWith('will_call')
-                    ? 'will_call'
-                    : (shipment.release_type || 'will_call')
-                );
-                setEditReleasedTo(shipment.released_to || shipment.driver_name || shipment.release_to_name || '');
-                setEditReleaseToName(shipment.release_to_name || '');
-                setEditReleaseToEmail(shipment.release_to_email || '');
-                setEditReleaseToPhone(shipment.release_to_phone || '');
-                setEditDriverName(shipment.driver_name || '');
-                setEditDestinationName(shipment.destination_name || '');
-                setEditOriginName(shipment.origin_name || '');
-                setEditScheduledDate(shipment.scheduled_date ? new Date(shipment.scheduled_date) : undefined);
-                setEditCustomerAuthorized(!!shipment.customer_authorized);
-              } else {
-                setEditReleaseType('');
-                setEditReleasedTo('');
-                setEditReleaseToName('');
-                setEditReleaseToEmail('');
-                setEditReleaseToPhone('');
-                setEditDriverName('');
-                setEditDestinationName('');
-                setEditOriginName('');
-                setEditScheduledDate(undefined);
-                setEditCustomerAuthorized(false);
+        {/* Right: billing (top) + actions (below) */}
+        <div className="space-y-3">
+          {canSeeBilling && shipment.account_id ? (
+            <BillingCalculator
+              shipmentId={shipment.id}
+              shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
+              refreshKey={billingRefreshKey}
+              title="Billing Calculator"
+            />
+          ) : null}
+
+          <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (!isEditing) {
+                setEditCarrier(shipment.carrier || '');
+                setEditTrackingNumber(shipment.tracking_number || '');
+                setEditPoNumber(shipment.po_number || '');
+                setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
+                setEditNotes(shipment.notes || '');
+                setEditInternalNotes(shipment.receiving_notes || '');
+                if (shipment.shipment_type === 'outbound') {
+                  setEditReleaseType(
+                    shipment.release_type?.startsWith('will_call')
+                      ? 'will_call'
+                      : (shipment.release_type || 'will_call')
+                  );
+                  setEditReleasedTo(shipment.released_to || shipment.driver_name || shipment.release_to_name || '');
+                  setEditReleaseToName(shipment.release_to_name || '');
+                  setEditReleaseToEmail(shipment.release_to_email || '');
+                  setEditReleaseToPhone(shipment.release_to_phone || '');
+                  setEditDriverName(shipment.driver_name || '');
+                  setEditDestinationName(shipment.destination_name || '');
+                  setEditOriginName(shipment.origin_name || '');
+                  setEditScheduledDate(shipment.scheduled_date ? new Date(shipment.scheduled_date) : undefined);
+                  setEditCustomerAuthorized(!!shipment.customer_authorized);
+                } else {
+                  setEditReleaseType('');
+                  setEditReleasedTo('');
+                  setEditReleaseToName('');
+                  setEditReleaseToEmail('');
+                  setEditReleaseToPhone('');
+                  setEditDriverName('');
+                  setEditDestinationName('');
+                  setEditOriginName('');
+                  setEditScheduledDate(undefined);
+                  setEditCustomerAuthorized(false);
+                }
               }
-            }
-            setIsEditing(!isEditing);
-          }}>
-            <MaterialIcon name="edit" size="sm" className="mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit'}</span>
-            <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
-          </Button>
-          {canReceive && !isReceiving && hasPermission(PERMISSIONS.SHIPMENTS_RECEIVE) && (
-            <Button size="sm" onClick={startSession} disabled={sessionLoading}>
-              <MaterialIcon name="play_arrow" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Start Receiving</span>
-              <span className="sm:hidden">Receive</span>
+              setIsEditing(!isEditing);
+            }}>
+              <MaterialIcon name="edit" size="sm" className="mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit'}</span>
+              <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
             </Button>
-          )}
-          {canStartPull && (
-            <Button size="sm" onClick={handleStartPull}>
-              <MaterialIcon name="qr_code_scanner" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Start Pull</span>
-              <span className="sm:hidden">Pull</span>
-            </Button>
-          )}
-          {canStartRelease && (
-            <Button size="sm" onClick={handleStartRelease}>
-              <MaterialIcon name="local_shipping" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Start Release Scan</span>
-              <span className="sm:hidden">Release</span>
-            </Button>
-          )}
-          {/* Complete Shipment button for outbound shipments */}
-          {!isInbound && ['pending', 'expected', 'in_progress', 'released'].includes(shipment.status) && (
-            <Button size="sm" onClick={() => setShowOutboundCompleteDialog(true)} disabled={!canCompleteOutbound}>
-              <MaterialIcon name="check_circle" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Complete Shipment</span>
-              <span className="sm:hidden">Complete</span>
-            </Button>
-          )}
-          {shipment.account_id && canSeeBilling && (
-            <Button variant="secondary" size="sm" onClick={() => setAddAddonDialogOpen(true)}>
-              <MaterialIcon name="attach_money" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Add Charge</span>
-              <span className="sm:hidden">Charge</span>
-            </Button>
-          )}
-          {/* Add Credit Button - Admin Only */}
-          {shipment.account_id && canAddCredit && (
-            <Button variant="secondary" size="sm" onClick={() => setAddCreditDialogOpen(true)}>
-              <MaterialIcon name="money_off" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Add Credit</span>
-              <span className="sm:hidden">Credit</span>
-            </Button>
-          )}
-          {/* Add Coverage button - only for inbound shipments with received items */}
-          {shipment.account_id && canSeeBilling && isInbound && items.some(i => i.item_id) && (
-            <Button variant="outline" size="sm" onClick={() => setCoverageDialogOpen(true)}>
-              <MaterialIcon name="verified_user" size="sm" className="mr-1 sm:mr-2 text-blue-600" />
-              <span className="hidden sm:inline">Add Coverage</span>
-              <span className="sm:hidden">Coverage</span>
-            </Button>
-          )}
-          {/* Reassign Account - moved to selected items bar */}
-          {/* Cancel Shipment - only for expected, pending, or receiving shipments */}
-          {['expected', 'pending', 'receiving', 'in_progress'].includes(shipment.status) && (
-            <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)}>
-              <MaterialIcon name="block" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Cancel</span>
-            </Button>
-          )}
-          {/* Help button for receiving workflow */}
-          {isInbound && <HelpButton workflow="receiving" />}
+            {canReceive && !isReceiving && hasPermission(PERMISSIONS.SHIPMENTS_RECEIVE) && (
+              <Button size="sm" onClick={startSession} disabled={sessionLoading}>
+                <MaterialIcon name="play_arrow" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Start Receiving</span>
+                <span className="sm:hidden">Receive</span>
+              </Button>
+            )}
+            {canStartPull && (
+              <Button size="sm" onClick={handleStartPull}>
+                <MaterialIcon name="qr_code_scanner" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Start Pull</span>
+                <span className="sm:hidden">Pull</span>
+              </Button>
+            )}
+            {canStartRelease && (
+              <Button size="sm" onClick={handleStartRelease}>
+                <MaterialIcon name="local_shipping" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Start Release Scan</span>
+                <span className="sm:hidden">Release</span>
+              </Button>
+            )}
+            {/* Complete Shipment button for outbound shipments */}
+            {!isInbound && ['pending', 'expected', 'in_progress', 'released'].includes(shipment.status) && (
+              <Button size="sm" onClick={() => setShowOutboundCompleteDialog(true)} disabled={!canCompleteOutbound}>
+                <MaterialIcon name="check_circle" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Complete Shipment</span>
+                <span className="sm:hidden">Complete</span>
+              </Button>
+            )}
+            {shipment.account_id && canSeeBilling && (
+              <Button variant="secondary" size="sm" onClick={() => setAddAddonDialogOpen(true)}>
+                <MaterialIcon name="attach_money" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Add Charge</span>
+                <span className="sm:hidden">Charge</span>
+              </Button>
+            )}
+            {/* Add Credit Button - Admin Only */}
+            {shipment.account_id && canAddCredit && (
+              <Button variant="secondary" size="sm" onClick={() => setAddCreditDialogOpen(true)}>
+                <MaterialIcon name="money_off" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Add Credit</span>
+                <span className="sm:hidden">Credit</span>
+              </Button>
+            )}
+            {/* Add Coverage button - only for inbound shipments with received items */}
+            {shipment.account_id && canSeeBilling && isInbound && items.some(i => i.item_id) && (
+              <Button variant="outline" size="sm" onClick={() => setCoverageDialogOpen(true)}>
+                <MaterialIcon name="verified_user" size="sm" className="mr-1 sm:mr-2 text-blue-600" />
+                <span className="hidden sm:inline">Add Coverage</span>
+                <span className="sm:hidden">Coverage</span>
+              </Button>
+            )}
+            {/* Reassign Account - moved to selected items bar */}
+            {/* Cancel Shipment - only for expected, pending, or receiving shipments */}
+            {['expected', 'pending', 'receiving', 'in_progress'].includes(shipment.status) && (
+              <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)}>
+                <MaterialIcon name="block" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Cancel</span>
+              </Button>
+            )}
+            {/* Help button for receiving workflow */}
+            {isInbound && <HelpButton workflow="receiving" />}
+          </div>
         </div>
       </div>
 
@@ -2292,36 +2308,73 @@ export default function ShipmentDetail() {
                 </div>
               )}
               {isOutbound ? (
-                <Tabs defaultValue="public" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="public">Public</TabsTrigger>
-                    <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                <Tabs defaultValue="internal" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <TabsTrigger
+                      value="public"
+                      className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="public" size="sm" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="internal"
+                      className="gap-2 data-[state=active]:bg-amber-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="lock" size="sm" />
+                      Internal
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="exceptions"
+                      className="gap-2 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
+                    >
+                      <MaterialIcon name="report_problem" size="sm" />
+                      Exceptions
+                    </TabsTrigger>
                   </TabsList>
-                  <TabsContent value="public" className="mt-2 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Public notes are visible to the client in the portal.
-                    </p>
-                    <Textarea
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="Add public notes..."
-                      rows={3}
-                    />
+
+                  <TabsContent value="public" className="mt-2">
+                    <div className="rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/30 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-200">
+                        <MaterialIcon name="public" size="sm" />
+                        Public notes (Client Visible)
+                      </div>
+                      <p className="text-xs text-blue-800/80 dark:text-blue-200/80">
+                        Visible to the client in the portal. Do not include staff-only or sensitive info.
+                      </p>
+                      <Textarea
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        placeholder="Add PUBLIC notes for the client..."
+                        rows={3}
+                        className="border-blue-300 focus-visible:ring-blue-200 dark:border-blue-800"
+                      />
+                    </div>
                   </TabsContent>
-                  <TabsContent value="internal" className="mt-2 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Internal notes are visible to staff only.
-                    </p>
-                    <Textarea
-                      value={editInternalNotes}
-                      onChange={(e) => setEditInternalNotes(e.target.value)}
-                      placeholder="Add internal notes..."
-                      rows={3}
-                    />
+
+                  <TabsContent value="internal" className="mt-2">
+                    <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+                        <MaterialIcon name="lock" size="sm" />
+                        Internal notes (Staff Only)
+                      </div>
+                      <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+                        Visible to staff only. Preferred place for operational notes and internal context.
+                      </p>
+                      <Textarea
+                        value={editInternalNotes}
+                        onChange={(e) => setEditInternalNotes(e.target.value)}
+                        placeholder="Add INTERNAL notes for staff..."
+                        rows={3}
+                        className="border-amber-300 focus-visible:ring-amber-200 dark:border-amber-800"
+                      />
+                    </div>
                   </TabsContent>
+
                   <TabsContent value="exceptions" className="mt-2">
-                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                      <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    </div>
                   </TabsContent>
                 </Tabs>
               ) : (
@@ -2479,20 +2532,6 @@ export default function ShipmentDetail() {
         </Card>
       )}
 
-      {/* Billing Calculator - Full width at top right area */}
-      {canSeeBilling && shipment.account_id && (
-        <div className="flex justify-end mb-6">
-          <div className="w-full lg:w-1/3">
-            <BillingCalculator
-              shipmentId={shipment.id}
-              shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
-              refreshKey={billingRefreshKey}
-              title="Billing Calculator"
-            />
-          </div>
-        </div>
-      )}
-
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Shipment Details */}
         <Card className="lg:col-span-2">
@@ -2623,27 +2662,54 @@ export default function ShipmentDetail() {
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Notes</Label>
                 <Tabs defaultValue="public" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="public">Public</TabsTrigger>
-                    <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <TabsTrigger
+                      value="public"
+                      className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="public" size="sm" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="internal"
+                      className="gap-2 data-[state=active]:bg-amber-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="lock" size="sm" />
+                      Internal
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="exceptions"
+                      className="gap-2 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
+                    >
+                      <MaterialIcon name="report_problem" size="sm" />
+                      Exceptions
+                    </TabsTrigger>
                   </TabsList>
+
                   <TabsContent value="public" className="mt-2">
-                    {shipment.notes?.trim() ? (
-                      <p className="whitespace-pre-wrap">{shipment.notes}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No public notes.</p>
-                    )}
+                    <div className="rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/30 p-3">
+                      {shipment.notes?.trim() ? (
+                        <p className="whitespace-pre-wrap">{shipment.notes}</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No public notes.</p>
+                      )}
+                    </div>
                   </TabsContent>
+
                   <TabsContent value="internal" className="mt-2">
-                    {shipment.receiving_notes?.trim() ? (
-                      <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No internal notes.</p>
-                    )}
+                    <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30 p-3">
+                      {shipment.receiving_notes?.trim() ? (
+                        <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No internal notes.</p>
+                      )}
+                    </div>
                   </TabsContent>
+
                   <TabsContent value="exceptions" className="mt-2">
-                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                      <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    </div>
                   </TabsContent>
                 </Tabs>
               </div>
