@@ -2678,7 +2678,7 @@ export default function ShipmentDetail() {
             {isOutbound ? (
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Notes</Label>
-                <Tabs defaultValue="public" className="w-full">
+                <Tabs defaultValue="internal" className="w-full">
                   <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger
                       value="public"
