@@ -31,14 +31,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -61,7 +53,16 @@ import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantPreferences } from '@/hooks/useTenantPreferences';
-import { useUserPreferences } from '@/hooks/useUserPreferences';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getDefaultViewId,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 import {
   MobileDataCard,
   MobileDataCardHeader,
@@ -89,6 +90,7 @@ interface Item {
   account_id: string | null;
   received_at: string | null;
   primary_photo_url: string | null;
+  metadata?: Record<string, unknown> | null;
   has_indicator_flags?: boolean;
 }
 
@@ -103,74 +105,6 @@ type SortField =
   | 'sidemark'
   | 'room';
 type SortDirection = 'asc' | 'desc' | null;
-
-type InventoryColumnKey =
-  | 'photo'
-  | 'item_code'
-  | 'sku'
-  | 'quantity'
-  | 'vendor'
-  | 'description'
-  | 'location'
-  | 'client_account'
-  | 'sidemark'
-  | 'room';
-
-interface InventoryColumnPrefs {
-  order: InventoryColumnKey[];
-  hidden: InventoryColumnKey[];
-}
-
-const INVENTORY_COLUMNS_PREF_KEY = 'table_columns_inventory_items_v1';
-
-const INVENTORY_ALL_COLUMNS: InventoryColumnKey[] = [
-  'photo',
-  'item_code',
-  'sku',
-  'quantity',
-  'vendor',
-  'description',
-  'location',
-  'client_account',
-  'sidemark',
-  'room',
-];
-
-const INVENTORY_REQUIRED_COLUMNS = new Set<InventoryColumnKey>(['item_code']);
-
-const DEFAULT_INVENTORY_COLUMN_PREFS: InventoryColumnPrefs = {
-  order: [...INVENTORY_ALL_COLUMNS],
-  // SKU is optional and hidden by default (can be enabled per user).
-  hidden: ['sku'],
-};
-
-function normalizeInventoryColumnPrefs(raw: unknown): InventoryColumnPrefs {
-  const rawObj = (raw || {}) as Partial<InventoryColumnPrefs>;
-  const isKey = (k: unknown): k is InventoryColumnKey =>
-    typeof k === 'string' && (INVENTORY_ALL_COLUMNS as readonly string[]).includes(k);
-
-  const rawOrder = Array.isArray(rawObj.order) ? rawObj.order.filter(isKey) : [];
-  const rawHidden = Array.isArray(rawObj.hidden) ? rawObj.hidden.filter(isKey) : [];
-
-  // Preserve user order, de-dupe, and append any new columns.
-  const seen = new Set<InventoryColumnKey>();
-  const dedupedOrder: InventoryColumnKey[] = [];
-  for (const k of rawOrder) {
-    if (seen.has(k)) continue;
-    seen.add(k);
-    dedupedOrder.push(k);
-  }
-  for (const k of INVENTORY_ALL_COLUMNS) {
-    if (seen.has(k)) continue;
-    seen.add(k);
-    dedupedOrder.push(k);
-  }
-
-  return {
-    order: dedupedOrder,
-    hidden: rawHidden.filter((k) => !INVENTORY_REQUIRED_COLUMNS.has(k)),
-  };
-}
 
 export default function Inventory() {
   const isMobile = useIsMobile();
@@ -208,31 +142,26 @@ export default function Inventory() {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { preferences } = useTenantPreferences();
-  const { getPreference, setPreference } = useUserPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
 
-  // Per-user column visibility/order (desktop table only)
-  const savedColumnPrefs = getPreference<InventoryColumnPrefs>(INVENTORY_COLUMNS_PREF_KEY);
-  const [columnPrefs, setColumnPrefs] = useState<InventoryColumnPrefs>(DEFAULT_INVENTORY_COLUMN_PREFS);
-  const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
-  const [columnsDraft, setColumnsDraft] = useState<InventoryColumnPrefs>(DEFAULT_INVENTORY_COLUMN_PREFS);
+  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const [activeViewId, setActiveViewId] = useState<string>('');
 
   useEffect(() => {
-    if (savedColumnPrefs) {
-      setColumnPrefs(normalizeInventoryColumnPrefs(savedColumnPrefs));
+    if (!activeViewId && defaultItemViewId) {
+      setActiveViewId(defaultItemViewId);
     }
-  }, [savedColumnPrefs]);
+  }, [defaultItemViewId, activeViewId]);
 
-  useEffect(() => {
-    if (columnsDialogOpen) {
-      setColumnsDraft({ order: [...columnPrefs.order], hidden: [...columnPrefs.hidden] });
-    }
-  }, [columnsDialogOpen, columnPrefs]);
+  const activeView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeViewId, defaultItemViewId]);
 
-  const visibleColumns = useMemo(
-    () => columnPrefs.order.filter((k) => !columnPrefs.hidden.includes(k)),
-    [columnPrefs.order, columnPrefs.hidden]
-  );
+  const visibleColumns = useMemo(() => (activeView ? getVisibleColumnsForView(activeView) : []), [activeView]);
 
   // Compute unique suggestions for inline editing autocomplete
   const vendorSuggestions = useMemo(() => {
@@ -294,7 +223,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room,
+          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, metadata,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -327,6 +256,7 @@ export default function Inventory() {
         account_id: item.account_id,
         received_at: item.received_at,
         primary_photo_url: item.primary_photo_url,
+        metadata: item.metadata ?? null,
       }));
 
       // Batch-fetch indicator flags for displayed items
@@ -418,7 +348,6 @@ export default function Inventory() {
   };
 
   type ColumnDef = {
-    label: string;
     sortField?: SortField;
     headClassName?: string;
     cellClassName?: string;
@@ -430,9 +359,76 @@ export default function Inventory() {
     headLabelClassName?: string;
   };
 
-  const columnDefs: Record<InventoryColumnKey, ColumnDef> = {
+  const customFieldDefsByKey = useMemo(() => {
+    const map = new Map<string, { type: string }>();
+    itemDisplaySettings.custom_fields.forEach((f) => {
+      map.set(f.key, { type: f.type });
+    });
+    return map;
+  }, [itemDisplaySettings.custom_fields]);
+
+  const getCustomFieldValue = (item: Item, fieldKey: string): string | number | null => {
+    const meta = item.metadata;
+    if (!meta || typeof meta !== 'object') return null;
+    const custom = (meta as any).custom_fields;
+    if (!custom || typeof custom !== 'object') return null;
+    const val = (custom as any)[fieldKey];
+    if (val === undefined || val === null || val === '') return null;
+    if (typeof val === 'string' || typeof val === 'number') return val;
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    return String(val);
+  };
+
+  const saveCustomFieldValue = async (itemId: string, fieldKey: string, rawValue: string): Promise<void> => {
+    const item = items.find((i) => i.id === itemId);
+    const existingMeta = (item?.metadata && typeof item.metadata === 'object') ? (item.metadata as Record<string, unknown>) : {};
+
+    const existingCustom =
+      (existingMeta as any).custom_fields && typeof (existingMeta as any).custom_fields === 'object'
+        ? { ...(existingMeta as any).custom_fields }
+        : {};
+
+    const fieldType = customFieldDefsByKey.get(fieldKey)?.type || 'text';
+    const trimmed = rawValue.trim();
+
+    let nextValue: unknown = trimmed;
+    if (!trimmed) {
+      nextValue = null;
+    } else if (fieldType === 'number') {
+      const n = Number(trimmed);
+      nextValue = Number.isFinite(n) ? n : null;
+    } else if (fieldType === 'checkbox') {
+      const normalized = trimmed.toLowerCase();
+      nextValue = ['true', 'yes', 'y', '1', 'checked'].includes(normalized);
+    }
+
+    if (nextValue === null) {
+      delete (existingCustom as any)[fieldKey];
+    } else {
+      (existingCustom as any)[fieldKey] = nextValue;
+    }
+
+    const nextMeta: Record<string, unknown> = { ...(existingMeta as any) };
+    if (Object.keys(existingCustom).length > 0) {
+      (nextMeta as any).custom_fields = existingCustom;
+    } else {
+      delete (nextMeta as any).custom_fields;
+    }
+
+    const { error } = await (supabase.from('items') as any)
+      .update({ metadata: nextMeta })
+      .eq('id', itemId);
+
+    if (error) {
+      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+      throw error;
+    }
+
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, metadata: nextMeta } : i)));
+  };
+
+  const builtinColumnDefs: Record<BuiltinItemColumnKey, ColumnDef> = {
     photo: {
-      label: 'Photo',
       headClassName: 'w-12',
       stopPropagation: true,
       renderCell: (item) => (
@@ -446,7 +442,6 @@ export default function Inventory() {
       ),
     },
     item_code: {
-      label: 'Item Code',
       sortField: 'item_code',
       renderCell: (item) => (
         <ItemPreviewCard itemId={item.id}>
@@ -465,7 +460,6 @@ export default function Inventory() {
       cellClassName: 'font-medium',
     },
     sku: {
-      label: 'SKU',
       sortField: 'sku',
       stopPropagation: true,
       renderCell: (item) => (
@@ -478,7 +472,6 @@ export default function Inventory() {
       ),
     },
     quantity: {
-      label: 'Qty',
       sortField: 'quantity',
       headClassName: 'text-right',
       headLabelClassName: 'flex items-center justify-end gap-1',
@@ -496,7 +489,6 @@ export default function Inventory() {
       ),
     },
     vendor: {
-      label: 'Vendor',
       sortField: 'vendor',
       stopPropagation: true,
       renderCell: (item) => (
@@ -510,7 +502,6 @@ export default function Inventory() {
       ),
     },
     description: {
-      label: 'Description',
       sortField: 'description',
       stopPropagation: true,
       renderCell: (item) => (
@@ -525,7 +516,6 @@ export default function Inventory() {
       ),
     },
     location: {
-      label: 'Location',
       sortField: 'location_code',
       renderCell: (item) =>
         item.location_code ? (
@@ -538,12 +528,10 @@ export default function Inventory() {
         ),
     },
     client_account: {
-      label: 'Account',
       sortField: 'client_account',
       renderCell: (item) => item.client_account || '-',
     },
     sidemark: {
-      label: 'Sidemark',
       sortField: 'sidemark',
       stopPropagation: true,
       renderCell: (item) => (
@@ -557,7 +545,6 @@ export default function Inventory() {
       ),
     },
     room: {
-      label: 'Room',
       sortField: 'room',
       stopPropagation: true,
       renderCell: (item) => (
@@ -572,8 +559,30 @@ export default function Inventory() {
     },
   };
 
-  const renderTableHead = (key: InventoryColumnKey) => {
-    const def = columnDefs[key];
+  const getColumnDef = (key: ItemColumnKey): ColumnDef => {
+    const cfKey = parseCustomFieldColumnKey(key);
+    if (cfKey) {
+      const fieldType = customFieldDefsByKey.get(cfKey)?.type || 'text';
+      return {
+        stopPropagation: true,
+        sortField: undefined,
+        renderCell: (item) => (
+          <InlineEditableCell
+            value={getCustomFieldValue(item, cfKey)}
+            type={fieldType === 'number' ? 'number' : 'text'}
+            onSave={(val) => saveCustomFieldValue(item.id, cfKey, val)}
+            placeholder="-"
+            showEditIcon={false}
+          />
+        ),
+      };
+    }
+
+    return builtinColumnDefs[key as BuiltinItemColumnKey];
+  };
+
+  const renderTableHead = (key: ItemColumnKey) => {
+    const def = getColumnDef(key);
     const isSortable = !!def.sortField;
 
     const labelWrapClass =
@@ -591,15 +600,15 @@ export default function Inventory() {
         onClick={isSortable ? () => handleSort(def.sortField as SortField) : undefined}
       >
         <div className={labelWrapClass}>
-          {def.label}
+          {getColumnLabel(itemDisplaySettings, key)}
           {def.sortField && <SortIcon field={def.sortField} />}
         </div>
       </TableHead>
     );
   };
 
-  const renderTableCell = (key: InventoryColumnKey, item: Item) => {
-    const def = columnDefs[key];
+  const renderTableCell = (key: ItemColumnKey, item: Item) => {
+    const def = getColumnDef(key);
     return (
       <TableCell
         key={key}
@@ -667,51 +676,6 @@ export default function Inventory() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
     XLSX.writeFile(wb, `inventory-export-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
-  };
-
-  const toggleDraftColumn = (key: InventoryColumnKey) => {
-    if (INVENTORY_REQUIRED_COLUMNS.has(key)) return;
-    setColumnsDraft((prev) => {
-      const isHidden = prev.hidden.includes(key);
-      return {
-        ...prev,
-        hidden: isHidden ? prev.hidden.filter((k) => k !== key) : [...prev.hidden, key],
-      };
-    });
-  };
-
-  const moveDraftColumn = (key: InventoryColumnKey, direction: -1 | 1) => {
-    setColumnsDraft((prev) => {
-      const idx = prev.order.indexOf(key);
-      if (idx === -1) return prev;
-      const nextIdx = idx + direction;
-      if (nextIdx < 0 || nextIdx >= prev.order.length) return prev;
-
-      const nextOrder = [...prev.order];
-      const tmp = nextOrder[nextIdx];
-      nextOrder[nextIdx] = nextOrder[idx];
-      nextOrder[idx] = tmp;
-      return { ...prev, order: nextOrder };
-    });
-  };
-
-  const handleResetColumns = () => {
-    setColumnsDraft({ order: [...DEFAULT_INVENTORY_COLUMN_PREFS.order], hidden: [...DEFAULT_INVENTORY_COLUMN_PREFS.hidden] });
-  };
-
-  const handleSaveColumns = async () => {
-    const normalized = normalizeInventoryColumnPrefs(columnsDraft);
-    setColumnPrefs(normalized);
-    const ok = await setPreference(INVENTORY_COLUMNS_PREF_KEY, normalized as unknown as Record<string, unknown>);
-    if (!ok) {
-      toast({
-        title: 'Could not save columns',
-        description: 'Your column settings could not be saved. Please try again.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    setColumnsDialogOpen(false);
   };
 
   const handleTaskSuccess = (createdTaskId?: string) => { 
@@ -791,19 +755,92 @@ export default function Inventory() {
                   <SelectItem value="disposed">Disposed</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={activeViewId || defaultItemViewId || 'default'}
+                onValueChange={setActiveViewId}
+                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+              >
+                <SelectTrigger className="w-full sm:w-44">
+                  <div className="flex items-center gap-2">
+                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                    <SelectValue placeholder="View" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {itemDisplaySettings.views.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                      {v.is_default ? ' (default)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
-              {!isMobile && (
-                <Button variant="outline" onClick={() => setColumnsDialogOpen(true)}>
-                  <MaterialIcon name="view_column" size="sm" className="mr-2" />
-                  Columns
-                </Button>
-              )}
             </div>
 
             {loading ? (<div className="flex items-center justify-center h-48"><MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" /></div>
             ) : filteredAndSortedItems.length === 0 ? (<div className="text-center py-12"><MaterialIcon name="inventory_2" size="xl" className="mx-auto text-muted-foreground" /><h3 className="mt-4 text-lg font-semibold">No items found</h3><p className="text-muted-foreground">{searchQuery || statusFilter !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first item'}</p></div>
             ) : isMobile ? (
-              <div className="space-y-3">{filteredAndSortedItems.map((item) => (<MobileDataCard key={item.id} onClick={() => navigate(`/inventory/${item.id}`)} selected={selectedItems.has(item.id)}><MobileDataCardHeader><div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-5 w-5" /><div className="flex-1 min-w-0"><MobileDataCardTitle>{item.has_indicator_flags && <span>{'\u26A0\uFE0F'} </span>}{item.item_code}</MobileDataCardTitle><MobileDataCardDescription className="truncate">{item.description || '-'}</MobileDataCardDescription></div></div></MobileDataCardHeader><MobileDataCardContent><div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs"><div className="flex justify-between"><span className="text-muted-foreground">Qty:</span><span className="font-medium">{item.quantity}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Vendor:</span><span className="truncate ml-1">{item.vendor || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Account:</span><span className="truncate ml-1">{item.client_account || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Sidemark:</span><span className="truncate ml-1">{item.sidemark || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Room:</span><span className="truncate ml-1">{item.room || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Location:</span><span className="truncate ml-1">{item.location_code || '-'}</span></div></div></MobileDataCardContent></MobileDataCard>))}</div>
+              <div className="space-y-3">
+                {filteredAndSortedItems.map((item) => (
+                  <MobileDataCard
+                    key={item.id}
+                    onClick={() => navigate(`/inventory/${item.id}`)}
+                    selected={selectedItems.has(item.id)}
+                  >
+                    <MobileDataCardHeader>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedItems.has(item.id)}
+                          onCheckedChange={() => toggleItemSelection(item.id)}
+                          className="h-5 w-5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <MobileDataCardTitle>
+                            {item.has_indicator_flags && <span>{'\u26A0\uFE0F'} </span>}
+                            {item.item_code}
+                          </MobileDataCardTitle>
+                          <MobileDataCardDescription className="truncate">{item.description || '-'}</MobileDataCardDescription>
+                        </div>
+                      </div>
+                    </MobileDataCardHeader>
+                    <MobileDataCardContent>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Qty:</span>
+                          <span className="font-medium">{item.quantity}</span>
+                        </div>
+                        {visibleColumns.includes('sku') && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">SKU:</span>
+                            <span className="truncate ml-1">{item.sku || '-'}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Vendor:</span>
+                          <span className="truncate ml-1">{item.vendor || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Account:</span>
+                          <span className="truncate ml-1">{item.client_account || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Sidemark:</span>
+                          <span className="truncate ml-1">{item.sidemark || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Room:</span>
+                          <span className="truncate ml-1">{item.room || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Location:</span>
+                          <span className="truncate ml-1">{item.location_code || '-'}</span>
+                        </div>
+                      </div>
+                    </MobileDataCardContent>
+                  </MobileDataCard>
+                ))}
+              </div>
             ) : (
               <div className="overflow-x-auto rounded-md border">
                 <Table>
@@ -823,75 +860,6 @@ export default function Inventory() {
           </CardContent>
         </Card>
       </div>
-
-      <Dialog open={columnsDialogOpen} onOpenChange={setColumnsDialogOpen}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>Inventory Columns</DialogTitle>
-            <DialogDescription>
-              Choose which columns to show and their order. Saved per user (desktop table only).
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            {columnsDraft.order.map((key, idx) => {
-              const def = columnDefs[key];
-              const isRequired = INVENTORY_REQUIRED_COLUMNS.has(key);
-              const isHidden = columnsDraft.hidden.includes(key);
-              return (
-                <div key={key} className="flex items-center gap-3 rounded-md border px-3 py-2">
-                  <Checkbox
-                    checked={!isHidden}
-                    disabled={isRequired}
-                    onCheckedChange={() => toggleDraftColumn(key)}
-                    className="h-4 w-4"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{def.label}</div>
-                    {isRequired && <div className="text-xs text-muted-foreground">Required</div>}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => moveDraftColumn(key, -1)}
-                      disabled={idx === 0}
-                      aria-label="Move column up"
-                    >
-                      <MaterialIcon name="arrow_upward" size="sm" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => moveDraftColumn(key, 1)}
-                      disabled={idx === columnsDraft.order.length - 1}
-                      aria-label="Move column down"
-                    >
-                      <MaterialIcon name="arrow_downward" size="sm" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2">
-            <Button type="button" variant="outline" onClick={handleResetColumns}>
-              Reset
-            </Button>
-            <div className="flex gap-2 sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setColumnsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={() => void handleSaveColumns()}>
-                Save
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <TaskDialog open={taskDialogOpen} onOpenChange={(open) => { setTaskDialogOpen(open); if (!open) setPreSelectedTaskType(''); }} selectedItemIds={Array.from(selectedItems)} preSelectedTaskType={preSelectedTaskType} onSuccess={handleTaskSuccess} />
       <InventoryImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} file={importFile} warehouses={warehouses} locations={locations} onSuccess={handleImportSuccess} />
