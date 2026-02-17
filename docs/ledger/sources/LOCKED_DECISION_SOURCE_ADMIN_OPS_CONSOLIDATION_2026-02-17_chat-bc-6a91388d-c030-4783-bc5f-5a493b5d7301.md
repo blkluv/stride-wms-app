@@ -79,3 +79,7 @@ User decision + requirements (email setup UX + Resend sync):
 - Every field should have a help tooltip/icon with simple tips.
 - Build/complete the Resend API integration so when tenants enter info, the app syncs with Resend to configure/verify their sending domain (platform-managed Resend account).
 
+### QA-2026-02-17-ADMINOPS-013
+User decision (sender identity input):
+- Tenant setup will collect the full “From email address” (example: `alerts@yourcompany.com`) rather than only the domain.
+
