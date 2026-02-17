@@ -81,7 +81,7 @@ import SmsSenderOps from "./pages/admin/SmsSenderOps";
 import BillingOverridesOps from "./pages/admin/BillingOverridesOps";
 import EmailOps from "./pages/admin/EmailOps";
 import QACenter from "./pages/QACenter";
-import DecisionLedger from "./pages/DecisionLedger";
+// Removed: DecisionLedger — no longer a standalone page
 import Messages from "./pages/Messages";
 import ComponentsDemo from "./pages/ComponentsDemo";
 import MaterialIconsSample from "./pages/MaterialIconsSample";
@@ -178,7 +178,7 @@ const App = () => (
             <Route path="/admin/billing-overrides-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><BillingOverridesOps /></RequireRole></ProtectedRoute>} />
             <Route path="/admin/email-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><EmailOps /></RequireRole></ProtectedRoute>} />
             <Route path="/qa" element={<ProtectedRoute><QACenter /></ProtectedRoute>} />
-            <Route path="/decision-ledger" element={<ProtectedRoute><RequireRole role="admin_dev"><DecisionLedger /></RequireRole></ProtectedRoute>} />
+            {/* Removed: /decision-ledger route */}
             <Route path="/repair-access" element={<RepairTechAccess />} />
             <Route path="/quote/tech" element={<TechQuoteSubmit />} />
             <Route path="/quote/review" element={<ClientQuoteReview />} />
