@@ -360,7 +360,7 @@ export function DocumentScanner({
         return (
           <div className="relative">
             {/* Camera View */}
-            <div className="aspect-[3/4] bg-black rounded-lg overflow-hidden relative">
+            <div className="bg-black rounded-lg overflow-hidden relative h-[44vh] min-h-[260px] max-h-[420px]">
               <video
                 ref={videoRef}
                 autoPlay
@@ -448,7 +448,7 @@ export function DocumentScanner({
         return (
           <div className="space-y-4">
             {/* Preview carousel */}
-            <div className="relative aspect-[3/4] bg-muted rounded-lg overflow-hidden">
+            <div className="relative bg-muted rounded-lg overflow-hidden h-[44vh] min-h-[260px] max-h-[420px]">
               {capturedImages[currentPreviewIndex] && (
                 <img
                   src={capturedImages[currentPreviewIndex]}
@@ -564,7 +564,9 @@ export function DocumentScanner({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      {/* Note: document scanning UI needs more vertical room on mobile; increase max-height
+          and keep capture controls visible without relying on scroll gestures over <video>. */}
+      <DialogContent className="max-w-md max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>
             {state === 'reviewing' ? 'Review Document' :
