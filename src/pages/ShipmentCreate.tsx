@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useFieldSuggestions } from "@/hooks/useFieldSuggestions";
 import { useAccountSidemarks } from "@/hooks/useAccountSidemarks";
+import { useAccountRoomSuggestions } from "@/hooks/useAccountRoomSuggestions";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -85,8 +86,9 @@ export default function ShipmentCreate() {
   const [accountDefaultShipmentNotes, setAccountDefaultShipmentNotes] = useState<string | null>(null);
   const [accountHighlightShipmentNotes, setAccountHighlightShipmentNotes] = useState(false);
 
-  // Fetch account sidemarks for autocomplete suggestions
+  // Fetch account sidemarks and room suggestions for autocomplete
   const { sidemarks: accountSidemarks, addSidemark: addAccountSidemark } = useAccountSidemarks(accountId || undefined);
+  const { rooms: accountRooms, addOrUpdateRoom: recordRoom } = useAccountRoomSuggestions(accountId || undefined);
 
   // Expected items
   const [expectedItems, setExpectedItems] = useState<ExpectedItemData[]>([
@@ -124,6 +126,12 @@ export default function ShipmentCreate() {
   const sidemarkSuggestions = useMemo(
     () => accountSidemarks.map((s) => ({ value: s.sidemark, label: s.sidemark })),
     [accountSidemarks],
+  );
+
+  // Room autocomplete suggestions from account_room_suggestions
+  const roomSuggestions = useMemo(
+    () => accountRooms.map((r) => ({ value: r.room, label: r.room })),
+    [accountRooms],
   );
 
   // ------------------------------------------
@@ -307,10 +315,7 @@ export default function ShipmentCreate() {
         errs.description = "Description is required";
         hasItemErrors = true;
       }
-      if (!item.classId) {
-        errs.classCode = "Class is required";
-        hasItemErrors = true;
-      }
+      // Class is optional - no validation needed
       if (item.quantity < 1) {
         errs.quantity = "Quantity must be at least 1";
         hasItemErrors = true;
@@ -406,7 +411,8 @@ export default function ShipmentCreate() {
           vendor: expectedItem.vendor || null,
           quantity: expectedItem.quantity,
           class_id: expectedItem.classId || null,
-          sidemark: sidemark.trim() || null,
+          sidemark: expectedItem.sidemark?.trim() || sidemark.trim() || null,
+          room: expectedItem.room?.trim() || null,
           receiving_shipment_id: shipment.id,
           status: "pending_receipt",
         };
@@ -446,6 +452,7 @@ export default function ShipmentCreate() {
       expectedItems.forEach((item) => {
         if (item.vendor) recordVendor(item.vendor);
         if (item.description) recordDescription(item.description);
+        if (item.room) recordRoom(item.room);
       });
 
       toast({ title: "Success", description: "Shipment created successfully" });
@@ -486,7 +493,7 @@ export default function ShipmentCreate() {
 
   return (
     <DashboardLayout>
-      <div className="container mx-auto max-w-2xl px-4 pb-safe">
+      <div className="container mx-auto max-w-4xl px-4 pb-safe">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6 pt-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
@@ -636,7 +643,10 @@ export default function ShipmentCreate() {
                   index={index}
                   vendorSuggestions={vendorValues}
                   descriptionSuggestions={descriptionSuggestionOptions}
+                  sidemarkSuggestions={sidemarkSuggestions}
+                  roomSuggestions={roomSuggestions}
                   classes={classes}
+                  classOptional
                   errors={errors.items?.[item.id]}
                   canDelete={expectedItems.length > 1}
                   onUpdate={updateItem}
