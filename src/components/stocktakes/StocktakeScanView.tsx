@@ -625,7 +625,7 @@ export default function StocktakeScanView() {
                     onChange={(e) => setManualItemCode(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
                     placeholder="Enter item code..."
-                    autoCapitalize="characters"
+                    autoCapitalize="none"
                     className="flex-1 px-4 py-3 rounded-xl bg-muted border border-border focus:border-primary focus:outline-none font-mono"
                     autoFocus
                   />
