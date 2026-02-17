@@ -215,3 +215,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 62. Q: Quote Builder (`/quotes/:id`) Documents field: scan support or upload only?
     A: Upload only. Button UI + preview behavior should match the Intake Documents field (same look/feel and thumbnail/viewer behavior).
 
+63. Q: Quote Builder upload-only Documents header button layout?
+    A: Single full-width "Upload" button (option A).
+
