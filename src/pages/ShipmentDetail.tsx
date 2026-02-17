@@ -2259,38 +2259,47 @@ export default function ShipmentDetail() {
                   <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
                 </div>
               )}
-              <Tabs defaultValue="internal" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="internal">Internal</TabsTrigger>
-                  <TabsTrigger value="public">Public</TabsTrigger>
-                  <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
-                </TabsList>
-                <TabsContent value="internal" className="mt-2 space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Internal notes are visible to staff only.
-                  </p>
-                  <Textarea
-                    value={editInternalNotes}
-                    onChange={(e) => setEditInternalNotes(e.target.value)}
-                    placeholder="Add internal notes..."
-                    rows={3}
-                  />
-                </TabsContent>
-                <TabsContent value="public" className="mt-2 space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Public notes are visible to the client in the portal.
-                  </p>
-                  <Textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    placeholder="Add public notes..."
-                    rows={3}
-                  />
-                </TabsContent>
-                <TabsContent value="exceptions" className="mt-2">
-                  <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
-                </TabsContent>
-              </Tabs>
+              {isOutbound ? (
+                <Tabs defaultValue="public" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="public">Public</TabsTrigger>
+                    <TabsTrigger value="internal">Internal</TabsTrigger>
+                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="public" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Public notes are visible to the client in the portal.
+                    </p>
+                    <Textarea
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Add public notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="internal" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Internal notes are visible to staff only.
+                    </p>
+                    <Textarea
+                      value={editInternalNotes}
+                      onChange={(e) => setEditInternalNotes(e.target.value)}
+                      placeholder="Add internal notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="exceptions" className="mt-2">
+                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <Textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add notes about this shipment..."
+                  rows={3}
+                />
+              )}
             </div>
 
             {/* Outbound-specific fields */}
@@ -2388,11 +2397,11 @@ export default function ShipmentDetail() {
                     po_number: editPoNumber.trim() || null,
                     expected_arrival_date: editExpectedArrival?.toISOString() || null,
                     notes: editNotes.trim() || null,
-                    receiving_notes: editInternalNotes.trim() || null,
                   };
 
                   // Add outbound-specific fields if this is an outbound shipment
                   if (isOutbound) {
+                    updates.receiving_notes = editInternalNotes.trim() || null;
                     updates.release_type = editReleaseType || null;
                     updates.released_to = editReleasedTo.trim() || null;
                     updates.release_to_name = editReleaseToName.trim() || null;
@@ -2578,33 +2587,40 @@ export default function ShipmentDetail() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">Notes</Label>
-              <Tabs defaultValue="public" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="public">Public</TabsTrigger>
-                  <TabsTrigger value="internal">Internal</TabsTrigger>
-                  <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
-                </TabsList>
-                <TabsContent value="public" className="mt-2">
-                  {shipment.notes?.trim() ? (
-                    <p className="whitespace-pre-wrap">{shipment.notes}</p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No public notes.</p>
-                  )}
-                </TabsContent>
-                <TabsContent value="internal" className="mt-2">
-                  {shipment.receiving_notes?.trim() ? (
-                    <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No internal notes.</p>
-                  )}
-                </TabsContent>
-                <TabsContent value="exceptions" className="mt-2">
-                  <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
-                </TabsContent>
-              </Tabs>
-            </div>
+            {isOutbound ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Notes</Label>
+                <Tabs defaultValue="public" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="public">Public</TabsTrigger>
+                    <TabsTrigger value="internal">Internal</TabsTrigger>
+                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="public" className="mt-2">
+                    {shipment.notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No public notes.</p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="internal" className="mt-2">
+                    {shipment.receiving_notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No internal notes.</p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="exceptions" className="mt-2">
+                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : shipment.notes?.trim() ? (
+              <div>
+                <Label className="text-muted-foreground">Notes</Label>
+                <p className="mt-1 whitespace-pre-wrap">{shipment.notes}</p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

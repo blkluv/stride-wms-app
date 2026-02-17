@@ -867,23 +867,12 @@ export default function OutboundCreate() {
                     <p className="whitespace-pre-wrap">{accountDefaultShipmentNotes}</p>
                   </div>
                 )}
-                <Tabs defaultValue="internal" className="w-full">
+                <Tabs defaultValue="public" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="internal">Internal</TabsTrigger>
                     <TabsTrigger value="public">Public</TabsTrigger>
+                    <TabsTrigger value="internal">Internal</TabsTrigger>
                     <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
                   </TabsList>
-                  <TabsContent value="internal" className="mt-2 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Internal notes are visible to staff only.
-                    </p>
-                    <Textarea
-                      value={internalNotes}
-                      onChange={(e) => setInternalNotes(e.target.value)}
-                      placeholder="Add internal notes..."
-                      rows={3}
-                    />
-                  </TabsContent>
                   <TabsContent value="public" className="mt-2 space-y-2">
                     <p className="text-xs text-muted-foreground">
                       Public notes are visible to the client in the portal.
@@ -895,6 +884,17 @@ export default function OutboundCreate() {
                         setNotes(e.target.value);
                       }}
                       placeholder="Add public notes..."
+                      rows={3}
+                    />
+                  </TabsContent>
+                  <TabsContent value="internal" className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Internal notes are visible to staff only.
+                    </p>
+                    <Textarea
+                      value={internalNotes}
+                      onChange={(e) => setInternalNotes(e.target.value)}
+                      placeholder="Add internal notes..."
                       rows={3}
                     />
                   </TabsContent>
