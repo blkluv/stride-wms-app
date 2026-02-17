@@ -2578,12 +2578,33 @@ export default function ShipmentDetail() {
               </div>
             )}
 
-            {shipment.notes && (
-              <div>
-                <Label className="text-muted-foreground">Notes</Label>
-                <p className="mt-1">{shipment.notes}</p>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Notes</Label>
+              <Tabs defaultValue="public" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="public">Public</TabsTrigger>
+                  <TabsTrigger value="internal">Internal</TabsTrigger>
+                  <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                </TabsList>
+                <TabsContent value="public" className="mt-2">
+                  {shipment.notes?.trim() ? (
+                    <p className="whitespace-pre-wrap">{shipment.notes}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No public notes.</p>
+                  )}
+                </TabsContent>
+                <TabsContent value="internal" className="mt-2">
+                  {shipment.receiving_notes?.trim() ? (
+                    <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No internal notes.</p>
+                  )}
+                </TabsContent>
+                <TabsContent value="exceptions" className="mt-2">
+                  <ExceptionsTab shipmentId={shipment.id} />
+                </TabsContent>
+              </Tabs>
+            </div>
           </CardContent>
         </Card>
 
