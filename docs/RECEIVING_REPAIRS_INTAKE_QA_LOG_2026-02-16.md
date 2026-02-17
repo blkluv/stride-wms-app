@@ -212,3 +212,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
     A: Stage 2 completion should set the shipment's visible status to "received" (i.e., update `shipments.status = 'received'`).
        Intakes/shipments with `status = 'received'` should appear on the "Received Today" card when `received_at` is today.
 
+62. Q: Quote Builder (`/quotes/:id`) Documents field: scan support or upload only?
+    A: Upload only. Button UI + preview behavior should match the Intake Documents field (same look/feel and thumbnail/viewer behavior).
+
