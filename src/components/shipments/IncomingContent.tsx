@@ -235,9 +235,8 @@ function ExpectedList({
               <TableHead>Expected #</TableHead>
               <TableHead>Account</TableHead>
               <TableHead>Vendor</TableHead>
-              <TableHead>ETA Window</TableHead>
-              <TableHead className="text-right">Expected Pieces</TableHead>
-              <TableHead className="text-right">Items</TableHead>
+              <TableHead>ETA</TableHead>
+              <TableHead className="text-right">Pieces</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
@@ -267,9 +266,11 @@ function ExpectedList({
                     '-'
                   )}
                 </TableCell>
-                <TableCell className="text-right">{s.expected_pieces ?? '-'}</TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {s.open_items_count ?? '-'}
+                <TableCell className="text-right">
+                  <div className="tabular-nums">{s.expected_pieces ?? '-'}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Items: {s.open_items_count ?? '-'}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <Badge variant={statusBadgeVariant(s.inbound_status)}>
@@ -596,12 +597,15 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           />
         </TabsContent>
 
-        <TabsContent value="expected" className="mt-4">
-          <ExpectedList
-            shipments={shipments}
-            loading={loading}
-            onRowClick={handleRowClick}
-          />
+        <TabsContent value="expected" className="mt-4 space-y-6">
+          <div>
+            <h3 className="font-medium text-sm text-muted-foreground mb-3">All Expected Shipments</h3>
+            <ExpectedList
+              shipments={shipments}
+              loading={loading}
+              onRowClick={handleRowClick}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="dock_intakes" className="mt-4 space-y-6">
