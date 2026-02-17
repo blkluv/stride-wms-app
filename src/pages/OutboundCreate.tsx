@@ -21,7 +21,7 @@ import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExceptionsTab } from '@/components/receiving/ExceptionsTab';
+import { ShipmentExceptionsChips } from '@/components/shipments/ShipmentExceptionsChips';
 import {
   Table,
   TableBody,
@@ -900,7 +900,7 @@ export default function OutboundCreate() {
                   </TabsContent>
                   <TabsContent value="exceptions" className="mt-2">
                     {draftShipmentId ? (
-                      <ExceptionsTab shipmentId={draftShipmentId} />
+                      <ShipmentExceptionsChips shipmentId={draftShipmentId} />
                     ) : (
                       <p className="text-xs text-muted-foreground py-2">
                         Creating draft shipment…

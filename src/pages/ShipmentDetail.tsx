@@ -49,7 +49,7 @@ import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
-import { ExceptionsTab } from '@/components/receiving/ExceptionsTab';
+import { ShipmentExceptionsChips } from '@/components/shipments/ShipmentExceptionsChips';
 import { createCharges } from '@/services/billing';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
@@ -2288,7 +2288,7 @@ export default function ShipmentDetail() {
                   />
                 </TabsContent>
                 <TabsContent value="exceptions" className="mt-2">
-                  <ExceptionsTab shipmentId={shipment.id} />
+                  <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -2601,7 +2601,7 @@ export default function ShipmentDetail() {
                   )}
                 </TabsContent>
                 <TabsContent value="exceptions" className="mt-2">
-                  <ExceptionsTab shipmentId={shipment.id} />
+                  <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
                 </TabsContent>
               </Tabs>
             </div>
