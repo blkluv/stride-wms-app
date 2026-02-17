@@ -53,3 +53,12 @@ User requirements (Email Ops / Resend):
 - Tenant workflow intent: clients update DNS records and fill out fields in the app (self-service) to configure sending.
 - Admin intent: “admin/email-ops” capability is for the operator (admin_dev) to ensure Resend is configured correctly to support this for tenants.
 
+### QA-2026-02-17-ADMINOPS-009
+User request (tenant-facing email setup UX + AI help):
+- Check Settings → Organization → Company Info email settings to align with the new platform-managed Resend system.
+- Build/revise tenant email setup fields + guide so non-technical users can set up email sending easily.
+- Copy must be in layman’s terms.
+- Add a help tool (“i”) that uses an AI prompt (ChatGPT-style) to:
+  - Ask the user questions about their domain and/or email/DNS provider.
+  - Provide tailored step-by-step DNS setup instructions.
+

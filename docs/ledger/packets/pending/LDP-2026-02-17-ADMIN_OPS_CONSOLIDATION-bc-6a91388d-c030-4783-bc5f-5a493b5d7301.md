@@ -12,10 +12,10 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `8`
+- Q&A items extracted: `9`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012`
-- Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014`
+- Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012, DL-2026-02-17-014`
 - Supersedes: `-`
 
 ## Decision Index Rows
@@ -32,6 +32,8 @@
 | DL-2026-02-17-010 | Remove legacy /admin/stripe-ops and /admin/pricing-ops routes (no redirect) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007` | - | - |
 | DL-2026-02-17-011 | Use Resend for tenant-branded email sending from tenant domains (DNS-based self-setup) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-008` | - | - |
 | DL-2026-02-17-012 | Add Email Ops controls for Resend domain verification status into /admin/saas-ops | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-008` | - | - |
+| DL-2026-02-17-013 | Tenant admins self-serve email sender domain setup in Settings → Organization | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-009` | - | - |
+| DL-2026-02-17-014 | Add AI-guided email domain setup help tool to tailor DNS instructions for non-technical users | SaaS Email System | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-009` | - | - |
 
 ## Detailed Decision Entries
 
@@ -267,6 +269,44 @@ Resend domain verification issues are a common operational blocker; centralizing
 - Add Email Ops UI to `/admin/saas-ops` (admin_dev only).
 - Decide the minimum actionable feature set (read-only status vs actions like refresh/resend/test) via Q&A before implementation.
 
+### DL-2026-02-17-013: Tenant admins self-serve email sender domain setup in Settings → Organization
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-009`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Tenant admins will self-serve email sender domain setup within the tenant settings UI (Settings → Organization), entering a desired sender email/domain and following DNS instructions to verify the domain for sending (platform-managed Resend).
+
+#### Why
+This enables non-technical customers to complete setup without admin intervention, similar to the SMS add-on onboarding approach.
+
+#### Implementation impact
+- Ensure Settings → Organization includes a simple email sender setup flow (domain registration + DNS record list + verify status).
+- Ensure actual outbound email sending respects the verified tenant sender configuration (with safe fallback if not verified).
+
+### DL-2026-02-17-014: Add AI-guided email domain setup help tool to tailor DNS instructions for non-technical users
+- Domain: SaaS Email System
+- State: draft
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-009`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Add an “i / Help” tool in the tenant email sender setup section that launches an AI-guided assistant (ChatGPT-style) to ask the user a few questions about their domain/DNS or email service and then provide tailored, step-by-step DNS setup instructions in plain language.
+
+#### Why
+DNS steps differ by provider and are a frequent onboarding blocker; AI-guided Q&A can reduce confusion and support tickets for non-technical users.
+
+#### Implementation impact
+- UI: add a help affordance in Settings → Organization → Email Sender Configuration.
+- AI: decide whether to reuse existing in-app assistant endpoints or add a dedicated “email-setup” prompt mode to ensure consistent, safe guidance.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -280,3 +320,5 @@ Resend domain verification issues are a common operational blocker; centralizing
 | DLE-2026-02-17-009 | 2026-02-17 | DL-2026-02-17-010 | completed | - | builder | Confirmed: legacy Stripe/Pricing ops routes should be removed; use /admin/saas-ops only. |
 | DLE-2026-02-17-010 | 2026-02-17 | DL-2026-02-17-011 | planned | - | builder | Define DB schema + Resend Domains API integration + tenant setup UX for tenant-branded sending via DNS verification. |
 | DLE-2026-02-17-011 | 2026-02-17 | DL-2026-02-17-012 | planned | - | builder | Define Email Ops UI content for Resend domain verification status (admin_dev oversight) before implementation. |
+| DLE-2026-02-17-012 | 2026-02-17 | DL-2026-02-17-013 | in_progress | `src/components/settings/preferences/EmailDomainSection.tsx` | builder | Existing tenant email sender setup wizard is present; evaluate copy + field alignment and ensure sending pipeline uses verified tenant sender settings. |
+| DLE-2026-02-17-013 | 2026-02-17 | DL-2026-02-17-014 | planned | - | builder | Define AI help tool UX and whether to reuse existing tenant-chat assistant or add a dedicated email-setup assistant prompt. |
