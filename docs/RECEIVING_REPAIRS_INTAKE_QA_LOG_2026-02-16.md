@@ -218,3 +218,54 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 63. Q: Quote Builder upload-only Documents header button layout?
     A: Single full-width "Upload" button (option A).
 
+64. Q: In Hub cards / list rows, what status label should dock intakes show after Stage 2 completion?
+    A: Show "Received" (option A). ("Closed" is an internal inbound stage marker; the user-facing status should be received.)
+
+65. Q: Hub card expanded lists: clicking a shipment row should navigate where?
+    A: To the Shipment Details page (`/shipments/:id`), even for dock intakes.
+
+66. Q: "Intakes In Progress" card: should it include dock intakes with inbound_status = closed?
+    A: No (option A). Closed is not in-progress; include only draft/stage1_complete/receiving.
+
+67. Q: "Intakes In Progress" card list: status label for those rows?
+    A: Show a single label "In Progress" for all in-progress intake stages (option B).
+
+68. Q: "Received Today" card: should it combine received dock intakes with other inbound types (expected/manifest) in one list?
+    A: No (option B). Keep dock intakes separate from other inbound types.
+
+69. Q: On the Shipments Hub, what should the "Received Today" card show?
+    A: Only Dock Intakes received today (inbound_kind = dock_intake).
+
+70. Q: On the Shipments Hub, what should the "Expected Today" card show?
+    A: Expected shipments scheduled for today regardless of current status/stage (e.g., closed, pending, etc).
+
+71. Q: What should the /shipments/received page show?
+    A: Only received Dock Intakes (option B), to align with the Hub's "Received Today" card behavior.
+
+72. Q: On /shipments/received (dock intakes only), default filter/sort?
+    A: Show all received dock intakes (not limited to today) (option B) and default sort by received date (newest first).
+
+73. Q: Should /shipments/received include quick date filters (Today/7d/30d/All)?
+    A: No. Keep search + sort only.
+
+74. Q: "Expected Today" should use which date field to determine "today"?
+    A: Use `expected_arrival_date` (not eta_start/eta_end).
+
+75. Q: "Expected Today" should include which inbound kinds?
+    A: Include expected + manifests scheduled for today (option B).
+
+76. Q: Expanding "Expected Today" list should include what?
+    A: Only scheduled inbound shipments for today (expected + manifests) (option A). Do not include unlinked dock intakes.
+
+77. Q: "Expected Today" list row click destination?
+    A: Navigate to the corresponding inbound detail page (expected/manifest) (option A), not the generic Shipment Details page.
+
+78. Q: "Received Today" (dock intakes only) list row click destination?
+    A: Navigate to the Dock Intake page (`/incoming/dock-intake/:id`) (option A).
+
+79. Q: Hub cards expanded list click behavior should be card-specific or always Shipment Details?
+    A: Card-specific. Expected Today -> inbound detail pages; Intakes In Progress -> Shipment Details; Received Today -> Dock Intake page.
+
+80. Q: "Shipped Today" should use which timestamp to determine "today"?
+    A: Use `completed_at` (option A). Treat completion timestamp as the shipped timestamp for dashboard purposes.
+
