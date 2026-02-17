@@ -218,3 +218,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 63. Q: Quote Builder upload-only Documents header button layout?
     A: Single full-width "Upload" button (option A).
 
+64. Q: In Hub cards / list rows, what status label should dock intakes show after Stage 2 completion?
+    A: Show "Received" (option A). ("Closed" is an internal inbound stage marker; the user-facing status should be received.)
+
