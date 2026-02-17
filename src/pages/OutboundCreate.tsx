@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/table';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpButton } from '@/components/prompts';
+import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 
 // ============================================
 // TYPES
@@ -181,8 +182,26 @@ export default function OutboundCreate() {
           .single();
 
         if (error) throw error;
+        let effectiveShipmentNumber: string | null = data.shipment_number;
+
+        // Guard: some envs still generate SHP-###### for outbound shipments.
+        // Coerce to OUT-##### for new outbound shipments and persist back to DB.
+        const coerced = coerceOutboundShipmentNumber(effectiveShipmentNumber);
+        if (coerced) {
+          const { error: renumberError } = await (supabase.from('shipments') as any)
+            .update({ shipment_number: coerced })
+            .eq('tenant_id', profile.tenant_id)
+            .eq('id', data.id);
+
+          if (renumberError) {
+            console.warn('[OutboundCreate] failed to coerce outbound shipment_number:', renumberError);
+          } else {
+            effectiveShipmentNumber = coerced;
+          }
+        }
+
         setDraftShipmentId(data.id);
-        setDraftShipmentNumber(data.shipment_number);
+        setDraftShipmentNumber(effectiveShipmentNumber);
       } catch (err: any) {
         console.error('[OutboundCreate] draft create error:', err);
         toast({
