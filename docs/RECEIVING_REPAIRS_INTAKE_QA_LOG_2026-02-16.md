@@ -260,3 +260,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 77. Q: "Expected Today" list row click destination?
     A: Navigate to the corresponding inbound detail page (expected/manifest) (option A), not the generic Shipment Details page.
 
+78. Q: "Received Today" (dock intakes only) list row click destination?
+    A: Navigate to the Dock Intake page (`/incoming/dock-intake/:id`) (option A).
+
