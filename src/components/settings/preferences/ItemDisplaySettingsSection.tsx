@@ -30,6 +30,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   BUILTIN_ITEM_COLUMNS,
   REQUIRED_ITEM_COLUMNS,
@@ -78,15 +79,18 @@ function SortableColumnRow({
   visible,
   required,
   onToggleVisible,
+  disabled,
 }: {
   columnKey: ItemColumnKey;
   label: string;
   visible: boolean;
   required: boolean;
   onToggleVisible: () => void;
+  disabled?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: columnKey,
+    disabled,
   });
 
   const style = {
@@ -103,15 +107,15 @@ function SortableColumnRow({
     >
       <button
         type="button"
-        className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
-        {...attributes}
-        {...listeners}
+        className={disabled ? "cursor-default touch-none text-muted-foreground" : "cursor-grab touch-none text-muted-foreground hover:text-foreground"}
+        {...(disabled ? {} : attributes)}
+        {...(disabled ? {} : listeners)}
         aria-label="Drag to reorder"
       >
         <MaterialIcon name="drag_indicator" size="sm" />
       </button>
 
-      <Checkbox checked={visible} disabled={required} onCheckedChange={onToggleVisible} className="h-4 w-4" />
+      <Checkbox checked={visible} disabled={required || disabled} onCheckedChange={onToggleVisible} className="h-4 w-4" />
 
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate">{label}</div>
@@ -142,7 +146,10 @@ const CUSTOM_FIELD_TYPE_OPTIONS: Array<{ value: ItemCustomFieldType; label: stri
 
 export function ItemDisplaySettingsSection() {
   const { toast } = useToast();
+  const { hasRole } = usePermissions();
   const { settings, loading, saving, defaultViewId, saveSettings } = useItemDisplaySettings();
+  const canManage = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager') || hasRole('admin_dev');
+  const readOnly = !canManage;
 
   const [draft, setDraft] = useState<ItemDisplaySettingsV1>(settings);
   const [activeViewId, setActiveViewId] = useState<string>(defaultViewId);
@@ -198,6 +205,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleColumnDragEnd = (event: DragEndEvent) => {
+    if (readOnly) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -210,6 +218,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const toggleColumnVisible = (key: ItemColumnKey) => {
+    if (readOnly) return;
     if (REQUIRED_ITEM_COLUMNS.has(key)) return;
     updateActiveView((view) => {
       const isHidden = view.hidden.includes(key);
@@ -221,12 +230,14 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleOpenNewView = () => {
+    if (readOnly) return;
     setViewDialogMode('new');
     setViewName('');
     setViewDialogOpen(true);
   };
 
   const handleOpenRenameView = () => {
+    if (readOnly) return;
     setViewDialogMode('rename');
     setViewName(activeView.name);
     setViewDialogOpen(true);
@@ -265,6 +276,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleDuplicateView = () => {
+    if (readOnly) return;
     setDraft((prev) => {
       const id = crypto.randomUUID();
       const nextView: ItemListViewDefinition = {
@@ -279,6 +291,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleSetDefaultView = () => {
+    if (readOnly) return;
     setDraft((prev) => ({
       ...prev,
       views: prev.views.map((v) => ({ ...v, is_default: v.id === activeView.id })),
@@ -287,6 +300,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleDeleteView = () => {
+    if (readOnly) return;
     // Do not delete if it's the only view.
     if (draft.views.length <= 1) return;
 
@@ -302,6 +316,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleOpenNewField = () => {
+    if (readOnly) return;
     setFieldDialogMode('new');
     setFieldDraft({
       label: '',
@@ -316,6 +331,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleOpenEditField = (field: ItemCustomFieldDefinition) => {
+    if (readOnly) return;
     setFieldDialogMode('edit');
     setFieldDraft({
       id: field.id,
@@ -331,6 +347,7 @@ export function ItemDisplaySettingsSection() {
   };
 
   const handleSaveFieldDialog = () => {
+    if (readOnly) return;
     const label = fieldDraft.label.trim();
     const key = (fieldDraft.key || slugifyKey(label)).trim();
     if (!label) {
@@ -397,11 +414,13 @@ export function ItemDisplaySettingsSection() {
   };
 
   const requestDeleteField = (field: ItemCustomFieldDefinition) => {
+    if (readOnly) return;
     setPendingDeleteFieldId(field.id);
     setConfirmDeleteFieldOpen(true);
   };
 
   const handleDeleteField = () => {
+    if (readOnly) return;
     if (!pendingDeleteFieldId) return;
     setDraft((prev) => {
       const field = prev.custom_fields.find((f) => f.id === pendingDeleteFieldId);
@@ -426,11 +445,13 @@ export function ItemDisplaySettingsSection() {
   const hasUnsavedChanges = useMemo(() => JSON.stringify(settings) !== JSON.stringify(draft), [settings, draft]);
 
   const handleSaveAll = async () => {
+    if (readOnly) return;
     const ok = await saveSettings(draft);
     if (!ok) return;
   };
 
   const handleResetDraft = () => {
+    if (readOnly) return;
     setDraft(settings);
     setActiveViewId(getDefaultViewId(settings));
     toast({ title: 'Changes reverted' });
@@ -452,6 +473,11 @@ export function ItemDisplaySettingsSection() {
           <div className="text-sm text-muted-foreground">Loading item display settings…</div>
         ) : (
           <>
+            {readOnly && (
+              <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                You can view these settings, but only Managers/Admins can edit tenant-wide item views and custom fields.
+              </div>
+            )}
             <Tabs defaultValue="views">
               <TabsList>
                 <TabsTrigger value="views">Views</TabsTrigger>
@@ -477,24 +503,24 @@ export function ItemDisplaySettingsSection() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={handleSetDefaultView} disabled={activeView.is_default}>
+                    <Button type="button" variant="outline" onClick={handleSetDefaultView} disabled={readOnly || activeView.is_default}>
                       Set Default
                     </Button>
-                    <Button type="button" variant="outline" onClick={handleOpenRenameView}>
+                    <Button type="button" variant="outline" onClick={handleOpenRenameView} disabled={readOnly}>
                       Rename
                     </Button>
-                    <Button type="button" variant="outline" onClick={handleDuplicateView}>
+                    <Button type="button" variant="outline" onClick={handleDuplicateView} disabled={readOnly}>
                       Duplicate
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => setConfirmDeleteViewOpen(true)}
-                      disabled={draft.views.length <= 1}
+                      disabled={readOnly || draft.views.length <= 1}
                     >
                       Delete
                     </Button>
-                    <Button type="button" onClick={handleOpenNewView}>
+                    <Button type="button" onClick={handleOpenNewView} disabled={readOnly}>
                       <MaterialIcon name="add" size="sm" className="mr-2" />
                       New View
                     </Button>
@@ -527,6 +553,7 @@ export function ItemDisplaySettingsSection() {
                             visible={!activeView.hidden.includes(key)}
                             required={REQUIRED_ITEM_COLUMNS.has(key)}
                             onToggleVisible={() => toggleColumnVisible(key)}
+                            disabled={readOnly}
                           />
                         ))}
                       </div>
@@ -543,7 +570,7 @@ export function ItemDisplaySettingsSection() {
                       Stored on each item under metadata.custom_fields.
                     </div>
                   </div>
-                  <Button type="button" onClick={handleOpenNewField}>
+                  <Button type="button" onClick={handleOpenNewField} disabled={readOnly}>
                     <MaterialIcon name="add" size="sm" className="mr-2" />
                     Add Field
                   </Button>
@@ -566,6 +593,7 @@ export function ItemDisplaySettingsSection() {
                             <label className="flex items-center gap-2">
                               <Switch
                                 checked={f.enabled}
+                                disabled={readOnly}
                                 onCheckedChange={(checked) => {
                                   setDraft((prev) => {
                                     const nextFields = prev.custom_fields.map((x) => (x.id === f.id ? { ...x, enabled: checked } : x));
@@ -594,6 +622,7 @@ export function ItemDisplaySettingsSection() {
                             <label className="flex items-center gap-2">
                               <Switch
                                 checked={f.show_in_lists}
+                                disabled={readOnly}
                                 onCheckedChange={(checked) => {
                                   setDraft((prev) => {
                                     const nextFields = prev.custom_fields.map((x) => (x.id === f.id ? { ...x, show_in_lists: checked } : x));
@@ -622,6 +651,7 @@ export function ItemDisplaySettingsSection() {
                             <label className="flex items-center gap-2">
                               <Switch
                                 checked={f.show_on_detail}
+                                disabled={readOnly}
                                 onCheckedChange={(checked) => {
                                   setDraft((prev) => ({
                                     ...prev,
@@ -634,10 +664,10 @@ export function ItemDisplaySettingsSection() {
                           </div>
                         </div>
                         <div className="flex gap-2 justify-end">
-                          <Button type="button" variant="outline" onClick={() => handleOpenEditField(f)}>
+                          <Button type="button" variant="outline" onClick={() => handleOpenEditField(f)} disabled={readOnly}>
                             Edit
                           </Button>
-                          <Button type="button" variant="outline" onClick={() => requestDeleteField(f)}>
+                          <Button type="button" variant="outline" onClick={() => requestDeleteField(f)} disabled={readOnly}>
                             Delete
                           </Button>
                         </div>
@@ -649,10 +679,10 @@ export function ItemDisplaySettingsSection() {
             </Tabs>
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={handleResetDraft} disabled={!hasUnsavedChanges || saving}>
+              <Button type="button" variant="outline" onClick={handleResetDraft} disabled={readOnly || !hasUnsavedChanges || saving}>
                 Revert
               </Button>
-              <Button type="button" onClick={() => void handleSaveAll()} disabled={!hasUnsavedChanges || saving}>
+              <Button type="button" onClick={() => void handleSaveAll()} disabled={readOnly || !hasUnsavedChanges || saving}>
                 {saving ? (
                   <>
                     <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
