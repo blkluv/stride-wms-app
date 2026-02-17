@@ -254,3 +254,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 75. Q: "Expected Today" should include which inbound kinds?
     A: Include expected + manifests scheduled for today (option B).
 
+76. Q: Expanding "Expected Today" list should include what?
+    A: Only scheduled inbound shipments for today (expected + manifests) (option A). Do not include unlinked dock intakes.
+
