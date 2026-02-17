@@ -117,7 +117,9 @@ const App = () => (
             <Route path="/inventory/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ItemDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><LocationDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/containers/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ContainerDetail /></RequireRole></ProtectedRoute>} />
-            <Route path="/incoming" element={<Navigate to="/shipments" replace />} />
+            {/* Incoming Manager (new inbound workflows) */}
+            <Route path="/incoming/manager" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><IncomingManager /></RequireRole></ProtectedRoute>} />
+            <Route path="/incoming" element={<Navigate to="/incoming/manager" replace />} />
             <Route path="/incoming/manifest/new" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><ShipmentCreate /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
             <Route path="/incoming/manifest/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><InboundManifestDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/incoming/expected/new" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><ShipmentCreate /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />

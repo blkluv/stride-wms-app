@@ -43,6 +43,8 @@ export interface ShipmentItem {
   eta: string | null;
   status: string;
   carrier: string | null;
+  inbound_kind?: string | null;
+  inbound_status?: string | null;
   account?: {
     account_name: string;
   };
@@ -171,7 +173,7 @@ export function useDashboardStats() {
       const { data: shipments, count: shipmentCount } = await (supabase
         .from('shipments') as any)
         .select(`
-          id, shipment_number, expected_arrival_date, status, carrier,
+          id, shipment_number, expected_arrival_date, status, carrier, inbound_kind, inbound_status,
           account:accounts(account_name)
         `, { count: 'exact' })
         .eq('tenant_id', profile.tenant_id)
