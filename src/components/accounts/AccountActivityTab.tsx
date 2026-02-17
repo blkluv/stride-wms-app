@@ -6,17 +6,13 @@
  * and "load more" pagination.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import {
   useAccountActivity,
@@ -24,6 +20,9 @@ import {
   type UnifiedActivity,
 } from '@/hooks/useAccountActivity';
 import { format, formatDistanceToNow } from 'date-fns';
+import { parseMessageWithLinks, extractEntityNumbers, type EntityMap } from '@/utils/parseEntityLinks';
+import { resolveEntities, buildEntityMap } from '@/services/entityResolver';
+import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 
 interface AccountActivityTabProps {
   accountId: string;
@@ -102,44 +101,7 @@ function getSourceLabel(source: string): string {
   }
 }
 
-function ActivityDetailsDisplay({ details }: { details: Record<string, unknown> }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const entries = Object.entries(details).filter(
-    ([, v]) => v !== null && v !== undefined && v !== '',
-  );
-  if (entries.length === 0) return null;
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-1 p-1 h-auto text-xs text-muted-foreground hover:text-foreground"
-        >
-          <MaterialIcon name="info" className="text-[12px] mr-1" />
-          {isOpen ? 'Hide' : 'View'} details
-          <MaterialIcon name={isOpen ? 'expand_less' : 'expand_more'} className="text-[12px] ml-1" />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-1 p-2 bg-background rounded border text-xs space-y-1">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex justify-between gap-4">
-              <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-              <span className="font-medium text-right truncate max-w-[200px]">
-                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function EntityLink({ activity }: { activity: UnifiedActivity }) {
+function OpenEntityLink({ activity }: { activity: UnifiedActivity }) {
   if (activity.source === 'account') return null;
 
   const entityId = activity.entity_id;
@@ -149,15 +111,16 @@ function EntityLink({ activity }: { activity: UnifiedActivity }) {
   let label = '';
   switch (activity.source) {
     case 'shipment':
-      href = `/shipments?id=${entityId}`;
+      // Use scan redirect to land on the correct inbound/outbound detail screen.
+      href = `/scan/shipment/${entityId}`;
       label = 'Open Shipment';
       break;
     case 'task':
-      href = `/tasks?id=${entityId}`;
+      href = `/tasks/${entityId}`;
       label = 'Open Task';
       break;
     case 'item':
-      href = `/items/${entityId}`;
+      href = `/inventory/${entityId}`;
       label = 'Open Item';
       break;
   }
@@ -165,8 +128,8 @@ function EntityLink({ activity }: { activity: UnifiedActivity }) {
   if (!href) return null;
 
   return (
-    <a
-      href={href}
+    <Link
+      to={href}
       className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
       onClick={(e) => {
         e.stopPropagation();
@@ -174,11 +137,11 @@ function EntityLink({ activity }: { activity: UnifiedActivity }) {
     >
       <MaterialIcon name="open_in_new" className="text-[12px]" />
       {label}
-    </a>
+    </Link>
   );
 }
 
-function ActivityRow({ activity }: { activity: UnifiedActivity }) {
+function ActivityRow({ activity, entityMap }: { activity: UnifiedActivity; entityMap?: EntityMap }) {
   return (
     <div className="relative flex gap-3 pl-10">
       {/* Timeline dot */}
@@ -194,7 +157,9 @@ function ActivityRow({ activity }: { activity: UnifiedActivity }) {
       {/* Event content */}
       <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
         <div className="flex items-start justify-between gap-2 mb-0.5">
-          <span className="font-medium text-sm leading-tight">{activity.event_label}</span>
+          <span className="font-medium text-sm leading-tight">
+            {parseMessageWithLinks(activity.event_label, entityMap, { variant: 'inline' })}
+          </span>
           <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
             {getSourceLabel(activity.source)}
           </Badge>
@@ -210,10 +175,10 @@ function ActivityRow({ activity }: { activity: UnifiedActivity }) {
         </div>
 
         {/* Entity link */}
-        <EntityLink activity={activity} />
+        <OpenEntityLink activity={activity} />
 
         {/* Expandable details */}
-        <ActivityDetailsDisplay details={activity.details} />
+        <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} linkVariant="inline" />
       </div>
     </div>
   );
@@ -237,6 +202,42 @@ export function AccountActivityTab({ accountId }: AccountActivityTabProps) {
   } = useAccountActivity(accountId);
 
   const [showDateRange, setShowDateRange] = useState(false);
+  const [entityMap, setEntityMap] = useState<EntityMap | undefined>(undefined);
+
+  // Resolve entity numbers to IDs for improved deep linking (best-effort).
+  // Links still work via scan routes when IDs are unknown.
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolve = async () => {
+      try {
+        const textBlobs: string[] = [];
+        for (const a of activities) {
+          if (a.event_label) textBlobs.push(a.event_label);
+          for (const v of Object.values(a.details || {})) {
+            if (typeof v === 'string' && v) textBlobs.push(v);
+          }
+        }
+
+        const numbers = [...new Set(textBlobs.flatMap((t) => extractEntityNumbers(t)))];
+        if (numbers.length === 0) {
+          if (!cancelled) setEntityMap(undefined);
+          return;
+        }
+
+        const resolved = await resolveEntities(numbers);
+        const map = buildEntityMap(resolved);
+        if (!cancelled) setEntityMap(map as unknown as EntityMap);
+      } catch {
+        if (!cancelled) setEntityMap(undefined);
+      }
+    };
+
+    void resolve();
+    return () => {
+      cancelled = true;
+    };
+  }, [activities]);
 
   if (loading) {
     return (
@@ -356,7 +357,7 @@ export function AccountActivityTab({ accountId }: AccountActivityTabProps) {
             {/* Events */}
             <div className="space-y-3">
               {activities.map((activity) => (
-                <ActivityRow key={activity.id} activity={activity} />
+                <ActivityRow key={activity.id} activity={activity} entityMap={entityMap} />
               ))}
             </div>
 

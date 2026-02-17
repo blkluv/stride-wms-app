@@ -23,7 +23,8 @@ interface Match {
  */
 export function parseMessageWithLinks(
   message: string,
-  entityMap?: EntityMap
+  entityMap?: EntityMap,
+  options?: { variant?: 'chip' | 'inline' }
 ): React.ReactNode[] {
   const allPatterns = Object.entries(ENTITY_CONFIG).map(([type, config]) => ({
     type: type as EntityType,
@@ -80,6 +81,7 @@ export function parseMessageWithLinks(
         id={entityInfo?.id}
         exists={entityInfo?.exists ?? true}
         summary={entityInfo?.summary}
+        variant={options?.variant}
       />
     );
 
