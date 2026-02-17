@@ -33,27 +33,10 @@ export function useItemDisplaySettings() {
 
       if (error) throw error;
 
+      // If the setting doesn't exist yet, just use defaults locally.
+      // We only persist when an authorized user explicitly saves in Settings.
       if (!data?.setting_value) {
-        const defaults = createDefaultItemDisplaySettings();
-        const normalized = normalizeItemDisplaySettings(defaults);
-
-        const { error: upsertError } = await (supabase as any)
-          .from('tenant_settings')
-          .upsert(
-            [
-              {
-                tenant_id: profile.tenant_id,
-                setting_key: ITEM_DISPLAY_SETTINGS_TENANT_KEY,
-                setting_value: normalized,
-                updated_by: profile.id,
-                updated_at: new Date().toISOString(),
-              },
-            ],
-            { onConflict: 'tenant_id,setting_key' }
-          );
-
-        if (upsertError) throw upsertError;
-        setSettings(normalized);
+        setSettings(normalizeItemDisplaySettings(createDefaultItemDisplaySettings()));
       } else {
         setSettings(normalizeItemDisplaySettings(data.setting_value));
       }
