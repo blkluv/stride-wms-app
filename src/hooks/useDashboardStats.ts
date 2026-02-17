@@ -35,6 +35,14 @@ export interface TaskItem {
   account?: {
     account_name: string;
   };
+  item?: {
+    item_code: string;
+    description: string | null;
+    location?: {
+      code: string;
+      name: string | null;
+    };
+  } | null;
 }
 
 export interface ShipmentItem {
@@ -113,12 +121,13 @@ export function useDashboardStats() {
         .order('due_date', { ascending: true, nullsFirst: false })
         .limit(10);
 
-      // Fetch assembly tasks (not completed, ordered by due date)
+      // Fetch assembly tasks (not completed, ordered by due date) - include item & location
       const { data: assemblies, count: assemblyCount } = await (supabase
         .from('tasks') as any)
         .select(`
           id, title, task_type, due_date, priority, status,
-          account:accounts(account_name)
+          account:accounts(account_name),
+          item:items!tasks_related_item_id_fkey(item_code, description, location:locations!items_current_location_id_fkey(code, name))
         `, { count: 'exact' })
         .eq('tenant_id', profile.tenant_id)
         .eq('task_type', 'Assembly')

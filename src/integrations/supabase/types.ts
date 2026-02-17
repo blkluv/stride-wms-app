@@ -6174,7 +6174,6 @@ export type Database = {
           declared_value: number | null
           deleted_at: string | null
           description: string | null
-          sku: string | null
           has_damage: boolean | null
           id: string
           inspection_photos: Json | null
@@ -6239,7 +6238,6 @@ export type Database = {
           declared_value?: number | null
           deleted_at?: string | null
           description?: string | null
-          sku?: string | null
           has_damage?: boolean | null
           id?: string
           inspection_photos?: Json | null
@@ -6248,7 +6246,7 @@ export type Database = {
           is_oversize?: boolean | null
           is_overweight?: boolean | null
           is_unstackable?: boolean | null
-          item_code?: string
+          item_code: string
           item_type_id?: string | null
           last_storage_invoiced_through?: string | null
           link?: string | null
@@ -6304,7 +6302,6 @@ export type Database = {
           declared_value?: number | null
           deleted_at?: string | null
           description?: string | null
-          sku?: string | null
           has_damage?: boolean | null
           id?: string
           inspection_photos?: Json | null
