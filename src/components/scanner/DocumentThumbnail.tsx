@@ -168,7 +168,7 @@ export function DocumentThumbnail({
           e.stopPropagation();
           void handleDownload();
         }}
-        className="absolute top-1 left-1 p-1 bg-background/80 text-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-1 left-1 p-1 bg-background/80 text-foreground rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
         aria-label={`Download ${displayName}`}
         disabled={downloading}
       >
