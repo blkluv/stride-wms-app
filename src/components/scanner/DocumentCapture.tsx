@@ -267,6 +267,7 @@ export function DocumentCapture({
               type="button"
               variant="outline"
               size="sm"
+              onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               className="w-full"
             >

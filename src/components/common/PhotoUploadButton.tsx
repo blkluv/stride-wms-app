@@ -110,12 +110,13 @@ export function PhotoUploadButton({
       accept="image/*"
       disabled={uploading}
       hint={showHint ? "Drag and drop photos here, or click to upload" : undefined}
+      className={className}
     >
       <Button
         variant={variant}
         size={size}
         onClick={() => fileInputRef.current?.click()}
-        className={className}
+        className="w-full"
         disabled={uploading}
       >
         {uploading ? (
