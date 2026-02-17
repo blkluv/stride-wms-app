@@ -4,6 +4,75 @@
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
+-- 0) Defensive bootstrap (avoid hard failures if base tables are missing)
+-- ---------------------------------------------------------------------------
+-- Some environments may attempt to apply this migration without having run the
+-- base sender lifecycle migration first. Create the required tables if missing
+-- so the admin policies/RPCs below can be installed.
+--
+-- NOTE: The canonical definitions live in:
+--   20260215030000_platform_managed_sms_sender.sql
+-- This is a minimal, compatible subset that is safe to run multiple times.
+
+CREATE TABLE IF NOT EXISTS public.tenant_sms_sender_profiles (
+  tenant_id                  uuid PRIMARY KEY REFERENCES public.tenants(id) ON DELETE CASCADE,
+  sender_type                text NOT NULL DEFAULT 'toll_free'
+                               CHECK (sender_type IN ('toll_free')),
+  provisioning_status        text NOT NULL DEFAULT 'not_requested'
+                               CHECK (
+                                 provisioning_status IN (
+                                   'not_requested',
+                                   'requested',
+                                   'provisioning',
+                                   'pending_verification',
+                                   'approved',
+                                   'rejected',
+                                   'disabled'
+                                 )
+                               ),
+  twilio_phone_number_sid    text,
+  twilio_phone_number_e164   text,
+  requested_at               timestamptz,
+  requested_by               uuid REFERENCES auth.users(id),
+  verification_submitted_at  timestamptz,
+  verification_approved_at   timestamptz,
+  verification_rejected_at   timestamptz,
+  billing_start_at           timestamptz,
+  last_error                 text,
+  metadata                   jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at                 timestamptz NOT NULL DEFAULT now(),
+  updated_at                 timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.tenant_sms_sender_profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.tenant_sms_sender_profile_log (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  event_type     text NOT NULL
+                   CHECK (
+                     event_type IN (
+                       'requested',
+                       'status_changed',
+                       'verification_approved',
+                       'verification_rejected',
+                       'number_assigned'
+                     )
+                   ),
+  actor_user_id  uuid REFERENCES auth.users(id),
+  status_from    text,
+  status_to      text,
+  notes          text,
+  metadata       jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_sms_sender_profile_log_tenant_created_at
+  ON public.tenant_sms_sender_profile_log (tenant_id, created_at DESC);
+
+ALTER TABLE public.tenant_sms_sender_profile_log ENABLE ROW LEVEL SECURITY;
+
+-- ---------------------------------------------------------------------------
 -- 1) Allow admin_dev read access to sender profile tables
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS "tenant_sms_sender_profiles_select_admin_dev" ON public.tenant_sms_sender_profiles;
