@@ -107,6 +107,7 @@ function normalizeView(view: Partial<ItemListViewDefinition>, allColumns: ItemCo
     : [];
 
   // Preserve order, de-dupe, append any new columns.
+  const rawOrderSet = new Set<ItemColumnKey>(rawOrder);
   const seen = new Set<ItemColumnKey>();
   const order: ItemColumnKey[] = [];
   for (const k of rawOrder) {
@@ -120,8 +121,27 @@ function normalizeView(view: Partial<ItemListViewDefinition>, allColumns: ItemCo
     order.push(k);
   }
 
-  // Ensure required columns cannot be hidden.
-  const hidden = rawHidden.filter((k) => !REQUIRED_ITEM_COLUMNS.has(k));
+  // Ensure default-hidden columns stay hidden when newly introduced.
+  const defaultHiddenColumns = new Set<ItemColumnKey>(
+    BUILTIN_ITEM_COLUMNS.filter((c) => c.default_hidden).map((c) => c.key)
+  );
+
+  const hidden: ItemColumnKey[] = [];
+  const hiddenSeen = new Set<ItemColumnKey>();
+  for (const k of rawHidden) {
+    if (REQUIRED_ITEM_COLUMNS.has(k)) continue;
+    if (hiddenSeen.has(k)) continue;
+    hiddenSeen.add(k);
+    hidden.push(k);
+  }
+  for (const k of order) {
+    if (rawOrderSet.has(k)) continue;
+    if (!defaultHiddenColumns.has(k)) continue;
+    if (REQUIRED_ITEM_COLUMNS.has(k)) continue;
+    if (hiddenSeen.has(k)) continue;
+    hiddenSeen.add(k);
+    hidden.push(k);
+  }
 
   return {
     id: typeof view.id === 'string' && view.id ? view.id : crypto.randomUUID(),
