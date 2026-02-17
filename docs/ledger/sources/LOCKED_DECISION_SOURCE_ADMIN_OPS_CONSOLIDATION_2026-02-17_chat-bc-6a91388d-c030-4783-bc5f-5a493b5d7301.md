@@ -41,3 +41,8 @@ User decision:
 User decision:
 - Canonical route for the consolidated SaaS admin ops dashboard will be: `/admin/saas-ops`.
 
+### QA-2026-02-17-ADMINOPS-007
+User decision + new request:
+- Old routes `/admin/stripe-ops` and `/admin/pricing-ops` can be discarded; only the new consolidated `/admin/saas-ops` will be used.
+- User reports `/admin/email-ops` is not visible while logged in as `admin_dev` and requests it be added into `/admin/saas-ops` with the same UX simplicity.
+

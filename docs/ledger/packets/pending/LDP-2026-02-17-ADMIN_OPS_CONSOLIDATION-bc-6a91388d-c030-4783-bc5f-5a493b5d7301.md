@@ -12,10 +12,10 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `6`
+- Q&A items extracted: `7`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007`
-- Unresolved/open (draft): `DL-2026-02-17-002`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009`
+- Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009`
 - Supersedes: `-`
 
 ## Decision Index Rows
@@ -27,6 +27,8 @@
 | DL-2026-02-17-005 | Do not add Lovable-preview-specific workaround or note for Stripe dashboard navigation | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-004` | - | - |
 | DL-2026-02-17-006 | Consolidated admin ops page remains restricted to admin_dev only | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-005` | - | - |
 | DL-2026-02-17-007 | Canonical consolidated SaaS ops route is /admin/saas-ops | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-006` | - | - |
+| DL-2026-02-17-008 | Retire standalone Stripe Ops + Pricing Ops pages; manage via consolidated /admin/saas-ops only | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007` | - | - |
+| DL-2026-02-17-009 | Add Email Ops section into /admin/saas-ops with simplified non-technical UX | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007` | - | - |
 
 ## Detailed Decision Entries
 
@@ -163,6 +165,46 @@ It is clearer and more future-proof than `/admin/stripe-ops` or `/admin/pricing-
 - Add route `/admin/saas-ops` guarded by `admin_dev`.
 - Decide what to do with legacy routes `/admin/stripe-ops` and `/admin/pricing-ops` (redirect or keep as aliases) in a follow-up decision.
 
+### DL-2026-02-17-008: Retire standalone Stripe Ops + Pricing Ops pages; manage via consolidated /admin/saas-ops only
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The standalone `/admin/stripe-ops` and `/admin/pricing-ops` pages are retired for day-to-day ops usage; Stripe and Pricing operational tooling will be managed from the consolidated `/admin/saas-ops` dashboard only.
+
+#### Why
+A single dashboard reduces navigation complexity and avoids “tabbed pages inside of tabbed pages” by centralizing SaaS operational tasks behind one entry point.
+
+#### Implementation impact
+- Remove internal navigation that encourages using `/admin/stripe-ops` or `/admin/pricing-ops`.
+- Consolidated `/admin/saas-ops` must expose Stripe + Pricing sections/tabs that cover existing capabilities.
+- Follow-up: determine whether legacy routes should redirect to `/admin/saas-ops` or return 404.
+
+### DL-2026-02-17-009: Add Email Ops section into /admin/saas-ops with simplified non-technical UX
+- Domain: SaaS Admin UI
+- State: draft
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Add an “Email Ops” section/tab into `/admin/saas-ops`, designed for non-technical operators, providing a simple way to understand and manage the email-related operational surfaces (status/health, logs, and key workflows) in the same consolidated dashboard.
+
+#### Why
+Email is a critical operational channel (invites, notices, and system alerts). A dedicated section improves observability and reduces support load when emails fail or configuration is incomplete.
+
+#### Implementation impact
+- Introduce Email Ops UI within `/admin/saas-ops`.
+- If `/admin/email-ops` is missing, implement Email Ops in the consolidated page instead of a standalone admin page.
+- Define concrete “Email Ops” scope (logs, test send, configuration visibility) via Q&A before implementation.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -171,3 +213,5 @@ It is clearer and more future-proof than `/admin/stripe-ops` or `/admin/pricing-
 | DLE-2026-02-17-004 | 2026-02-17 | DL-2026-02-17-005 | completed | - | builder | Confirmed: no Lovable-preview workaround/note will be added; focus on consolidation + usability improvements. |
 | DLE-2026-02-17-005 | 2026-02-17 | DL-2026-02-17-006 | completed | - | builder | Confirmed: consolidated ops access remains admin_dev only. |
 | DLE-2026-02-17-006 | 2026-02-17 | DL-2026-02-17-007 | completed | - | builder | Confirmed: canonical consolidated SaaS ops route will be `/admin/saas-ops`. |
+| DLE-2026-02-17-007 | 2026-02-17 | DL-2026-02-17-008 | completed | - | builder | Confirmed: retire standalone Stripe Ops + Pricing Ops pages; consolidated dashboard is the operational entry point. |
+| DLE-2026-02-17-008 | 2026-02-17 | DL-2026-02-17-009 | planned | - | builder | Determine Email Ops scope (logs/test/config visibility) before implementing Email Ops section within /admin/saas-ops. |
