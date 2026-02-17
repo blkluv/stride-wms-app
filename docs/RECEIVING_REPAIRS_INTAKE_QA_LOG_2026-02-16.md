@@ -251,3 +251,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 74. Q: "Expected Today" should use which date field to determine "today"?
     A: Use `expected_arrival_date` (not eta_start/eta_end).
 
+75. Q: "Expected Today" should include which inbound kinds?
+    A: Include expected + manifests scheduled for today (option B).
+
