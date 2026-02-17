@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `2`
+- Q&A items extracted: `3`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004`
 - Unresolved/open (draft): `DL-2026-02-17-002`
 - Supersedes: `-`
 
@@ -23,6 +23,7 @@
 | DL-2026-02-17-001 | Admin ops UI changes require Q&A-first decision logging (no implementation until Q&A complete) | Ledger Workflow | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-001` | - | - |
 | DL-2026-02-17-002 | Consolidate Stripe Ops + Pricing Ops into one admin dashboard with overview and clear navigation | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-001` | - | - |
 | DL-2026-02-17-003 | Stripe dashboard links do not require user-provided Stripe account id | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-002` | - | - |
+| DL-2026-02-17-004 | Stripe dashboard navigation blocks in Lovable preview are environment constraints (not app bugs) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-003` | - | - |
 
 ## Detailed Decision Entries
 
@@ -84,7 +85,27 @@ Stripe authentication and account selection happens within Stripe; requiring add
 - Admin ops links can remain simple: dashboard root + object links when ids are present.
 - Consolidated ops page should explain that the operator must be logged into Stripe to view these links.
 
+### DL-2026-02-17-004: Stripe dashboard navigation blocks in Lovable preview are environment constraints (not app bugs)
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-003`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The "navigation was blocked by Cross-Origin-Opener-Policy" error for the Stripe dashboard link is attributable to the Lovable preview environment. When running the app normally (outside the embedded preview), the link works; therefore this is not an app-side Stripe link construction bug.
+
+#### Why
+Embedded preview environments may enforce browser isolation policies that affect new-window navigation to third-party domains. This is outside the app’s direct control.
+
+#### Implementation impact
+- Treat the Stripe dashboard link itself as correct (root dashboard link + object links).
+- Optionally add a short operator-friendly note in the consolidated ops UI that embedded previews may block Stripe navigation.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
 | DLE-2026-02-17-002 | 2026-02-17 | DL-2026-02-17-003 | planned | - | builder | Ensure consolidated ops UI uses Stripe dashboard root + stored object id links without requiring manual Stripe account id input. |
+| DLE-2026-02-17-003 | 2026-02-17 | DL-2026-02-17-004 | planned | - | builder | Add operator-friendly guidance (if desired) that embedded previews may block Stripe navigation; confirm behavior works on real domain. |

@@ -23,3 +23,8 @@ User clarification:
 - Error shown: "navigation was blocked by Cross-Origin-Opener-Policy".
 - User question: whether they need to provide a Stripe account id to build a Stripe dashboard link.
 
+### QA-2026-02-17-ADMINOPS-003
+User clarification:
+- The COOP navigation block occurs only when running inside a Lovable preview page.
+- When opening the app outside that preview context (normal browser tab on the real domain), the Stripe dashboard link works.
+
