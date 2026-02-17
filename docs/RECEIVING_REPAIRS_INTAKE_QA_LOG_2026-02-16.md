@@ -269,3 +269,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 80. Q: "Shipped Today" should use which timestamp to determine "today"?
     A: Use `completed_at` (option A). Treat completion timestamp as the shipped timestamp for dashboard purposes.
 
+81. Q: "Shipped Today" should include which outbound statuses?
+    A: Include outbound shipments in statuses released + completed + shipped (option A), using `completed_at` window.
+
