@@ -80,6 +80,8 @@ export interface EntityLinkProps {
   id?: string;
   exists?: boolean;
   summary?: string;
+  /** Display style: "chip" (default) or "inline" (activity feed style) */
+  variant?: 'chip' | 'inline';
 }
 
 export function EntityLink({
@@ -88,6 +90,7 @@ export function EntityLink({
   id,
   exists = true,
   summary,
+  variant = 'chip',
 }: EntityLinkProps) {
   const config = ENTITY_CONFIG[type];
   const materialIconName = ICON_MAP[config.icon] || 'description';
@@ -114,9 +117,9 @@ export function EntityLink({
 
   // Compute navigation target.
   // Some entities have multiple "detail" routes (e.g., inbound shipments),
-  // and some routes require UUIDs even when the UI shows a human-readable number.
+  // and some screens don't have a dedicated detail route by number.
   const upper = number.toUpperCase();
-  let to = `${config.route}/${id || number}`;
+  let to = id ? `${config.route}/${id}` : config.route;
 
   if (type === 'item') {
     // ItemDetail route expects UUID; fall back to scan redirect for item_code-only links.
@@ -135,7 +138,17 @@ export function EntityLink({
     to = id ? `${base}/${id}` : `/scan/shipment/${encodeURIComponent(upper)}`;
   }
 
-  const linkContent = (
+  const linkContent = variant === 'inline' ? (
+    <Link
+      to={to}
+      className={cn(
+        'inline-flex items-baseline whitespace-nowrap font-medium underline underline-offset-2 decoration-primary/40',
+        'text-primary hover:decoration-primary focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-sm px-0.5'
+      )}
+    >
+      {number}
+    </Link>
+  ) : (
     <Link
       to={to}
       className={cn(

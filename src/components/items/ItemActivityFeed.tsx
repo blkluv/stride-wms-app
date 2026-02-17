@@ -3,20 +3,16 @@
  * Shows all logged events from item_activity with filters, actor name, and time.
  */
 
-import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { useItemActivity, type ActivityFilterCategory, type ItemActivity } from '@/hooks/useItemActivity';
+import { useItemActivity, type ActivityFilterCategory } from '@/hooks/useItemActivity';
 import { format, formatDistanceToNow } from 'date-fns';
+import { parseMessageWithLinks } from '@/utils/parseEntityLinks';
+import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 
 interface ItemActivityFeedProps {
   itemId: string;
@@ -76,37 +72,6 @@ function getEventCategory(eventType: string): string {
   if (eventType.includes('note') || eventType.includes('photo'))
     return 'notes/photos';
   return 'update';
-}
-
-function ActivityDetailsDisplay({ details }: { details: Record<string, unknown> }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
-  if (entries.length === 0) return null;
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="mt-1 p-1 h-auto text-xs text-muted-foreground hover:text-foreground">
-          <MaterialIcon name="info" className="text-[12px] mr-1" />
-          {isOpen ? 'Hide' : 'View'} details
-          <MaterialIcon name={isOpen ? 'expand_less' : 'expand_more'} className="text-[12px] ml-1" />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-1 p-2 bg-background rounded border text-xs space-y-1">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex justify-between gap-4">
-              <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-              <span className="font-medium text-right truncate max-w-[200px]">
-                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
 }
 
 export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
@@ -191,7 +156,9 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
                     {/* Event content */}
                     <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-0.5">
-                        <span className="font-medium text-sm leading-tight">{activity.event_label}</span>
+                        <span className="font-medium text-sm leading-tight">
+                          {parseMessageWithLinks(activity.event_label, undefined, { variant: 'inline' })}
+                        </span>
                         <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
                           {getEventCategory(activity.event_type)}
                         </Badge>
@@ -211,7 +178,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
                       </div>
 
                       {/* Expandable details */}
-                      <ActivityDetailsDisplay details={activity.details} />
+                      <ActivityDetailsDisplay details={activity.details} linkVariant="inline" />
                     </div>
                   </div>
                 ))}

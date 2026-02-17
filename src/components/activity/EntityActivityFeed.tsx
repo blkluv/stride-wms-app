@@ -7,22 +7,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { supabase } from '@/integrations/supabase/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { ActivityEntityType } from '@/lib/activity/logActivity';
 import { parseMessageWithLinks, extractEntityNumbers, type EntityMap } from '@/utils/parseEntityLinks';
 import { resolveEntities, buildEntityMap } from '@/services/entityResolver';
-import { useToast } from '@/hooks/use-toast';
-import { getDocumentSignedUrl } from '@/lib/scanner/uploadService';
+import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 
 interface ActivityRow {
   id: string;
@@ -97,125 +90,6 @@ function getEventCategory(eventType: string): string {
   if (eventType.includes('photo')) return 'media';
   if (eventType.includes('item')) return 'items';
   return 'update';
-}
-
-function isDocumentRef(value: unknown): value is { storage_key: string; file_name?: string | null; label?: string | null } {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as any;
-  return typeof v.storage_key === 'string' && v.storage_key.length > 0;
-}
-
-function ActivityDetailsDisplay({ details, entityMap }: { details: Record<string, unknown>; entityMap?: EntityMap }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const { toast } = useToast();
-  const [busyStorageKey, setBusyStorageKey] = useState<string | null>(null);
-
-  const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
-  if (entries.length === 0) return null;
-
-  const openDocument = async (storageKey: string) => {
-    setBusyStorageKey(storageKey);
-    try {
-      const url = await getDocumentSignedUrl(storageKey, 300);
-      window.open(url, '_blank');
-    } catch {
-      toast({
-        variant: 'destructive',
-        title: 'Document Error',
-        description: 'Failed to open document',
-      });
-    } finally {
-      setBusyStorageKey(null);
-    }
-  };
-
-  const downloadDocument = async (storageKey: string, fileName?: string | null) => {
-    setBusyStorageKey(storageKey);
-    try {
-      const url = await getDocumentSignedUrl(storageKey, 300);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName || storageKey.split('/').pop() || 'document';
-      link.click();
-    } catch {
-      toast({
-        variant: 'destructive',
-        title: 'Document Error',
-        description: 'Failed to download document',
-      });
-    } finally {
-      setBusyStorageKey(null);
-    }
-  };
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="mt-1 p-1 h-auto text-xs text-muted-foreground hover:text-foreground">
-          <MaterialIcon name="info" className="text-[12px] mr-1" />
-          {isOpen ? 'Hide' : 'View'} details
-          <MaterialIcon name={isOpen ? 'expand_less' : 'expand_more'} className="text-[12px] ml-1" />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-1 p-2 bg-background rounded border text-xs space-y-1">
-          {entries.map(([key, value]) => {
-            if (isDocumentRef(value)) {
-              const displayName = value.label || value.file_name || value.storage_key.split('/').pop() || 'Document';
-              const isBusy = busyStorageKey === value.storage_key;
-              return (
-                <div key={key} className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium truncate max-w-[180px]" title={displayName}>
-                      {displayName}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={isBusy}
-                      onClick={() => void openDocument(value.storage_key)}
-                    >
-                      <MaterialIcon name={isBusy ? 'progress_activity' : 'open_in_new'} className={isBusy ? 'animate-spin text-[12px]' : 'text-[12px]'} />
-                      <span className="ml-1">Open</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={isBusy}
-                      onClick={() => void downloadDocument(value.storage_key, value.file_name)}
-                    >
-                      <MaterialIcon name="download" className="text-[12px]" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            }
-
-            const display =
-              typeof value === 'string'
-                ? parseMessageWithLinks(value, entityMap)
-                : typeof value === 'number' || typeof value === 'boolean'
-                  ? String(value)
-                  : parseMessageWithLinks(JSON.stringify(value), entityMap);
-
-            return (
-              <div key={key} className="flex justify-between gap-4">
-                <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-                <span className="font-medium text-right break-words max-w-[260px]">
-                  {display}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
 }
 
 /**
@@ -731,7 +605,7 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
                     <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-0.5">
                         <span className="font-medium text-sm leading-tight">
-                          {parseMessageWithLinks(activity.event_label, entityMap)}
+                          {parseMessageWithLinks(activity.event_label, entityMap, { variant: 'inline' })}
                         </span>
                         <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
                           {getEventCategory(activity.event_type)}
@@ -752,7 +626,7 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
                       </div>
 
                       {/* Expandable details */}
-                      <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} />
+                      <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} linkVariant="inline" />
                     </div>
                   </div>
                 ))}
