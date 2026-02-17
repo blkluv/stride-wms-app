@@ -1050,9 +1050,11 @@ async function toolSubmitWillCall(
   // (Some environments still have the old trigger installed.)
   try {
     const raw = String(shipment.shipment_number || "").trim().toUpperCase();
-    const match = raw.match(/^SHP-(\d{5,6})$/);
+    const match = raw.match(/^SHP-(\d{5,})$/);
     if (match) {
-      const coerced = `OUT-${match[1].slice(-5)}`;
+      const digits = match[1];
+      const outDigits = digits.length > 5 && digits[0] !== "0" ? digits : digits.slice(-5);
+      const coerced = `OUT-${outDigits}`;
       const { error: renumberError } = await supabase
         .from("shipments")
         .update({ shipment_number: coerced })
