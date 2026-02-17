@@ -263,3 +263,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 78. Q: "Received Today" (dock intakes only) list row click destination?
     A: Navigate to the Dock Intake page (`/incoming/dock-intake/:id`) (option A).
 
+79. Q: Hub cards expanded list click behavior should be card-specific or always Shipment Details?
+    A: Card-specific. Expected Today -> inbound detail pages; Intakes In Progress -> Shipment Details; Received Today -> Dock Intake page.
+
