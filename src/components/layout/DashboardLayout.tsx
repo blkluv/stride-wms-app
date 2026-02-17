@@ -391,12 +391,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       });
     }
 
-    // Add Decision Ledger for admin_dev users (internal build tracking)
+    // Add admin_dev-only ops pages
     if (isAdminDev) {
       baseItems.push({
-        label: 'Decision Ledger',
-        href: '/decision-ledger',
-        icon: 'gavel',
+        label: 'Stripe Ops',
+        href: '/admin/stripe-ops',
+        icon: 'credit_card',
+      });
+      baseItems.push({
+        label: 'Pricing Ops',
+        href: '/admin/pricing-ops',
+        icon: 'tune',
       });
     }
 
