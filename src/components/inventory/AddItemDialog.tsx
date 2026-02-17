@@ -67,6 +67,7 @@ export function AddItemDialog({
 
   // Field suggestions
   const { suggestions: vendorSuggestions, addOrUpdateSuggestion: addVendorSuggestion } = useFieldSuggestions('vendor');
+  const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
 
   // Track if form has been modified
@@ -150,6 +151,7 @@ export function AddItemDialog({
 
       // Add suggestions for autocomplete
       if (vendor) addVendorSuggestion(vendor);
+      if (sku) addSkuSuggestion(sku);
       if (room) addRoomSuggestion(room);
 
       toast({
@@ -225,10 +227,10 @@ export function AddItemDialog({
             {/* SKU */}
             <div className="space-y-2">
               <Label htmlFor="sku">SKU (optional)</Label>
-              <Input
-                id="sku"
+              <AutocompleteInput
                 value={sku}
-                onChange={(e) => setSku(e.target.value)}
+                onChange={setSku}
+                suggestions={skuSuggestions}
                 placeholder="e.g., MFG-12345"
               />
             </div>

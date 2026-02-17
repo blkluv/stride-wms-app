@@ -121,6 +121,7 @@ export function ItemEditDialog({
 
   // Field suggestions for room and sidemark
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
+  const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
 
   // Fetch accounts
   useEffect(() => {
@@ -253,6 +254,7 @@ export function ItemEditDialog({
 
       // Add room to suggestions
       if (data.room) addRoomSuggestion(data.room);
+      if (data.sku) addSkuSuggestion(data.sku);
 
       toast({
         title: 'Item Updated',
@@ -374,7 +376,12 @@ export function ItemEditDialog({
                   <FormItem>
                     <FormLabel>SKU (optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="SKU" {...field} />
+                      <AutocompleteInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        suggestions={skuSuggestions}
+                        placeholder="SKU"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

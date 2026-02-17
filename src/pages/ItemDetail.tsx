@@ -272,6 +272,7 @@ export default function ItemDetail() {
 
   // Field suggestions for autocomplete
   const { suggestions: vendorSuggestions, addOrUpdateSuggestion: addVendorSuggestion } = useFieldSuggestions('vendor');
+  const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
   const { suggestions: descriptionSuggestions, addOrUpdateSuggestion: addDescSuggestion } = useFieldSuggestions('description');
   const { sidemarks } = useAccountSidemarks(item?.account_id);
   const { rooms } = useAccountRoomSuggestions(item?.account_id);
@@ -645,6 +646,7 @@ export default function ItemDetail() {
         });
       }
       setItem({ ...item, sku: newValue || null });
+      if (newValue) addSkuSuggestion(newValue);
       return true;
     } catch (error) {
       console.error('Error updating sku:', error);
@@ -978,14 +980,15 @@ export default function ItemDetail() {
                       {isClientUser ? (
                         <p className="font-medium">{item.sku || '-'}</p>
                       ) : (
-                        <Input
+                        <AutocompleteInput
                           value={editSku}
-                          onChange={(e) => setEditSku(e.target.value)}
+                          onChange={setEditSku}
                           onBlur={() => {
                             if (editSku !== (item.sku || '')) {
                               handleSkuSave(editSku);
                             }
                           }}
+                          suggestions={skuSuggestions.map(s => ({ value: s.value }))}
                           placeholder="Add SKU"
                           className="h-7 mt-1 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
                         />
