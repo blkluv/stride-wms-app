@@ -33,3 +33,11 @@ User decision:
 - Leave Stripe dashboard links as-is (no special Lovable preview workaround/note).
 - Focus efforts on the Stripe Ops + Pricing Ops consolidation and usability redesign.
 
+### QA-2026-02-17-ADMINOPS-005
+User decision:
+- Access control for the consolidated admin ops page remains `admin_dev` only (do not expand to tenant_admin).
+
+### QA-2026-02-17-ADMINOPS-006
+User decision:
+- Canonical route for the consolidated SaaS admin ops dashboard will be: `/admin/saas-ops`.
+
