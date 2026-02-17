@@ -25,6 +25,7 @@ import {
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpButton } from '@/components/prompts';
 import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
+import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
 
 // ============================================
 // TYPES
@@ -45,7 +46,6 @@ interface FormErrors {
   account?: string;
   warehouse?: string;
   outbound_type?: string;
-  release_type?: string;
   items?: string;
 }
 
@@ -132,7 +132,6 @@ export default function OutboundCreate() {
   const [sidemarkId, setSidemarkId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [releaseType, setReleaseType] = useState<string>('will_call');
   const [releasedTo, setReleasedTo] = useState('');
   const [releaseToEmail, setReleaseToEmail] = useState('');
   const [releaseToPhone, setReleaseToPhone] = useState('');
@@ -312,14 +311,10 @@ export default function OutboundCreate() {
     [sidemarks]
   );
 
-  const releaseTypeOptions: SelectOption[] = useMemo(
-    () => ([
-      { value: 'will_call', label: 'Will Call (Pickup/Release)' },
-      { value: 'disposal', label: 'Disposal' },
-      { value: 'return', label: 'Return to Sender' },
-    ]),
-    []
-  );
+  const derivedReleaseType = useMemo(() => {
+    const selectedType = outboundTypes.find((t) => t.id === outboundTypeId);
+    return deriveLegacyReleaseTypeFromOutboundTypeName(selectedType?.name);
+  }, [outboundTypeId, outboundTypes]);
 
   // Filter items by search
   const filteredItems = useMemo(() => {
@@ -448,7 +443,8 @@ export default function OutboundCreate() {
           sidemark_id: sidemarkId || null,
           expected_arrival_date: expectedDate || null,
           notes: notes || null,
-          release_type: releaseType || null,
+          // Legacy field: derived from current outbound type
+          release_type: derivedReleaseType,
           released_to: releasedTo.trim() || null,
           driver_name: releasedTo.trim() || null,
           // Keep legacy contact fields in sync (used by older release flows)
@@ -674,22 +670,6 @@ export default function OutboundCreate() {
                     value={poNumber}
                     onChange={(e) => setPoNumber(e.target.value)}
                     placeholder="Purchase order number"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Release Type</Label>
-                  <SearchableSelect
-                    data-testid="release-type-select"
-                    options={releaseTypeOptions}
-                    value={releaseType}
-                    onChange={(v) => {
-                      setReleaseType(v);
-                      if (errors.release_type) setErrors({ ...errors, release_type: undefined });
-                    }}
-                    placeholder="Select release type..."
-                    searchPlaceholder="Search release types..."
-                    emptyText="No release types found"
-                    error={errors.release_type}
                   />
                 </div>
               </div>
