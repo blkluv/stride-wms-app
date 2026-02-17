@@ -126,6 +126,7 @@ export function useAccountItems(accountId: string | undefined) {
           id,
           item_code,
           description,
+          vendor,
           quantity,
           status,
           room,

@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/table';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpButton } from '@/components/prompts';
+import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
+import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
 
 // ============================================
 // TYPES
@@ -44,7 +46,6 @@ interface FormErrors {
   account?: string;
   warehouse?: string;
   outbound_type?: string;
-  release_type?: string;
   items?: string;
 }
 
@@ -131,7 +132,6 @@ export default function OutboundCreate() {
   const [sidemarkId, setSidemarkId] = useState<string>('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [releaseType, setReleaseType] = useState<string>('will_call');
   const [releasedTo, setReleasedTo] = useState('');
   const [releaseToEmail, setReleaseToEmail] = useState('');
   const [releaseToPhone, setReleaseToPhone] = useState('');
@@ -181,8 +181,26 @@ export default function OutboundCreate() {
           .single();
 
         if (error) throw error;
+        let effectiveShipmentNumber: string | null = data.shipment_number;
+
+        // Guard: some envs still generate SHP-###### for outbound shipments.
+        // Coerce to OUT-##### for new outbound shipments and persist back to DB.
+        const coerced = coerceOutboundShipmentNumber(effectiveShipmentNumber);
+        if (coerced) {
+          const { error: renumberError } = await (supabase.from('shipments') as any)
+            .update({ shipment_number: coerced })
+            .eq('tenant_id', profile.tenant_id)
+            .eq('id', data.id);
+
+          if (renumberError) {
+            console.warn('[OutboundCreate] failed to coerce outbound shipment_number:', renumberError);
+          } else {
+            effectiveShipmentNumber = coerced;
+          }
+        }
+
         setDraftShipmentId(data.id);
-        setDraftShipmentNumber(data.shipment_number);
+        setDraftShipmentNumber(effectiveShipmentNumber);
       } catch (err: any) {
         console.error('[OutboundCreate] draft create error:', err);
         toast({
@@ -293,14 +311,10 @@ export default function OutboundCreate() {
     [sidemarks]
   );
 
-  const releaseTypeOptions: SelectOption[] = useMemo(
-    () => ([
-      { value: 'will_call', label: 'Will Call (Pickup/Release)' },
-      { value: 'disposal', label: 'Disposal' },
-      { value: 'return', label: 'Return to Sender' },
-    ]),
-    []
-  );
+  const derivedReleaseType = useMemo(() => {
+    const selectedType = outboundTypes.find((t) => t.id === outboundTypeId);
+    return deriveLegacyReleaseTypeFromOutboundTypeName(selectedType?.name);
+  }, [outboundTypeId, outboundTypes]);
 
   // Filter items by search
   const filteredItems = useMemo(() => {
@@ -308,7 +322,11 @@ export default function OutboundCreate() {
     const query = searchQuery.toLowerCase();
     return accountItems.filter(item =>
       item.item_code?.toLowerCase().includes(query) ||
-      item.description?.toLowerCase().includes(query)
+      item.description?.toLowerCase().includes(query) ||
+      item.vendor?.toLowerCase().includes(query) ||
+      item.location?.code?.toLowerCase().includes(query) ||
+      item.sidemark?.sidemark_name?.toLowerCase().includes(query) ||
+      item.room?.toLowerCase().includes(query)
     );
   }, [accountItems, searchQuery]);
 
@@ -425,7 +443,8 @@ export default function OutboundCreate() {
           sidemark_id: sidemarkId || null,
           expected_arrival_date: expectedDate || null,
           notes: notes || null,
-          release_type: releaseType || null,
+          // Legacy field: derived from current outbound type
+          release_type: derivedReleaseType,
           released_to: releasedTo.trim() || null,
           driver_name: releasedTo.trim() || null,
           // Keep legacy contact fields in sync (used by older release flows)
@@ -653,22 +672,6 @@ export default function OutboundCreate() {
                     placeholder="Purchase order number"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Release Type</Label>
-                  <SearchableSelect
-                    data-testid="release-type-select"
-                    options={releaseTypeOptions}
-                    value={releaseType}
-                    onChange={(v) => {
-                      setReleaseType(v);
-                      if (errors.release_type) setErrors({ ...errors, release_type: undefined });
-                    }}
-                    placeholder="Select release type..."
-                    searchPlaceholder="Search release types..."
-                    emptyText="No release types found"
-                    error={errors.release_type}
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -804,19 +807,18 @@ export default function OutboundCreate() {
                         <TableRow>
                           <TableHead className="w-12"></TableHead>
                           <TableHead>Item Code</TableHead>
-                          <TableHead className="hidden sm:table-cell w-16 text-right">Qty</TableHead>
-                          <TableHead className="hidden sm:table-cell">Description</TableHead>
-                          <TableHead className="hidden md:table-cell">Location</TableHead>
+                          <TableHead className="w-16 text-right">Qty</TableHead>
+                          <TableHead className="hidden md:table-cell">Vendor</TableHead>
+                          <TableHead className="hidden md:table-cell">Description</TableHead>
+                          <TableHead className="hidden sm:table-cell">Location</TableHead>
+                          <TableHead className="hidden md:table-cell">Sidemark</TableHead>
                           <TableHead className="hidden lg:table-cell">Room</TableHead>
-                          <TableHead className="hidden md:table-cell">Class</TableHead>
-                          <TableHead className="hidden lg:table-cell">Type</TableHead>
-                          <TableHead className="hidden lg:table-cell">Sidemark</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                               No items match your search
                             </TableCell>
                           </TableRow>
@@ -837,30 +839,23 @@ export default function OutboundCreate() {
                                 />
                               </TableCell>
                               <TableCell className="font-medium">{item.item_code}</TableCell>
-                              <TableCell className="hidden sm:table-cell text-right">
+                              <TableCell className="text-right">
                                 {typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}
                               </TableCell>
-                              <TableCell className="hidden sm:table-cell max-w-[200px] truncate">
+                              <TableCell className="hidden md:table-cell">
+                                {item.vendor || '-'}
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell max-w-[240px] truncate">
                                 {item.description || '-'}
                               </TableCell>
-                              <TableCell className="hidden md:table-cell">
+                              <TableCell className="hidden sm:table-cell">
                                 {item.location?.code || '-'}
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                {item.sidemark?.sidemark_name || '-'}
                               </TableCell>
                               <TableCell className="hidden lg:table-cell">
                                 {item.room || '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {item.class?.code ? (
-                                  <Badge variant="outline">{item.class.code}</Badge>
-                                ) : '-'}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                {item.item_type?.name ? (
-                                  <Badge variant="outline">{item.item_type.name}</Badge>
-                                ) : '-'}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                {item.sidemark?.sidemark_name || '-'}
                               </TableCell>
                             </TableRow>
                           ))

@@ -20,6 +20,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
+import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
 
 interface Warehouse {
   id: string;
@@ -175,13 +177,16 @@ export default function ClientOutboundCreate() {
     setSaving(true);
 
     try {
+      const selectedOutboundType = outboundTypes.find((t) => t.id === outboundTypeId);
+      const derivedReleaseType = deriveLegacyReleaseTypeFromOutboundTypeName(selectedOutboundType?.name);
+
       // Create outbound shipment
       const { data: shipment, error: shipmentError } = await (supabase.from('shipments') as any)
         .insert({
           tenant_id: portalUser.tenant_id,
           shipment_type: 'outbound',
-          // Required for outbound completion SOP validation
-          release_type: 'will_call',
+          // Legacy field: derived from current outbound type (required for SOP validation)
+          release_type: derivedReleaseType,
           status: 'pending',
           account_id: portalUser.account_id,
           warehouse_id: warehouseId,
@@ -200,6 +205,19 @@ export default function ClientOutboundCreate() {
         .single();
 
       if (shipmentError) throw shipmentError;
+      let effectiveShipmentNumber: string | null = shipment.shipment_number;
+
+      // Coerce legacy SHP-###### → OUT-##### for new outbound shipments (best-effort).
+      const coerced = coerceOutboundShipmentNumber(effectiveShipmentNumber);
+      if (coerced) {
+        const { error: renumberError } = await (supabase.from('shipments') as any)
+          .update({ shipment_number: coerced })
+          .eq('tenant_id', portalUser.tenant_id)
+          .eq('id', shipment.id);
+        if (!renumberError) {
+          effectiveShipmentNumber = coerced;
+        }
+      }
 
       // Create shipment items
       const itemIds = Array.from(selectedItemIds);
@@ -226,7 +244,7 @@ export default function ClientOutboundCreate() {
 
       toast({
         title: 'Outbound Shipment Created',
-        description: `Shipment ${shipment.shipment_number || ''} has been submitted to the warehouse.`,
+        description: `Shipment ${effectiveShipmentNumber || ''} has been submitted to the warehouse.`,
       });
 
       navigate('/client/shipments');
