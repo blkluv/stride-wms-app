@@ -591,7 +591,7 @@ export function ShipmentItemRow({
                       onChange={(e) => setVendor(e.target.value)}
                       onBlur={() => handleBlur('vendor', vendor)}
                       placeholder="Vendor"
-                      autoCapitalize="sentences"
+                      autoCapitalize="characters"
                       className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
                     />
                   ) : (
@@ -608,7 +608,7 @@ export function ShipmentItemRow({
                       onChange={(e) => setDescription(e.target.value)}
                       onBlur={() => handleBlur('description', description)}
                       placeholder="Description"
-                      autoCapitalize="sentences"
+                      autoCapitalize="characters"
                       className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
                     />
                   ) : (
@@ -653,7 +653,7 @@ export function ShipmentItemRow({
                       onChange={(e) => setSidemark(e.target.value)}
                       onBlur={() => handleBlur('sidemark', sidemark)}
                       placeholder="Sidemark"
-                      autoCapitalize="sentences"
+                      autoCapitalize="characters"
                       className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
                     />
                   ) : (
@@ -672,7 +672,7 @@ export function ShipmentItemRow({
                       onChange={(e) => setRoom(e.target.value)}
                       onBlur={() => handleBlur('room', room)}
                       placeholder="Room"
-                      autoCapitalize="sentences"
+                      autoCapitalize="characters"
                       className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
                     />
                   ) : (
