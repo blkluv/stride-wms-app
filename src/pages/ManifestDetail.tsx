@@ -156,7 +156,7 @@ export default function ManifestDetail() {
       .map(i => ({
         id: i.item_id,
         itemCode: i.item_code,
-        sku: i.item?.sku || '',
+        sku: (i.item as any)?.sku || '',
         description: i.item_description || i.item?.description || '',
         vendor: i.item?.vendor || '',
         account: i.account?.account_name || '',
