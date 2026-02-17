@@ -28,3 +28,8 @@ User clarification:
 - The COOP navigation block occurs only when running inside a Lovable preview page.
 - When opening the app outside that preview context (normal browser tab on the real domain), the Stripe dashboard link works.
 
+### QA-2026-02-17-ADMINOPS-004
+User decision:
+- Leave Stripe dashboard links as-is (no special Lovable preview workaround/note).
+- Focus efforts on the Stripe Ops + Pricing Ops consolidation and usability redesign.
+

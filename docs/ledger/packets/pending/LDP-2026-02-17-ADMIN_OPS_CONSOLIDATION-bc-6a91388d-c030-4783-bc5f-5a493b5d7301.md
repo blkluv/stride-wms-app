@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `3`
+- Q&A items extracted: `4`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005`
 - Unresolved/open (draft): `DL-2026-02-17-002`
 - Supersedes: `-`
 
@@ -24,6 +24,7 @@
 | DL-2026-02-17-002 | Consolidate Stripe Ops + Pricing Ops into one admin dashboard with overview and clear navigation | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-001` | - | - |
 | DL-2026-02-17-003 | Stripe dashboard links do not require user-provided Stripe account id | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-002` | - | - |
 | DL-2026-02-17-004 | Stripe dashboard navigation blocks in Lovable preview are environment constraints (not app bugs) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-003` | - | - |
+| DL-2026-02-17-005 | Do not add Lovable-preview-specific workaround or note for Stripe dashboard navigation | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-004` | - | - |
 
 ## Detailed Decision Entries
 
@@ -102,10 +103,29 @@ Embedded preview environments may enforce browser isolation policies that affect
 
 #### Implementation impact
 - Treat the Stripe dashboard link itself as correct (root dashboard link + object links).
-- Optionally add a short operator-friendly note in the consolidated ops UI that embedded previews may block Stripe navigation.
+- No Lovable-preview-specific workaround is required by default; focus on consolidation/usability improvements.
+
+### DL-2026-02-17-005: Do not add Lovable-preview-specific workaround or note for Stripe dashboard navigation
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-004`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Do not implement any Lovable-preview-specific workaround or in-app warning note for the Stripe dashboard navigation block. Treat the issue as an environment constraint and prioritize the admin ops consolidation and usability redesign.
+
+#### Why
+The behavior works in normal usage (outside the embedded preview), and adding preview-specific messaging would add clutter/confusion for real operators.
+
+#### Implementation impact
+- Keep Stripe links intact and focus UI effort on consolidation, information architecture, and non-technical-friendly wording.
 
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
 | DLE-2026-02-17-002 | 2026-02-17 | DL-2026-02-17-003 | planned | - | builder | Ensure consolidated ops UI uses Stripe dashboard root + stored object id links without requiring manual Stripe account id input. |
 | DLE-2026-02-17-003 | 2026-02-17 | DL-2026-02-17-004 | planned | - | builder | Add operator-friendly guidance (if desired) that embedded previews may block Stripe navigation; confirm behavior works on real domain. |
+| DLE-2026-02-17-004 | 2026-02-17 | DL-2026-02-17-005 | completed | - | builder | Confirmed: no Lovable-preview workaround/note will be added; focus on consolidation + usability improvements. |
