@@ -316,7 +316,7 @@ export default function ClientInboundCreate() {
       warehouseName={tenant?.name}
       userName={userName}
     >
-      <div className="space-y-6 max-w-2xl mx-auto">
+      <div className="space-y-6 max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4">
           <Link to="/client/shipments">
@@ -448,6 +448,7 @@ export default function ClientInboundCreate() {
                   index={index}
                   vendorSuggestions={vendorValues}
                   descriptionSuggestions={descriptionSuggestionOptions}
+                  sidemarkSuggestions={sidemarkSuggestions}
                   classes={classes}
                   classOptional
                   errors={errors.items?.[item.id]}
