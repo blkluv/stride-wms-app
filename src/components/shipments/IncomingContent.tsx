@@ -221,7 +221,18 @@ function ExpectedList({
               </div>
               <div className="text-sm text-muted-foreground">{s.account_name || '-'}</div>
               <div className="text-xs text-muted-foreground">
-                {s.expected_pieces ?? '-'} pcs / {s.open_items_count ?? '-'} items
+                {s.expected_pieces ?? '-'} expected pcs
+                {' '}
+                • ETA {s.eta_start || s.eta_end ? (
+                  <>
+                    {formatDate(s.eta_start)}
+                    {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
+                  </>
+                ) : (
+                  '-'
+                )}
+                {' '}
+                • {s.open_items_count ?? '-'} items
               </div>
             </CardContent>
           </Card>
@@ -235,11 +246,9 @@ function ExpectedList({
               <TableHead>Expected #</TableHead>
               <TableHead>Account</TableHead>
               <TableHead>Vendor</TableHead>
-              <TableHead>ETA Window</TableHead>
               <TableHead className="text-right">Expected Pieces</TableHead>
-              <TableHead className="text-right">Items</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead>ETA</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -257,27 +266,21 @@ function ExpectedList({
                 </TableCell>
                 <TableCell>{s.account_name || '-'}</TableCell>
                 <TableCell>{s.vendor_name || '-'}</TableCell>
-                <TableCell>
-                  {s.eta_start || s.eta_end ? (
-                    <span className="text-sm">
-                      {formatDate(s.eta_start)}
-                      {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
-                    </span>
-                  ) : (
-                    '-'
-                  )}
-                </TableCell>
                 <TableCell className="text-right">{s.expected_pieces ?? '-'}</TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {s.open_items_count ?? '-'}
-                </TableCell>
                 <TableCell>
                   <Badge variant={statusBadgeVariant(s.inbound_status)}>
                     {formatStatus(s.inbound_status)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
-                  {formatDate(s.created_at)}
+                  {s.eta_start || s.eta_end ? (
+                    <>
+                      {formatDate(s.eta_start)}
+                      {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
+                    </>
+                  ) : (
+                    '-'
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -599,11 +602,14 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
         </TabsContent>
 
         <TabsContent value="expected" className="mt-4">
-          <ExpectedList
-            shipments={shipments}
-            loading={loading}
-            onRowClick={handleRowClick}
-          />
+          <div>
+            <h3 className="font-medium text-sm text-muted-foreground mb-3">All Expected Shipments</h3>
+            <ExpectedList
+              shipments={shipments}
+              loading={loading}
+              onRowClick={handleRowClick}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="dock_intakes" className="mt-4 space-y-6">
