@@ -1590,6 +1590,7 @@ export default function ShipmentDetail() {
       setShowSignatureDialog(false);
       setPendingOverrideWarnings(undefined);
       setDocumentRefreshKey(prev => prev + 1);
+      void refetchDocuments();
       fetchShipment();
     } catch (error) {
       console.error('Error completing outbound shipment:', error);
@@ -2911,16 +2912,14 @@ export default function ShipmentDetail() {
         </CardHeader>
         <CardContent>
           <DocumentCapture
-            key={documentRefreshKey}
+            refetchKey={documentRefreshKey}
             context={{ type: 'shipment', shipmentId: shipment.id }}
             maxDocuments={12}
             ocrEnabled={true}
             onDocumentAdded={() => {
-              setDocumentRefreshKey((prev) => prev + 1);
               void refetchDocuments();
             }}
             onDocumentRemoved={() => {
-              setDocumentRefreshKey((prev) => prev + 1);
               void refetchDocuments();
             }}
           />

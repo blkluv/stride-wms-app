@@ -4,7 +4,7 @@
  * Matches the PhotoCapture component layout
  */
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,8 @@ interface DocumentCaptureProps {
   ocrEnabled?: boolean;
   onDocumentAdded?: (documentId: string) => void;
   onDocumentRemoved?: (documentId: string) => void;
+  /** Change this value to trigger an internal refetch without remounting */
+  refetchKey?: number;
 }
 
 export function DocumentCapture({
@@ -30,6 +32,7 @@ export function DocumentCapture({
   ocrEnabled = true,
   onDocumentAdded,
   onDocumentRemoved,
+  refetchKey,
 }: DocumentCaptureProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +54,13 @@ export function DocumentCapture({
     contextType,
     contextId,
   });
+
+  // Refetch when refetchKey changes (without forcing a remount via React key)
+  useEffect(() => {
+    if (refetchKey !== undefined && refetchKey > 0) {
+      void refetch();
+    }
+  }, [refetchKey, refetch]);
 
   const handleScanSuccess = useCallback((documentId: string) => {
     setScannerOpen(false);
