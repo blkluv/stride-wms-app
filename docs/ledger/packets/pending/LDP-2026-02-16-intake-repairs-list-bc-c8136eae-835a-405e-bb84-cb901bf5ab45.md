@@ -16,7 +16,7 @@
 ### DEC-2026-02-16-REC-008 (draft)
 - Goal: Combine Stage 1 + Stage 2 into a single dock intake page flow after Stage 1 completion.
 - Clarifications: proceed via Hub → Intakes in Progress → intake; “Continue to Stage 2”; Stage 1 editable; same buckets; confirmation inline reminder (not blocking).
-- Open: clarify the expected status labeling on Hub.
+- Open: confirm the exact human-readable labels for `inbound_status` on the Hub (“draft”, “stage1_complete”, “receiving”), and ensure mapping is UI-only (no new workflow states).
 
 ### DEC-2026-02-16-REC-009 (draft)
 - Goal: signature preview must reflect captured signature; button changes to Edit.

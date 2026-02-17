@@ -25,6 +25,7 @@ Chat: bc-c8136eae-835a-405e-bb84-cb901bf5ab45
 ### Item 1: Combined Stage 1 & Stage 2
 - Access path: **Shipments Hub → expand “Intakes in Progress” card → click an intake**.
 - The list shows status as “Expected”; user expectation is “In Progress”.
+- Status display should reflect the *actual dock intake stage* (draft / stage1_complete / receiving), but must be a **safe UI-only mapping** (do not introduce new workflow states).
 - UX: **“Continue to Stage 2”** button starts Stage 2.
 - Stage 1 should remain **editable**.
 - Stage 2 photos/documents should use the **same buckets/collections** as Stage 1.
@@ -34,8 +35,8 @@ Chat: bc-c8136eae-835a-405e-bb84-cb901bf5ab45
 ## Open questions / unresolved decisions
 
 - What exact status label(s) should the Hub “Intakes in Progress” card display for dock intakes:
-  - a single “In Progress” label, or
-  - mapped labels derived from `inbound_status` (`draft`, `stage1_complete`, `receiving`, etc.)?
+  - mapped labels derived from `inbound_status` (`draft`, `stage1_complete`, `receiving`), with an “In Progress” fallback if unknown?
+  - Confirm the human-readable label text for `stage1_complete` (e.g. “Stage 1 Complete” vs “Ready for Stage 2”).
 
 ## Notes
 
