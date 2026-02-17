@@ -46,3 +46,10 @@ User decision + new request:
 - Old routes `/admin/stripe-ops` and `/admin/pricing-ops` can be discarded; only the new consolidated `/admin/saas-ops` will be used.
 - User reports `/admin/email-ops` is not visible while logged in as `admin_dev` and requests it be added into `/admin/saas-ops` with the same UX simplicity.
 
+### QA-2026-02-17-ADMINOPS-008
+User requirements (Email Ops / Resend):
+- Build email management analogous to the platform-managed Twilio SMS approach.
+- Use the platform Resend account to support tenant-branded sending so clients can send emails from the app using their own domains.
+- Tenant workflow intent: clients update DNS records and fill out fields in the app (self-service) to configure sending.
+- Admin intent: “admin/email-ops” capability is for the operator (admin_dev) to ensure Resend is configured correctly to support this for tenants.
+

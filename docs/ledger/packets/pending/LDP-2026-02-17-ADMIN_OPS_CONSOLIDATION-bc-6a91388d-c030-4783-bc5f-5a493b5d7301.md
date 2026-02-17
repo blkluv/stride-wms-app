@@ -12,10 +12,10 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `7`
+- Q&A items extracted: `8`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009`
-- Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012`
+- Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
 ## Decision Index Rows
@@ -29,6 +29,9 @@
 | DL-2026-02-17-007 | Canonical consolidated SaaS ops route is /admin/saas-ops | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-006` | - | - |
 | DL-2026-02-17-008 | Retire standalone Stripe Ops + Pricing Ops pages; manage via consolidated /admin/saas-ops only | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007` | - | - |
 | DL-2026-02-17-009 | Add Email Ops section into /admin/saas-ops with simplified non-technical UX | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007` | - | - |
+| DL-2026-02-17-010 | Remove legacy /admin/stripe-ops and /admin/pricing-ops routes (no redirect) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007` | - | - |
+| DL-2026-02-17-011 | Use Resend for tenant-branded email sending from tenant domains (DNS-based self-setup) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-008` | - | - |
+| DL-2026-02-17-012 | Add Email Ops controls for Resend domain verification status into /admin/saas-ops | SaaS Admin UI | draft | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-008` | - | - |
 
 ## Detailed Decision Entries
 
@@ -205,6 +208,65 @@ Email is a critical operational channel (invites, notices, and system alerts). A
 - If `/admin/email-ops` is missing, implement Email Ops in the consolidated page instead of a standalone admin page.
 - Define concrete “Email Ops” scope (logs, test send, configuration visibility) via Q&A before implementation.
 
+### DL-2026-02-17-010: Remove legacy /admin/stripe-ops and /admin/pricing-ops routes (no redirect)
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-007`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Remove the legacy `/admin/stripe-ops` and `/admin/pricing-ops` routes. The consolidated `/admin/saas-ops` dashboard will be the single route used for SaaS ops; legacy routes should not remain as redirects or aliases.
+
+#### Why
+Keeping multiple URLs for the same operational surface increases confusion and encourages continued use of legacy layouts.
+
+#### Implementation impact
+- Remove the `/admin/stripe-ops` and `/admin/pricing-ops` routes from `src/App.tsx`.
+- Consolidate the existing Stripe Ops and Pricing Ops content into `/admin/saas-ops`.
+
+### DL-2026-02-17-011: Use Resend for tenant-branded email sending from tenant domains (DNS-based self-setup)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-008`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Use the platform Resend account to support tenant-branded email sending so tenants can send emails from the app using their own domains. Tenants will self-configure by updating required DNS records and filling out configuration fields in the app; emails should send from tenant domains once verified.
+
+#### Why
+Tenant-branded sending improves professionalism and deliverability, and enables customer-owned sender identities without requiring separate Resend accounts per tenant.
+
+#### Implementation impact
+- Backend: store per-tenant email domain configuration and verification status.
+- Backend: add secure server-side integration to Resend Domains API to create/verify domains.
+- Frontend: add tenant-facing setup UX (DNS records + status) and admin-dev oversight UX (Email Ops).
+- Sending: update email-sending functions to select a tenant-specific verified From/Reply-To configuration (with safe fallback).
+
+### DL-2026-02-17-012: Add Email Ops controls for Resend domain verification status into /admin/saas-ops
+- Domain: SaaS Admin UI
+- State: draft
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-008`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Add an Email Ops section inside `/admin/saas-ops` that allows `admin_dev` users to validate Resend readiness for tenant-branded sending (domain verification status, required DNS records, and any failed/blocked states) so platform operators can quickly diagnose tenant email setup issues.
+
+#### Why
+Resend domain verification issues are a common operational blocker; centralizing status and remediation hints reduces support time and improves onboarding throughput.
+
+#### Implementation impact
+- Add Email Ops UI to `/admin/saas-ops` (admin_dev only).
+- Decide the minimum actionable feature set (read-only status vs actions like refresh/resend/test) via Q&A before implementation.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -215,3 +277,6 @@ Email is a critical operational channel (invites, notices, and system alerts). A
 | DLE-2026-02-17-006 | 2026-02-17 | DL-2026-02-17-007 | completed | - | builder | Confirmed: canonical consolidated SaaS ops route will be `/admin/saas-ops`. |
 | DLE-2026-02-17-007 | 2026-02-17 | DL-2026-02-17-008 | completed | - | builder | Confirmed: retire standalone Stripe Ops + Pricing Ops pages; consolidated dashboard is the operational entry point. |
 | DLE-2026-02-17-008 | 2026-02-17 | DL-2026-02-17-009 | planned | - | builder | Determine Email Ops scope (logs/test/config visibility) before implementing Email Ops section within /admin/saas-ops. |
+| DLE-2026-02-17-009 | 2026-02-17 | DL-2026-02-17-010 | completed | - | builder | Confirmed: legacy Stripe/Pricing ops routes should be removed; use /admin/saas-ops only. |
+| DLE-2026-02-17-010 | 2026-02-17 | DL-2026-02-17-011 | planned | - | builder | Define DB schema + Resend Domains API integration + tenant setup UX for tenant-branded sending via DNS verification. |
+| DLE-2026-02-17-011 | 2026-02-17 | DL-2026-02-17-012 | planned | - | builder | Define Email Ops UI content for Resend domain verification status (admin_dev oversight) before implementation. |
