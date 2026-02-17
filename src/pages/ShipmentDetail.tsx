@@ -104,6 +104,8 @@ interface ReceivedItemData {
   status: 'received' | 'partial' | 'missing';
 }
 
+type ScanListSortField = 'item_code' | 'location';
+
 interface Shipment {
   id: string;
   shipment_number: string;
@@ -235,6 +237,8 @@ export default function ShipmentDetail() {
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
   const [pendingOverrideWarnings, setPendingOverrideWarnings] = useState<SOPBlocker[] | undefined>(undefined);
   const [submittingPartialRelease, setSubmittingPartialRelease] = useState(false);
+  const [scanListSortField, setScanListSortField] = useState<ScanListSortField>('location');
+  const [scanListSortDirection, setScanListSortDirection] = useState<'asc' | 'desc'>('asc');
   const [accountSettings, setAccountSettings] = useState<{
     default_shipment_notes: string | null;
     highlight_shipment_notes: boolean;
@@ -1990,49 +1994,124 @@ export default function ShipmentDetail() {
                 )}
                 <div className="space-y-2">
                   <Label className="text-sm">Manual override</Label>
-                  <div className="max-h-40 overflow-y-auto rounded-md border p-2 space-y-1">
+                  <div className="max-h-40 overflow-y-auto rounded-md border">
                     {(() => {
                       const overrideCandidates = pullSessionActive
                         ? activeOutboundItems.filter(item => !isOutboundDock(item.item?.current_location?.code))
                         : activeOutboundItems.filter(item => !isReleasedLocation(item.item?.current_location?.code));
+
                       if (overrideCandidates.length === 0) {
-                        return <p className="text-xs text-muted-foreground py-1">All items already {pullSessionActive ? 'pulled' : 'released'}.</p>;
+                        return (
+                          <p className="text-xs text-muted-foreground p-2">
+                            All items already {pullSessionActive ? 'pulled' : 'released'}.
+                          </p>
+                        );
                       }
+
+                      const selectableIds = overrideCandidates
+                        .map(item => item.item?.id)
+                        .filter(Boolean) as string[];
+
+                      const allSelected =
+                        selectableIds.length > 0 && selectableIds.every((id) => manualOverrideItemIds.has(id));
+
+                      const compare = (a: string, b: string) =>
+                        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+                      const dir = scanListSortDirection === 'asc' ? 1 : -1;
+                      const getItemCode = (si: ShipmentItem) =>
+                        (si.item?.item_code || si.expected_description || '').trim();
+                      const getLocationCode = (si: ShipmentItem) =>
+                        (si.item?.current_location?.code || '').trim();
+
+                      const sortedCandidates = [...overrideCandidates].sort((a, b) => {
+                        const aVal = scanListSortField === 'location' ? getLocationCode(a) : getItemCode(a);
+                        const bVal = scanListSortField === 'location' ? getLocationCode(b) : getItemCode(b);
+                        return compare(aVal, bVal) * dir;
+                      });
+
+                      const toggleSort = (field: ScanListSortField) => {
+                        if (scanListSortField === field) {
+                          setScanListSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+                        } else {
+                          setScanListSortField(field);
+                          setScanListSortDirection('asc');
+                        }
+                      };
+
+                      const sortIconName =
+                        scanListSortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward';
+
                       return (
                         <>
-                          <div className="flex items-center gap-2 pb-1 border-b mb-1">
-                            <Checkbox
-                              checked={overrideCandidates.every(item => item.item?.id && manualOverrideItemIds.has(item.item.id))}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setManualOverrideItemIds(new Set(overrideCandidates.map(item => item.item!.id)));
-                                } else {
-                                  setManualOverrideItemIds(new Set());
-                                }
-                              }}
-                            />
-                            <span className="text-xs font-medium">Select All ({overrideCandidates.length})</span>
-                          </div>
-                          {overrideCandidates.map(item => (
-                            <div key={item.id} className="flex items-center gap-2">
-                              <Checkbox
-                                checked={!!item.item?.id && manualOverrideItemIds.has(item.item.id)}
-                                onCheckedChange={(checked) => {
-                                  if (!item.item?.id) return;
-                                  setManualOverrideItemIds(prev => {
-                                    const next = new Set(prev);
+                          <div className="sticky top-0 z-10 bg-background px-2 py-1 border-b">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Checkbox
+                                  checked={allSelected}
+                                  onCheckedChange={(checked) => {
                                     if (checked) {
-                                      next.add(item.item!.id);
+                                      setManualOverrideItemIds(new Set(selectableIds));
                                     } else {
-                                      next.delete(item.item!.id);
+                                      setManualOverrideItemIds(new Set());
                                     }
-                                    return next;
-                                  });
-                                }}
-                              />
-                              <span className="text-sm">{item.item?.item_code || item.expected_description || 'Unknown item'}</span>
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium inline-flex items-center gap-1 hover:underline"
+                                  onClick={() => toggleSort('item_code')}
+                                >
+                                  Item Code
+                                  {scanListSortField === 'item_code' && (
+                                    <MaterialIcon name={sortIconName} size="sm" className="opacity-70" />
+                                  )}
+                                </button>
+                                <span className="text-xs text-muted-foreground">
+                                  ({overrideCandidates.length})
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs font-medium inline-flex items-center gap-1 hover:underline"
+                                onClick={() => toggleSort('location')}
+                              >
+                                Location
+                                {scanListSortField === 'location' && (
+                                  <MaterialIcon name={sortIconName} size="sm" className="opacity-70" />
+                                )}
+                              </button>
                             </div>
-                          ))}
+                          </div>
+                          <div className="p-2 space-y-1">
+                            {sortedCandidates.map(item => (
+                              <div key={item.id} className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Checkbox
+                                    checked={!!item.item?.id && manualOverrideItemIds.has(item.item.id)}
+                                    onCheckedChange={(checked) => {
+                                      if (!item.item?.id) return;
+                                      setManualOverrideItemIds(prev => {
+                                        const next = new Set(prev);
+                                        if (checked) {
+                                          next.add(item.item!.id);
+                                        } else {
+                                          next.delete(item.item!.id);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                  <span className="text-sm font-mono truncate">
+                                    {item.item?.item_code || item.expected_description || 'Unknown item'}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {item.item?.current_location?.code || '-'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </>
                       );
                     })()}
