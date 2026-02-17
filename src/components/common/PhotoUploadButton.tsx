@@ -21,6 +21,8 @@ interface PhotoUploadButtonProps {
   size?: 'default' | 'sm' | 'lg' | 'icon';
   className?: string;
   label?: string;
+  /** Show the drag/drop helper text under the button (desktop only UX). */
+  showHint?: boolean;
 }
 
 export function PhotoUploadButton({
@@ -34,6 +36,7 @@ export function PhotoUploadButton({
   size = 'default',
   className,
   label = 'Upload',
+  showHint = true,
 }: PhotoUploadButtonProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -106,14 +109,15 @@ export function PhotoUploadButton({
       onFiles={processFiles}
       accept="image/*"
       disabled={uploading}
-      hint="Drag and drop photos here, or click to upload"
+      hint={showHint ? "Drag and drop photos here, or click to upload" : undefined}
+      className={className}
     >
       <Button
         type="button"
         variant={variant}
         size={size}
         onClick={() => fileInputRef.current?.click()}
-        className={className}
+        className="w-full"
         disabled={uploading}
       >
         {uploading ? (

@@ -10,6 +10,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpTip } from '@/components/ui/help-tip';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { AutosaveIndicator } from './AutosaveIndicator';
@@ -28,6 +29,9 @@ import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentException
 import { AccountSelect } from '@/components/ui/account-select';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
+import { BillingCalculator } from '@/components/billing/BillingCalculator';
+import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
+import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
 import {
   Dialog,
   DialogContent,
@@ -100,6 +104,7 @@ export function Stage1DockIntake({
 }: Stage1DockIntakeProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const { hasRole } = usePermissions();
 
   // Form state
   const [accountId, setAccountId] = useState<string>(shipment.account_id || '');
@@ -137,6 +142,21 @@ export function Stage1DockIntake({
 
   // Submitting
   const [completing, setCompleting] = useState(false);
+
+  // Billing UI (manager/admin only)
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+  const [addChargeOpen, setAddChargeOpen] = useState(false);
+  const [addCreditOpen, setAddCreditOpen] = useState(false);
+  const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
+  const canAddCredit = hasRole('admin') || hasRole('tenant_admin');
+
+  // If the shipment account changes, refresh billing preview/rates.
+  useEffect(() => {
+    if (!canSeeBilling) return;
+    if (!accountId) return;
+    setBillingRefreshKey((prev) => prev + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, canSeeBilling]);
 
   // Autosave - disable while completing to prevent race conditions
   const autosave = useReceivingAutosave(shipmentId, !completing);
@@ -955,59 +975,19 @@ export function Stage1DockIntake({
 
       {/* Photos (single field — legacy incoming shipments style) */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <MaterialIcon name="photo_camera" size="sm" />
-              Photos <span className="text-red-500">*</span>
-              <Badge variant={getPhotoUrls(receivingPhotos).length >= 1 ? 'default' : 'destructive'}>
-                {getPhotoUrls(receivingPhotos).length}
-              </Badge>
-            </CardTitle>
-            <CardDescription>Capture or upload photos (paperwork, condition, etc.).</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <PhotoScannerButton
-              entityType="shipment"
-              entityId={shipmentId}
-              tenantId={profile?.tenant_id}
-              existingPhotos={getPhotoUrls(receivingPhotos)}
-              maxPhotos={20}
-              size="sm"
-              label="Add"
-              showCount={false}
-              onPhotosSaved={async (urls) => {
-                try {
-                  await mergeAndSaveReceivingPhotoUrls(urls);
-                } catch (err: any) {
-                  toast({
-                    variant: 'destructive',
-                    title: 'Photo Error',
-                    description: err?.message || 'Failed to save photos',
-                  });
-                }
-              }}
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MaterialIcon name="photo_camera" size="sm" />
+            Photos <span className="text-red-500">*</span>
+            <Badge variant={getPhotoUrls(receivingPhotos).length >= 1 ? 'default' : 'destructive'}>
+              {getPhotoUrls(receivingPhotos).length}
+            </Badge>
+            <HelpTip
+              tooltip="Capture or upload photos (paperwork, condition, etc.)."
+              pageKey="receiving.stage1"
+              fieldKey="photos"
             />
-            <PhotoUploadButton
-              entityType="shipment"
-              entityId={shipmentId}
-              tenantId={profile?.tenant_id}
-              existingPhotos={getPhotoUrls(receivingPhotos)}
-              maxPhotos={20}
-              size="sm"
-              onPhotosSaved={async (urls) => {
-                try {
-                  await mergeAndSaveReceivingPhotoUrls(urls);
-                } catch (err: any) {
-                  toast({
-                    variant: 'destructive',
-                    title: 'Photo Error',
-                    description: err?.message || 'Failed to save photos',
-                  });
-                }
-              }}
-            />
-          </div>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {getPhotoUrls(receivingPhotos).length > 0 ? (
@@ -1031,6 +1011,58 @@ export function Stage1DockIntake({
               No photos yet. At least 1 required.
             </p>
           )}
+
+          {/* Buttons (match Documents layout) */}
+          {getPhotoUrls(receivingPhotos).length < 20 && (
+            <div className="flex gap-2 pt-3">
+              <PhotoScannerButton
+                entityType="shipment"
+                entityId={shipmentId}
+                tenantId={profile?.tenant_id}
+                existingPhotos={getPhotoUrls(receivingPhotos)}
+                maxPhotos={20}
+                size="sm"
+                variant="outline"
+                label="Scan"
+                showCount={false}
+                className="flex-1"
+                onPhotosSaved={async (urls) => {
+                  try {
+                    await mergeAndSaveReceivingPhotoUrls(urls);
+                  } catch (err: any) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Photo Error',
+                      description: err?.message || 'Failed to save photos',
+                    });
+                  }
+                }}
+              />
+              <PhotoUploadButton
+                entityType="shipment"
+                entityId={shipmentId}
+                tenantId={profile?.tenant_id}
+                existingPhotos={getPhotoUrls(receivingPhotos)}
+                maxPhotos={20}
+                size="sm"
+                variant="outline"
+                label="Upload"
+                className="flex-1"
+                showHint={false}
+                onPhotosSaved={async (urls) => {
+                  try {
+                    await mergeAndSaveReceivingPhotoUrls(urls);
+                  } catch (err: any) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Photo Error',
+                      description: err?.message || 'Failed to save photos',
+                    });
+                  }
+                }}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1041,10 +1073,12 @@ export function Stage1DockIntake({
             <MaterialIcon name="description" size="sm" />
             Documents
             <Badge variant="outline">{documents.length}</Badge>
+            <HelpTip
+              tooltip="Capture or upload delivery paperwork. Tap a document thumbnail to open it, or use the download icon to email/print."
+              pageKey="receiving.stage1"
+              fieldKey="documents"
+            />
           </CardTitle>
-          <CardDescription>
-            Capture or upload delivery paperwork and supporting intake documents.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <DocumentCapture
@@ -1060,6 +1094,87 @@ export function Stage1DockIntake({
           />
         </CardContent>
       </Card>
+
+      {/* Billing (Manager/Admin Only) */}
+      {canSeeBilling ? (
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <MaterialIcon name="attach_money" size="sm" className="text-primary" />
+              Billing Calculator
+              <HelpTip
+                tooltip="Shows billing preview + recorded charges. Use Add Charge/Add Credit to adjust billing. (Manager/Admin only)"
+                pageKey="receiving.stage1"
+                fieldKey="billing"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setAddChargeOpen(true)}
+                disabled={!accountId}
+              >
+                <MaterialIcon name="attach_money" size="sm" />
+                Add Charge
+              </Button>
+              {canAddCredit ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAddCreditOpen(true)}
+                  disabled={!accountId}
+                >
+                  <MaterialIcon name="money_off" size="sm" />
+                  Add Credit
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {accountId ? (
+            <BillingCalculator
+              shipmentId={shipmentId}
+              refreshKey={billingRefreshKey}
+              title="Billing Calculator"
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-4 text-sm text-muted-foreground">
+                Select an account to view and edit billing.
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Add Charge Dialog */}
+          {accountId ? (
+            <AddAddonDialog
+              open={addChargeOpen}
+              onOpenChange={setAddChargeOpen}
+              accountId={accountId}
+              shipmentId={shipmentId}
+              onSuccess={() => {
+                setBillingRefreshKey((prev) => prev + 1);
+                onRefresh();
+              }}
+            />
+          ) : null}
+
+          {/* Add Credit Dialog (Admin only) */}
+          {accountId ? (
+            <AddCreditDialog
+              open={addCreditOpen}
+              onOpenChange={setAddCreditOpen}
+              accountId={accountId}
+              shipmentId={shipmentId}
+              onSuccess={() => {
+                setBillingRefreshKey((prev) => prev + 1);
+                onRefresh();
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Signature (optional) */}
       <Card>

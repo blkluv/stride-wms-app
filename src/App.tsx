@@ -81,7 +81,7 @@ import SmsSenderOps from "./pages/admin/SmsSenderOps";
 import BillingOverridesOps from "./pages/admin/BillingOverridesOps";
 import EmailOps from "./pages/admin/EmailOps";
 import QACenter from "./pages/QACenter";
-import DecisionLedger from "./pages/DecisionLedger";
+// Removed: DecisionLedger — no longer a standalone page
 import Messages from "./pages/Messages";
 import ComponentsDemo from "./pages/ComponentsDemo";
 import MaterialIconsSample from "./pages/MaterialIconsSample";
@@ -118,7 +118,9 @@ const App = () => (
             <Route path="/inventory/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ItemDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><LocationDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/containers/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ContainerDetail /></RequireRole></ProtectedRoute>} />
-            <Route path="/incoming" element={<Navigate to="/shipments" replace />} />
+            {/* Incoming Manager (new inbound workflows) */}
+            <Route path="/incoming/manager" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><IncomingManager /></RequireRole></ProtectedRoute>} />
+            <Route path="/incoming" element={<Navigate to="/incoming/manager" replace />} />
             <Route path="/incoming/manifest/new" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><ShipmentCreate /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
             <Route path="/incoming/manifest/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><InboundManifestDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/incoming/expected/new" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><ShipmentCreate /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
@@ -126,7 +128,8 @@ const App = () => (
             <Route path="/incoming/dock-intake/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><DockIntakeReceiving /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
             <Route path="/shipments" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><Shipments /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/list" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
-            <Route path="/shipments/incoming" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
+            {/* Legacy entry point: keep URL working but route to new Incoming Manager */}
+            <Route path="/shipments/incoming" element={<Navigate to="/incoming/manager?tab=expected" replace />} />
             <Route path="/shipments/outbound" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/received" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/released" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
@@ -175,7 +178,7 @@ const App = () => (
             <Route path="/admin/billing-overrides-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><BillingOverridesOps /></RequireRole></ProtectedRoute>} />
             <Route path="/admin/email-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><EmailOps /></RequireRole></ProtectedRoute>} />
             <Route path="/qa" element={<ProtectedRoute><QACenter /></ProtectedRoute>} />
-            <Route path="/decision-ledger" element={<ProtectedRoute><RequireRole role="admin_dev"><DecisionLedger /></RequireRole></ProtectedRoute>} />
+            {/* Removed: /decision-ledger route */}
             <Route path="/repair-access" element={<RepairTechAccess />} />
             <Route path="/quote/tech" element={<TechQuoteSubmit />} />
             <Route path="/quote/review" element={<ClientQuoteReview />} />

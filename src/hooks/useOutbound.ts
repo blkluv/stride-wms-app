@@ -130,8 +130,8 @@ export function useAccountItems(accountId: string | undefined) {
           quantity,
           status,
           room,
+          class_id,
           location:locations!current_location_id(id, code, name),
-          class:classes(id, code, name),
           item_type:item_types(id, name),
           sidemark:sidemarks(id, sidemark_name),
           warehouse:warehouses(id, name)

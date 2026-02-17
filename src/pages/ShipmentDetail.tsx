@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
@@ -6,6 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useReceivingSession } from '@/hooks/useReceivingSession';
 import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import {
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+} from '@/lib/items/itemDisplaySettings';
 import { isValidUuid, cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -136,10 +143,7 @@ interface Shipment {
   receiving_documents: string[] | null;
   release_type: string | null;
   released_to: string | null;
-  release_to_name: string | null;
-  release_to_email: string | null;
   release_to_phone: string | null;
-  driver_name: string | null;
   destination_name: string | null;
   origin_name: string | null;
   scheduled_date: string | null;
@@ -178,6 +182,30 @@ export default function ShipmentDetail() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { hasPermission, hasRole } = usePermissions();
+
+  // Tenant-managed item list views (systemwide)
+  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const shipmentItemVisibleColumns: ItemColumnKey[] = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
+  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 3; // checkbox + expand + view columns + (class, status, actions)
 
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
@@ -373,7 +401,7 @@ export default function ShipmentDetail() {
       if (itemIds.length > 0) {
         const { data: itemsRows, error: itemsFetchError } = await supabase
           .from('items')
-          .select('id, item_code, description, vendor, sidemark, room, class_id, declared_value, coverage_type, current_location_id, account_id')
+          .select('id, item_code, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
           .in('id', itemIds);
 
         if (itemsFetchError) {
@@ -403,10 +431,13 @@ export default function ShipmentDetail() {
             itemsById.set(row.id, {
               id: row.id,
               item_code: row.item_code,
+              sku: null,
               description: row.description,
               vendor: row.vendor,
               sidemark: row.sidemark,
               room: row.room,
+              primary_photo_url: row.primary_photo_url ?? null,
+              metadata: row.metadata ?? null,
               class_id: row.class_id,
               declared_value: row.declared_value,
               coverage_type: row.coverage_type,
@@ -730,6 +761,7 @@ export default function ShipmentDetail() {
           const labelData: ItemLabelData[] = createdItems.map(item => ({
             id: item.id,
             itemCode: item.item_code || '',
+            sku: (item as any).sku || '',
             description: item.description || '',
             vendor: item.vendor || '',
             account: shipment?.accounts?.account_name || '',
@@ -1743,7 +1775,7 @@ export default function ShipmentDetail() {
           </Button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{shipment.shipment_number}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
               <ShipmentExceptionBadge
                 shipmentId={shipment.id}
                 onClick={
@@ -1754,7 +1786,7 @@ export default function ShipmentDetail() {
               />
               <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
               {shipment.release_type && (
-                <Badge variant="outline" className="text-xs">{shipment.release_type}</Badge>
+                <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
               )}
             </div>
             <p className="text-muted-foreground text-sm truncate">
@@ -2690,6 +2722,26 @@ export default function ShipmentDetail() {
                   <span className="sm:hidden">Add</span>
                 </Button>
               )}
+              <Select
+                value={activeItemViewId || defaultItemViewId || 'default'}
+                onValueChange={setActiveItemViewId}
+                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+              >
+                <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
+                  <div className="flex items-center gap-2">
+                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                    <SelectValue placeholder="View" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {itemDisplaySettings.views.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                      {v.is_default ? ' (default)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             {/* Create Task from selected items */}
             {selectedItemIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-2">
@@ -2752,14 +2804,10 @@ export default function ShipmentDetail() {
                   />
                 </TableHead>
                 <TableHead className="w-10"></TableHead>
-                <TableHead className="w-28">Item Code</TableHead>
-                <TableHead className="w-20 text-right">Qty</TableHead>
-                <TableHead className="w-32">Vendor</TableHead>
-                <TableHead className="min-w-[140px]">Description</TableHead>
-                <TableHead className="w-24">Location</TableHead>
+                {shipmentItemVisibleColumns.map((col) => (
+                  <TableHead key={col}>{getColumnLabel(itemDisplaySettings, col)}</TableHead>
+                ))}
                 <TableHead className="w-24">Class</TableHead>
-                <TableHead className="w-28">Sidemark</TableHead>
-                <TableHead className="w-24">Room</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-20"></TableHead>
               </TableRow>
@@ -2767,7 +2815,7 @@ export default function ShipmentDetail() {
             <TableBody>
               {items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={shipmentItemsTableColSpan} className="text-center text-muted-foreground py-8">
                     No items in this shipment
                   </TableCell>
                 </TableRow>
@@ -2777,6 +2825,7 @@ export default function ShipmentDetail() {
                     key={item.id}
                     item={item as ShipmentItemRowData}
                     isSelected={item.item?.id ? selectedItemIds.has(item.item.id) : false}
+                    visibleColumns={shipmentItemVisibleColumns}
                     onSelect={(checked) => {
                       if (item.item?.id) {
                         if (checked) {

@@ -48,11 +48,19 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : "button";
     const isDefault = variant === "default" || variant === undefined;
 
+    if (asChild) {
+      return (
+        <Slot className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props}>
+          {children}
+        </Slot>
+      );
+    }
+
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props}>
+      <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props}>
         {children}
         {/* Shimmer overlay for primary CTA buttons */}
-        {isDefault && !asChild && (
+        {isDefault && (
           <span
             aria-hidden="true"
             className="absolute inset-0 overflow-hidden rounded-[inherit] pointer-events-none"
@@ -60,7 +68,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:animate-shimmer" />
           </span>
         )}
-      </Comp>
+      </button>
     );
   },
 );

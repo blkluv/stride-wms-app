@@ -7,7 +7,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useDocuments } from '@/hooks/useDocuments';
 import { DocumentThumbnail } from './DocumentThumbnail';
@@ -225,8 +224,16 @@ export function DocumentCapture({
 
   return (
     <div className="space-y-3">
+      {/* Loading / Error */}
+      {loading && (
+        <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
+          <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+          Loading documents…
+        </div>
+      )}
+
       {/* Document Thumbnail Grid */}
-      {documents.length > 0 && (
+      {!loading && documents.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           {documents.map((doc) => (
             <DocumentThumbnail
@@ -239,6 +246,12 @@ export function DocumentCapture({
               onRemove={() => handleRemoveDocument(doc)}
             />
           ))}
+        </div>
+      )}
+
+      {!loading && documents.length === 0 && (
+        <div className="py-4 text-center text-sm text-muted-foreground">
+          No documents yet.
         </div>
       )}
 
@@ -258,30 +271,34 @@ export function DocumentCapture({
             Scan
           </Button>
 
-          {/* Upload Button - File picker */}
-          <Input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
-            multiple
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex-1"
-          >
-            {uploading ? (
-              <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
-            ) : (
-              <MaterialIcon name="upload" size="sm" className="mr-2" />
-            )}
-            Upload
-          </Button>
+          {/* Upload Button - File picker (overlay input for mobile reliability) */}
+          <div className="relative flex-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="w-full"
+            >
+              {uploading ? (
+                <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+              ) : (
+                <MaterialIcon name="upload" size="sm" className="mr-2" />
+              )}
+              Upload
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              multiple
+              onChange={handleFileSelect}
+              disabled={uploading}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Upload document"
+            />
+          </div>
         </div>
       )}
 

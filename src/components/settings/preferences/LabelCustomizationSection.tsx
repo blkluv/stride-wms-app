@@ -37,6 +37,7 @@ const SAMPLE_ITEM = {
   sidemark: 'Johnson Family',
   room: 'Living Room',
   itemCode: 'ITM-00042',
+  sku: 'SKU-12345',
   vendor: 'Ashley Furniture',
   description: 'Brown leather sofa, 3-seat with recliner',
   warehouseName: 'Main Warehouse',

@@ -5,6 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -95,10 +96,11 @@ export function LabelWithTooltip({ htmlFor, children, tooltip, required, classNa
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-muted-foreground text-[10px] font-bold hover:bg-muted/80 transition shrink-0 cursor-help"
+            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition shrink-0 cursor-help"
             tabIndex={-1}
+            aria-label="Help"
           >
-            ?
+            <MaterialIcon name="info" size="sm" className="text-[12px]" />
           </button>
         </PopoverTrigger>
         <PopoverContent side="top" className="max-w-[280px] text-xs leading-relaxed p-3">
