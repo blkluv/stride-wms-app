@@ -122,14 +122,13 @@ export function AddItemDialog({
         throw new Error('No warehouse configured. Please add a warehouse first.');
       }
 
-      const { data: newItem, error } = await supabase.from('items').insert([{
+      const { data: newItem, error } = await (supabase.from('items') as any).insert([{
         tenant_id: profile.tenant_id,
         warehouse_id: defaultWarehouseId,
         // item_code is assigned by DB trigger (sequential) when omitted.
         account_id: accountId,
         quantity: parseInt(quantity, 10) || 1,
         vendor: vendor || null,
-        sku: sku || null,
         description: description || null,
         sidemark_id: sidemarkId || null,
         room: room || null,

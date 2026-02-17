@@ -60,8 +60,6 @@ interface TenantSubscriptionSnapshot {
   cancel_at_period_end: boolean | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
-  billable_seat_count: number | null;
-  billable_seat_count_updated_at: string | null;
   updated_at: string | null;
 }
 
@@ -179,7 +177,7 @@ export default function Billing() {
       const { data, error } = await supabase
         .from('tenant_subscriptions')
         .select(
-          'status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, billable_seat_count, billable_seat_count_updated_at, updated_at'
+          'status, current_period_end, cancel_at_period_end, stripe_customer_id, stripe_subscription_id, updated_at'
         )
         .eq('tenant_id', profile.tenant_id)
         .maybeSingle();
@@ -609,12 +607,10 @@ export default function Billing() {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">Billable Staff Seats</p>
                     <p className="text-sm font-medium">
-                      {typeof subscriptionSnapshot?.billable_seat_count === 'number'
-                        ? subscriptionSnapshot.billable_seat_count
-                        : '—'}
+                      {(subscriptionSnapshot as any)?.billable_seat_count ?? '—'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Last synced: {formatSummaryDate(subscriptionSnapshot?.billable_seat_count_updated_at)}
+                      Last synced: {formatSummaryDate((subscriptionSnapshot as any)?.billable_seat_count_updated_at)}
                     </p>
                   </div>
                 </div>

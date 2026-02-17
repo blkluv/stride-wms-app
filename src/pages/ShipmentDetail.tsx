@@ -133,10 +133,7 @@ interface Shipment {
   receiving_documents: string[] | null;
   release_type: string | null;
   released_to: string | null;
-  release_to_name: string | null;
-  release_to_email: string | null;
   release_to_phone: string | null;
-  driver_name: string | null;
   destination_name: string | null;
   origin_name: string | null;
   scheduled_date: string | null;
@@ -714,7 +711,7 @@ export default function ShipmentDetail() {
       if (result.createdItemIds.length > 0) {
         const { data: createdItems } = await supabase
           .from('items')
-          .select('id, item_code, sku, description, vendor, sidemark_id, room')
+          .select('id, item_code, description, vendor, sidemark_id, room')
           .in('id', result.createdItemIds);
 
         if (createdItems) {
