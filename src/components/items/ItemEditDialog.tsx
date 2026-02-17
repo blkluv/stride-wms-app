@@ -38,6 +38,8 @@ import { ClassSelect } from '@/components/ui/class-select';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { Switch } from '@/components/ui/switch';
 
 const itemSchema = z.object({
   description: z.string().optional(),
@@ -79,6 +81,7 @@ interface ItemEditDialogProps {
     item_code: string;
     description: string | null;
     sku?: string | null;
+    metadata?: Record<string, unknown> | null;
     quantity: number;
     sidemark: string | null;
     sidemark_id?: string | null;
@@ -122,6 +125,11 @@ export function ItemEditDialog({
   // Field suggestions for room and sidemark
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
   const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
+
+  // Tenant-managed custom item fields
+  const { settings: itemDisplaySettings } = useItemDisplaySettings();
+  const customFieldsForForm = itemDisplaySettings.custom_fields.filter((f) => f.enabled && f.show_on_detail);
+  const [customFieldDraft, setCustomFieldDraft] = useState<Record<string, unknown>>({});
 
   // Fetch accounts
   useEffect(() => {
@@ -182,6 +190,12 @@ export function ItemEditDialog({
         status: item.status || 'active',
         client_account: item.client_account || '',
       });
+
+      const meta = item.metadata && typeof item.metadata === 'object' ? item.metadata : null;
+      const custom = meta && typeof (meta as any).custom_fields === 'object' ? (meta as any).custom_fields : null;
+      setCustomFieldDraft(custom && typeof custom === 'object' ? { ...(custom as any) } : {});
+    } else if (open) {
+      setCustomFieldDraft({});
     }
   }, [open, item]);
 
@@ -210,6 +224,45 @@ export function ItemEditDialog({
         status: data.status || 'active',
         client_account: data.client_account || null,
       };
+
+      // Merge custom field values into metadata.custom_fields
+      const existingMeta = item.metadata && typeof item.metadata === 'object' ? (item.metadata as Record<string, unknown>) : {};
+      const existingCustom =
+        (existingMeta as any).custom_fields && typeof (existingMeta as any).custom_fields === 'object'
+          ? { ...(existingMeta as any).custom_fields }
+          : {};
+
+      const nextCustom: Record<string, unknown> = { ...(existingCustom as any) };
+      for (const f of customFieldsForForm) {
+        const raw = customFieldDraft[f.key];
+        if (raw === undefined || raw === null) {
+          delete (nextCustom as any)[f.key];
+          continue;
+        }
+        if (f.type === 'checkbox') {
+          if (raw === true) (nextCustom as any)[f.key] = true;
+          else delete (nextCustom as any)[f.key];
+          continue;
+        }
+        if (f.type === 'number') {
+          const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+          if (Number.isFinite(n)) (nextCustom as any)[f.key] = n;
+          else delete (nextCustom as any)[f.key];
+          continue;
+        }
+        const s = String(raw).trim();
+        if (s) (nextCustom as any)[f.key] = s;
+        else delete (nextCustom as any)[f.key];
+      }
+
+      const nextMeta: Record<string, unknown> = { ...(existingMeta as any) };
+      if (Object.keys(nextCustom).length > 0) {
+        (nextMeta as any).custom_fields = nextCustom;
+      } else {
+        delete (nextMeta as any).custom_fields;
+      }
+
+      (updateData as any).metadata = nextMeta;
 
       const { error } = await (supabase.from('items') as any)
         .update(updateData)
@@ -407,6 +460,59 @@ export function ItemEditDialog({
                   </FormItem>
                 )}
               />
+
+              {/* Custom Fields */}
+              {customFieldsForForm.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Custom Fields</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {customFieldsForForm.map((f) => {
+                      const raw = customFieldDraft[f.key];
+                      const stringVal = raw === null || raw === undefined ? '' : String(raw);
+                      const dateVal = stringVal && stringVal.includes('T') ? stringVal.slice(0, 10) : stringVal;
+                      const checked = raw === true || raw === 'true' || raw === 1 || raw === '1';
+
+                      return (
+                        <div key={f.id} className="space-y-1">
+                          <div className="text-xs text-muted-foreground">{f.label}</div>
+                          {f.type === 'select' ? (
+                            <Select
+                              value={stringVal || '__none__'}
+                              onValueChange={(val) => {
+                                const next = val === '__none__' ? '' : val;
+                                setCustomFieldDraft((prev) => ({ ...prev, [f.key]: next }));
+                              }}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Select…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">-</SelectItem>
+                                {(f.options || []).map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : f.type === 'checkbox' ? (
+                            <div className="h-9 flex items-center">
+                              <Switch checked={checked} onCheckedChange={(val) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: val }))} />
+                            </div>
+                          ) : (
+                            <Input
+                              value={f.type === 'date' ? dateVal : stringVal}
+                              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                              onChange={(e) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                              placeholder="-"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Account */}
               <FormField

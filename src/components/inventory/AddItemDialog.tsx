@@ -37,6 +37,15 @@ import { useWarehouses } from '@/hooks/useWarehouses';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 interface AddItemDialogProps {
   open: boolean;
@@ -53,6 +62,7 @@ export function AddItemDialog({
   const { profile } = useAuth();
   const { accounts } = useAccounts();
   const { warehouses } = useWarehouses();
+  const { settings: itemDisplaySettings } = useItemDisplaySettings();
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   // Form state
@@ -64,14 +74,25 @@ export function AddItemDialog({
   const [sidemarkId, setSidemarkId] = useState('');
   const [room, setRoom] = useState('');
   const [notes, setNotes] = useState('');
+  const [customFieldDraft, setCustomFieldDraft] = useState<Record<string, unknown>>({});
 
   // Field suggestions
   const { suggestions: vendorSuggestions, addOrUpdateSuggestion: addVendorSuggestion } = useFieldSuggestions('vendor');
   const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
 
+  const customFieldsForForm = itemDisplaySettings.custom_fields.filter((f) => f.enabled && f.show_on_detail);
+
+  const hasCustomFieldData = Object.values(customFieldDraft).some((v) => {
+    if (v === null || v === undefined) return false;
+    if (typeof v === 'string') return v.trim().length > 0;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return true;
+    return true;
+  });
+
   // Track if form has been modified
-  const hasFormData = accountId || vendor || sku || description || sidemarkId || room || notes || quantity !== '1';
+  const hasFormData = accountId || vendor || sku || description || sidemarkId || room || notes || quantity !== '1' || hasCustomFieldData;
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -84,6 +105,7 @@ export function AddItemDialog({
       setSidemarkId('');
       setRoom('');
       setNotes('');
+      setCustomFieldDraft({});
     }
   }, [open]);
 
@@ -134,6 +156,29 @@ export function AddItemDialog({
         description: description || null,
         sidemark_id: sidemarkId || null,
         room: room || null,
+        metadata: (() => {
+          const custom_fields: Record<string, unknown> = {};
+          for (const f of customFieldsForForm) {
+            const raw = customFieldDraft[f.key];
+            if (raw === undefined || raw === null) continue;
+
+            if (f.type === 'checkbox') {
+              if (raw === true) custom_fields[f.key] = true;
+              continue;
+            }
+
+            if (f.type === 'number') {
+              const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+              if (Number.isFinite(n)) custom_fields[f.key] = n;
+              continue;
+            }
+
+            const s = String(raw).trim();
+            if (s) custom_fields[f.key] = s;
+          }
+
+          return Object.keys(custom_fields).length > 0 ? { custom_fields } : null;
+        })(),
         status: 'in_storage',
       }]).select('id, item_code').single();
 
@@ -269,6 +314,65 @@ export function AddItemDialog({
                 placeholder="e.g., Living Room"
               />
             </div>
+
+            {/* Custom Fields */}
+            {customFieldsForForm.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Custom Fields</Label>
+                  <span className="text-xs text-muted-foreground">Saved on the item</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {customFieldsForForm.map((f) => {
+                    const raw = customFieldDraft[f.key];
+                    const stringVal = raw === null || raw === undefined ? '' : String(raw);
+                    const dateVal = stringVal && stringVal.includes('T') ? stringVal.slice(0, 10) : stringVal;
+                    const checked = raw === true || raw === 'true' || raw === 1 || raw === '1';
+
+                    return (
+                      <div key={f.id} className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">{f.label}</Label>
+                        {f.type === 'select' ? (
+                          <Select
+                            value={stringVal || '__none__'}
+                            onValueChange={(val) => {
+                              const next = val === '__none__' ? '' : val;
+                              setCustomFieldDraft((prev) => ({ ...prev, [f.key]: next }));
+                            }}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Select…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">-</SelectItem>
+                              {(f.options || []).map((opt) => (
+                                <SelectItem key={opt} value={opt}>
+                                  {opt}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : f.type === 'checkbox' ? (
+                          <div className="h-9 flex items-center">
+                            <Switch
+                              checked={checked}
+                              onCheckedChange={(val) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: val }))}
+                            />
+                          </div>
+                        ) : (
+                          <Input
+                            value={f.type === 'date' ? dateVal : stringVal}
+                            type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                            onChange={(e) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                            placeholder="-"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-2">
