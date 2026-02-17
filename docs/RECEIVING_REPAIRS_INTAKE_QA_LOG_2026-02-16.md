@@ -275,3 +275,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 82. Q: "Shipped Today" expanded list row click destination?
     A: Navigate to the outbound shipment details page for the order clicked.
 
+83. Q: Which route is the "outbound shipment details page" for shipped/outbound shipments?
+    A: Use the shipment details page for that shipment (`/shipments/:id`). (User-facing: "go to the shipment details page for the OUT# clicked"; route specifics not important.)
+
