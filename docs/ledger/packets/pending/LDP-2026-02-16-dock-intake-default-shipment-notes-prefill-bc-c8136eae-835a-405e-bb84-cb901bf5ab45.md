@@ -1,24 +1,49 @@
-# LDP-2026-02-16-dock-intake-default-shipment-notes-prefill-bc-c8136eae-835a-405e-bb84-cb901bf5ab45
+# Locked Decision Import Packet
+
+- Packet ID: `LDP-2026-02-16-dock-intake-default-shipment-notes-prefill-bc-c8136eae-835a-405e-bb84-cb901bf5ab45`
+- Topic: Dock Intake Stage 1 default shipment notes prefill
+- Topic Slug: `DOCK_INTAKE_DEFAULT_SHIPMENT_NOTES_PREFILL`
+- Source Artifact: `docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_DEFAULT_SHIPMENT_NOTES_PREFILL_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md`
+- Source Mode: `current_chat`
+- Source Path (if file): `-`
+- Created Date: `2026-02-16`
+- Actor: `builder`
+- Status: `pending`
+
+## Scope Summary
+
+- Q&A items extracted: `1`
+- Existing decisions mapped: `-`
+- New decisions added: `DL-2026-02-16-006`
+- Unresolved/open (draft): `-`
+- Supersedes: `-`
 
 ## Decision Index Rows
 
-| decision_id | date | topic_slug | summary | source_artifact |
-|---|---|---|---|---|
-| DEC-2026-02-16-REC-006 | 2026-02-16 | dock-intake-default-shipment-notes-prefill | Dock Intake Stage 1 must prefill shipment notes from the selected account’s default_shipment_notes (legacy parity), without overwriting user-edited notes. | docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_DEFAULT_SHIPMENT_NOTES_PREFILL_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md |
+| DL-2026-02-16-006 | Dock Intake Stage 1 must prefill shipment notes from account defaults (no overwrite of user edits) | Receiving UI | locked | `docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_DEFAULT_SHIPMENT_NOTES_PREFILL_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md#decision-summary` | - | 2026-02-16 |
 
 ## Detailed Decision Entries
 
-### DEC-2026-02-16-REC-006
-- Date: 2026-02-16
-- Status: locked
-- Context: operators rely on account-level default shipment notes; Dock Intake Stage 1 did not apply them.
-- Decision: fetch + prefill from `accounts.default_shipment_notes` on account selection, and show highlight callout when configured.
-- Rationale: restores legacy behavior and reduces missed SOP notes during intake.
-- Source: docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_DEFAULT_SHIPMENT_NOTES_PREFILL_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md
+### DL-2026-02-16-006: Dock Intake Stage 1 must prefill shipment notes from account defaults (no overwrite of user edits)
+- Domain: Receiving UI
+- State: locked
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_DEFAULT_SHIPMENT_NOTES_PREFILL_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md#decision-summary`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-16
+- Locked at: 2026-02-16
+
+#### Decision
+When an account is selected on Dock Intake Stage 1, the system must fetch the account’s default shipment notes and (only if the shipment notes are still blank/unmodified) prefill the shipment notes field without overwriting user edits; if configured, show a highlight callout so operators see the default notes.
+
+#### Why
+Operators rely on account-level default notes (SOP reminders, special handling). Prefilling restores legacy behavior and reduces missed intake instructions.
+
+#### Implementation impact
+- UI: `src/components/receiving/Stage1DockIntake.tsx` load `accounts.default_shipment_notes` (+ `highlight_shipment_notes`) when selecting an account.
+- Ensure prefill runs once and never overwrites user-edited notes.
 
 ## Implementation Log Rows
 
-| event_id | date | decision_id | type | summary |
-|---|---|---|---|---|
-| EVT-2026-02-16-REC-013 | 2026-02-16 | DEC-2026-02-16-REC-006 | ui | Stage1DockIntake: fetch account default_shipment_notes + highlight flag and prefill shipment notes if blank/unmodified. |
+| DLE-2026-02-16-006 | 2026-02-16 | DL-2026-02-16-006 | completed | `src/components/receiving/Stage1DockIntake.tsx` | builder | Fetch account default_shipment_notes + highlight flag and prefill shipment notes if blank/unmodified. |
 
