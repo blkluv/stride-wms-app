@@ -227,3 +227,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 66. Q: "Intakes In Progress" card: should it include dock intakes with inbound_status = closed?
     A: No (option A). Closed is not in-progress; include only draft/stage1_complete/receiving.
 
+67. Q: "Intakes In Progress" card list: status label for those rows?
+    A: Show a single label "In Progress" for all in-progress intake stages (option B).
+
