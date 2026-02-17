@@ -62,3 +62,8 @@ User request (tenant-facing email setup UX + AI help):
   - Ask the user questions about their domain and/or email/DNS provider.
   - Provide tailored step-by-step DNS setup instructions.
 
+### QA-2026-02-17-ADMINOPS-010
+User decision (AI help delivery):
+- Do not integrate the in-app AI bot for email setup instructions.
+- Instead, provide a copy/paste prompt inside the help tool UI so users can paste it into ChatGPT (or similar) to get tailored step-by-step DNS instructions.
+
