@@ -242,3 +242,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 71. Q: What should the /shipments/received page show?
     A: Only received Dock Intakes (option B), to align with the Hub's "Received Today" card behavior.
 
+72. Q: On /shipments/received (dock intakes only), default filter/sort?
+    A: Show all received dock intakes (not limited to today) (option B) and default sort by received date (newest first).
+
