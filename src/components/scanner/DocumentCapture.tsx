@@ -243,7 +243,7 @@ export function DocumentCapture({
 
       {/* Document Thumbnail Grid */}
       {!loading && documents.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
           {documents.map((doc) => (
             <DocumentThumbnail
               key={doc.id}

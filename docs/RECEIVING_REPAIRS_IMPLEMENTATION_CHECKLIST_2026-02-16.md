@@ -7,7 +7,7 @@ This checklist tracks implementation of each of the **89** logged decisions.
 
 ## Checklist
 
-- [ ] 1. Real scan scope: mobile/tablet only in-app; desktop upload-only.
+- [x] 1. Real scan scope: mobile/tablet only in-app; desktop upload-only.
 - [x] 2. Stage 1 completion action: "Complete Stage 1" button unlocks Stage 2.
 - [x] 3. Stage 2 auto-expand behavior: collapsed until user clicks "Start Stage 2"; then defaults expanded unless minimized.
 - [x] 4. Persist "Start Stage 2" click to DB.
@@ -40,15 +40,15 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [ ] 31. Chip-generated exception notes are tied to that chip; exception notes created directly in Notes tab need not have a chip.
 - [ ] 32. Per-exception note entry appears inline in Exceptions section; still stored under Notes tab (Exception filter).
 - [x] 33. Signature applies to Stage 1 carrier sign-for.
-- [ ] 34. Signature is persisted + viewable later on intake page and Shipment Details page.
+- [x] 34. Signature is persisted + viewable later on intake page and Shipment Details page.
 - [x] 35. Signature metadata displayed (typed name + timestamp if present).
 - [x] 36. Signature optional; if drawn signature is used, Driver name required; typed-only acceptable.
 - [x] 37. Driver name label is "Driver name".
 - [x] 38. Signature edit allows switching Draw/Type and Clear.
 - [x] 39. Scanner output supports multi-page PDF.
-- [ ] 40. Scanner supports auto edge detection + manual crop adjustment.
-- [ ] 41. Scanner naming: no prompt; auto-name with shipment number + date + unique.
-- [ ] 42. Scanner environment: mobile web first; native later.
+- [x] 40. Scanner supports auto edge detection + manual crop adjustment.
+- [x] 41. Scanner naming: no prompt; auto-name with shipment number + date + unique.
+- [x] 42. Scanner environment: mobile web first; native later.
 - [x] 43. Mobile web capture: prefer in-page live preview; allow file-input capture if needed.
 - [x] 44. Implement scanner now, structure for later native swap.
 - [ ] 45. Alerts: avoid double-emailing; enhance Shipment Received email with optional Exceptions section; show exception indicator near shipment number.
