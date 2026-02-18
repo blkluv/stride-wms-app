@@ -115,6 +115,7 @@ export default function ScanHub() {
   const scannedItemRef = useRef<ScannedItem | null>(scannedItem);
   const targetLocationRef = useRef<ScannedLocation | null>(targetLocation);
   const batchItemsRef = useRef<ScannedItem[]>(batchItems);
+  const quarantineWarningOpenRef = useRef<boolean>(quarantineWarningOpen);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -122,7 +123,8 @@ export default function ScanHub() {
     scannedItemRef.current = scannedItem;
     targetLocationRef.current = targetLocation;
     batchItemsRef.current = batchItems;
-  }, [mode, phase, scannedItem, targetLocation, batchItems]);
+    quarantineWarningOpenRef.current = quarantineWarningOpen;
+  }, [mode, phase, scannedItem, targetLocation, batchItems, quarantineWarningOpen]);
 
   const setModeSafe = (next: ScanMode) => {
     modeRef.current = next;
@@ -724,6 +726,7 @@ export default function ScanHub() {
   const handleScanResult = (data: string) => {
     const input = data.trim();
     if (!input) return;
+    if (quarantineWarningOpenRef.current) return;
 
     const enqueue = (value: string) => {
       const v = value.trim();
@@ -1055,7 +1058,7 @@ export default function ScanHub() {
       const m = modeRef.current;
       const p = phaseRef.current;
       const canContinue =
-        m !== null && (p === 'scanning-item' || p === 'scanning-location') && !quarantineWarningOpen;
+        m !== null && (p === 'scanning-item' || p === 'scanning-location') && !quarantineWarningOpenRef.current;
 
       if (canContinue) {
         processNextQueuedScan();
