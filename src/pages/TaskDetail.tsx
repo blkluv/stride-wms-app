@@ -165,9 +165,101 @@ export default function TaskDetailPage() {
   const { activeTechnicians } = useTechnicians();
   const { createWorkflowQuote, sendToTechnician } = useRepairQuoteWorkflow();
   const { hasRole } = usePermissions();
-  const { completeTask, completeTaskWithServices, startTask: startTaskHook } = useTasks();
+  const { completeTaskWithServices, startTaskDetailed } = useTasks();
 
   const taskTimer = useJobTimer('task', id);
+
+  // Start-task switch confirmation (pause existing job)
+  const [startSwitchOpen, setStartSwitchOpen] = useState(false);
+  const [startSwitchActiveLabel, setStartSwitchActiveLabel] = useState<string | null>(null);
+  const [startSwitchLoading, setStartSwitchLoading] = useState(false);
+
+  const resolveActiveJobLabel = useCallback(async (jobType: string | null | undefined, jobId: string | null | undefined) => {
+    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
+    if (jobType !== 'task') return `${jobType} job`;
+    try {
+      const { data } = await (supabase.from('tasks') as any)
+        .select('title, task_type')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', jobId)
+        .maybeSingle();
+      if (data?.title) return data.title;
+      if (data?.task_type) return `${data.task_type} task`;
+      return 'another task';
+    } catch {
+      return 'another task';
+    }
+  }, [profile?.tenant_id]);
+
+  // After completing a job, prompt to resume a paused task (auto-paused by starting another job)
+  const [resumePromptOpen, setResumePromptOpen] = useState(false);
+  const [pausedResumeTasks, setPausedResumeTasks] = useState<Array<{ id: string; title: string; task_type: string }>>([]);
+  const [selectedResumeTaskId, setSelectedResumeTaskId] = useState<string>('');
+  const [resumeLoading, setResumeLoading] = useState(false);
+
+  const loadPausedTasksForResume = useCallback(async (excludeTaskId?: string) => {
+    if (!profile?.tenant_id || !profile?.id) return [];
+
+    // If user already has an active timer, don't prompt
+    const { data: activeAny } = await (supabase
+      .from('job_time_intervals') as any)
+      .select('id')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('user_id', profile.id)
+      .is('ended_at', null)
+      .limit(1);
+    if (activeAny && activeAny.length > 0) return [];
+
+    const { data: pausedIntervals } = await (supabase
+      .from('job_time_intervals') as any)
+      .select('job_id, ended_at')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('user_id', profile.id)
+      .eq('job_type', 'task')
+      .eq('ended_reason', 'auto_pause')
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(10);
+
+    const orderedIds: string[] = [];
+    const seen = new Set<string>();
+    for (const row of pausedIntervals || []) {
+      const tid = row.job_id as string | undefined;
+      if (!tid || seen.has(tid)) continue;
+      if (excludeTaskId && tid === excludeTaskId) continue;
+      seen.add(tid);
+      orderedIds.push(tid);
+    }
+
+    if (orderedIds.length === 0) return [];
+
+    const { data: taskRows } = await (supabase
+      .from('tasks') as any)
+      .select('id, title, task_type, status, assigned_to')
+      .eq('tenant_id', profile.tenant_id)
+      .in('id', orderedIds);
+
+    const byId = new Map<string, any>((taskRows || []).map((t: any) => [t.id, t]));
+
+    return orderedIds
+      .map(id => byId.get(id))
+      .filter(Boolean)
+      .filter((t: any) => t.status === 'in_progress' && t.assigned_to === profile.id)
+      .slice(0, 5)
+      .map((t: any) => ({
+        id: t.id,
+        title: t.title || `${t.task_type} task`,
+        task_type: t.task_type,
+      })) as Array<{ id: string; title: string; task_type: string }>;
+  }, [profile?.tenant_id, profile?.id]);
+
+  const maybePromptResumePausedTask = useCallback(async (excludeTaskId?: string) => {
+    const paused = await loadPausedTasksForResume(excludeTaskId);
+    if (paused.length === 0) return;
+    setPausedResumeTasks(paused);
+    setSelectedResumeTaskId(paused[0]?.id || '');
+    setResumePromptOpen(true);
+  }, [loadPausedTasksForResume]);
 
   // Only managers and admins can see billing
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager') || hasRole('admin_dev');
@@ -376,10 +468,25 @@ export default function TaskDetailPage() {
     if (!id || !profile?.id || !profile?.tenant_id) return;
     setActionLoading(true);
     try {
-      const ok = await startTaskHook(id);
-      if (!ok) throw new Error('Failed to start task');
-      fetchTask();
-      taskTimer.refetch();
+      const result = await startTaskDetailed(id, { pauseExisting: false });
+      if (result.ok) {
+        toast({ title: 'Task Started', description: 'Task is now in progress.' });
+        fetchTask();
+        taskTimer.refetch();
+        return;
+      }
+
+      if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
+        setStartSwitchActiveLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setStartSwitchOpen(true);
+        return;
+      }
+
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: result.error_message || 'Failed to start task',
+      });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to start task' });
     } finally {
@@ -458,8 +565,8 @@ export default function TaskDetailPage() {
       try {
         const success = await completeTaskWithServices(id, []);
         if (success) {
-          fetchTask();
-          fetchTaskItems();
+          await Promise.all([fetchTask(), fetchTaskItems()]);
+          await maybePromptResumePausedTask(id);
         }
       } finally {
         setActionLoading(false);
@@ -1616,6 +1723,139 @@ export default function TaskDetailPage() {
         onOpenChange={setCompletionBlockedOpen}
         validationResult={completionValidationResult}
       />
+
+      {/* Pause existing job confirmation */}
+      <AlertDialog open={startSwitchOpen} onOpenChange={setStartSwitchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{startSwitchActiveLabel ? ` (${startSwitchActiveLabel})` : ''}.
+              Do you want to pause it and start this task?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setStartSwitchActiveLabel(null)}
+              disabled={startSwitchLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!id) return;
+                setStartSwitchLoading(true);
+                try {
+                  const result = await startTaskDetailed(id, { pauseExisting: true });
+                  if (!result.ok) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to start task',
+                      description: result.error_message || 'Failed to start task',
+                    });
+                    return;
+                  }
+                  toast({ title: 'Task Started', description: 'Paused your previous job and started this task.' });
+                  setStartSwitchOpen(false);
+                  setStartSwitchActiveLabel(null);
+                  fetchTask();
+                  taskTimer.refetch();
+                } finally {
+                  setStartSwitchLoading(false);
+                }
+              }}
+              disabled={startSwitchLoading}
+            >
+              Pause & Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Resume paused task prompt */}
+      <Dialog open={resumePromptOpen} onOpenChange={setResumePromptOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MaterialIcon name="play_circle" size="md" />
+              Resume paused task?
+            </DialogTitle>
+            <DialogDescription>
+              You still have a task paused from switching jobs. Resume it now?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Paused task</Label>
+              <Select value={selectedResumeTaskId} onValueChange={setSelectedResumeTaskId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a task to resume" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pausedResumeTasks.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResumePromptOpen(false)}
+              disabled={resumeLoading}
+            >
+              Not now
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!profile?.tenant_id || !selectedResumeTaskId) return;
+                setResumeLoading(true);
+                try {
+                  const { data, error } = await supabase.rpc('rpc_timer_start_job', {
+                    p_job_type: 'task',
+                    p_job_id: selectedResumeTaskId,
+                    p_pause_existing: false,
+                  });
+                  if (error) throw error;
+                  const result = (data || {}) as any;
+                  if (!result.ok) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to resume',
+                      description: result.error_message || 'Failed to resume task',
+                    });
+                    return;
+                  }
+                  const resumed = pausedResumeTasks.find(t => t.id === selectedResumeTaskId);
+                  toast({
+                    title: 'Resumed',
+                    description: resumed ? `Resumed "${resumed.title}".` : 'Task timer resumed.',
+                  });
+                  setResumePromptOpen(false);
+                  navigate(`/tasks/${selectedResumeTaskId}`);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Unable to resume',
+                    description: err?.message || 'Failed to resume task',
+                  });
+                } finally {
+                  setResumeLoading(false);
+                }
+              }}
+              disabled={resumeLoading || !selectedResumeTaskId}
+            >
+              Resume
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* SOP Validation Blockers Modal */}
       <Dialog open={validationOpen} onOpenChange={setValidationOpen}>

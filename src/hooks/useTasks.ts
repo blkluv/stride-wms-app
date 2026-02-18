@@ -17,6 +17,20 @@ import {
   type ServiceTimeActualSnapshotV1,
 } from '@/lib/time/serviceTimeSnapshot';
 
+type TimerRpcResult = {
+  ok: boolean;
+  already_active?: boolean;
+  started_interval_id?: string | null;
+  paused_interval_id?: string | null;
+  paused_job_type?: string | null;
+  paused_job_id?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  active_interval_id?: string | null;
+  active_job_type?: string | null;
+  active_job_id?: string | null;
+};
+
 export interface Task {
   id: string;
   tenant_id: string;
@@ -704,44 +718,48 @@ export function useTasks(filters?: {
     }
   };
 
-  const startTask = async (taskId: string, options?: { pauseExisting?: boolean }) => {
-    if (!profile?.id) return false;
+  const startTaskDetailed = async (
+    taskId: string,
+    options?: { pauseExisting?: boolean },
+  ): Promise<TimerRpcResult> => {
+    if (!profile?.id || !profile?.tenant_id) {
+      return { ok: false, error_code: 'NOT_AUTHENTICATED', error_message: 'Not authenticated' };
+    }
+
+    // Get task info first
+    const { data: taskData, error: taskFetchError } = await (supabase
+      .from('tasks') as any)
+      .select('task_type, started_at')
+      .eq('id', taskId)
+      .single();
+
+    if (taskFetchError || !taskData) {
+      return {
+        ok: false,
+        error_code: 'TASK_FETCH_FAILED',
+        error_message: taskFetchError?.message || 'Failed to load task',
+      };
+    }
+
+    // Start timer interval first (so we don't mark a task in-progress without a timer)
+    const { data: timerStart, error: timerError } = await supabase.rpc('rpc_timer_start_job', {
+      p_job_type: 'task',
+      p_job_id: taskId,
+      p_pause_existing: options?.pauseExisting ?? false,
+    });
+
+    if (timerError) {
+      return {
+        ok: false,
+        error_code: 'RPC_ERROR',
+        error_message: timerError.message || 'Failed to start timer',
+      };
+    }
+
+    const startResult = (timerStart || {}) as TimerRpcResult;
+    if (!startResult.ok) return startResult;
 
     try {
-      // Get task info first
-      const { data: taskData } = await (supabase
-        .from('tasks') as any)
-        .select('task_type, started_at')
-        .eq('id', taskId)
-        .single();
-
-      // Start timer interval first (so we don't mark a task in-progress without a timer)
-      const { data: timerStart, error: timerError } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'task',
-        p_job_id: taskId,
-        p_pause_existing: options?.pauseExisting ?? false,
-      });
-
-      if (timerError) throw timerError;
-      const startResult = (timerStart || {}) as { ok?: boolean; error_code?: string; error_message?: string };
-
-      if (!startResult.ok) {
-        if (startResult.error_code === 'ACTIVE_TIMER_EXISTS') {
-          toast({
-            variant: 'destructive',
-            title: 'Another job is already in progress',
-            description: 'Pause your active job before starting this task.',
-          });
-          return false;
-        }
-        toast({
-          variant: 'destructive',
-          title: 'Unable to start timer',
-          description: startResult.error_message || 'Failed to start timer',
-        });
-        return false;
-      }
-
       const nowIso = new Date().toISOString();
       const taskUpdates: any = {
         status: 'in_progress',
@@ -752,25 +770,34 @@ export function useTasks(filters?: {
         taskUpdates.started_by = profile.id;
       }
 
-      const { error } = await (supabase
+      const { error: updateError } = await (supabase
         .from('tasks') as any)
         .update(taskUpdates)
         .eq('id', taskId);
 
-      if (error) throw error;
-
-      // Update inventory status
-      if (taskData) {
-        await updateInventoryStatus(taskId, taskData.task_type, 'in_progress');
+      if (updateError) {
+        // Best-effort rollback: end the interval we just started
+        try {
+          await supabase.rpc('rpc_timer_end_job', {
+            p_job_type: 'task',
+            p_job_id: taskId,
+            p_reason: 'rollback',
+          });
+        } catch {
+          // ignore
+        }
+        return {
+          ok: false,
+          error_code: 'TASK_UPDATE_FAILED',
+          error_message: updateError.message || 'Failed to update task',
+        };
       }
 
-      toast({
-        title: 'Task Started',
-        description: 'Task is now in progress.',
-      });
+      // Update inventory status
+      await updateInventoryStatus(taskId, taskData.task_type, 'in_progress');
 
       // Log activity for linked items
-      if (taskData) {
+      {
         const { data: taskItems } = await (supabase.from('task_items') as any)
           .select('item_id').eq('task_id', taskId);
         if (taskItems) {
@@ -788,21 +815,47 @@ export function useTasks(filters?: {
       }
 
       // Queue task.assigned alert (task started = assigned to current user)
-      if (taskData) {
-        await queueTaskAssignedAlert(profile.tenant_id, taskId, taskData.task_type);
-      }
+      await queueTaskAssignedAlert(profile.tenant_id, taskId, taskData.task_type);
 
       fetchTasks();
+      return startResult;
+    } catch (error: any) {
+      console.error('[startTaskDetailed] Error:', error);
+      // Don't roll back interval here — task may have started successfully already.
+      return {
+        ok: false,
+        error_code: 'START_TASK_FAILED',
+        error_message: error?.message || 'Failed to start task',
+      };
+    }
+  };
+
+  const startTask = async (taskId: string, options?: { pauseExisting?: boolean }) => {
+    const result = await startTaskDetailed(taskId, options);
+    if (result.ok) {
+      const paused = !!(options?.pauseExisting && result.paused_interval_id);
+      toast({
+        title: 'Task Started',
+        description: paused ? 'Paused your previous job and started this task.' : 'Task is now in progress.',
+      });
       return true;
-    } catch (error) {
-      console.error('Error starting task:', error);
+    }
+
+    if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to start task',
+        title: 'Another job is already in progress',
+        description: 'Pause your active job before starting this task.',
       });
       return false;
     }
+
+    toast({
+      variant: 'destructive',
+      title: 'Error',
+      description: result.error_message || 'Failed to start task',
+    });
+    return false;
   };
 
   // -------------------------------------------------------------------------
@@ -1998,6 +2051,7 @@ export function useTasks(filters?: {
     refetch: () => fetchTasks(false),
     createTask,
     updateTask,
+    startTaskDetailed,
     startTask,
     completeTask,
     completeTaskWithServices,

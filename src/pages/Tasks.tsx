@@ -28,11 +28,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useTasks, useTaskTypes, Task } from '@/hooks/useTasks';
 import { useWarehouses } from '@/hooks/useWarehouses';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { WillCallCompletionDialog } from '@/components/tasks/WillCallCompletionDialog';
@@ -150,7 +161,7 @@ export default function Tasks() {
     loading,
     isRefetching,
     refetch,
-    startTask,
+    startTaskDetailed,
     completeTask,
     markUnableToComplete,
     claimTask,
@@ -164,6 +175,56 @@ export default function Tasks() {
     // Technicians only see their assigned tasks
     assignedTo: isTechnician ? profile?.id : undefined,
   });
+
+  // Start-task switch confirmation (pause existing job)
+  const [startSwitchOpen, setStartSwitchOpen] = useState(false);
+  const [startSwitchTask, setStartSwitchTask] = useState<Task | null>(null);
+  const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
+  const [startSwitchLoading, setStartSwitchLoading] = useState(false);
+
+  const resolveActiveJobLabel = async (jobType: string | null | undefined, jobId: string | null | undefined) => {
+    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
+    if (jobType !== 'task') return `${jobType} job`;
+    try {
+      const { data } = await (supabase.from('tasks') as any)
+        .select('title, task_type')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', jobId)
+        .maybeSingle();
+      if (data?.title) return data.title;
+      if (data?.task_type) return `${data.task_type} task`;
+      return 'another task';
+    } catch {
+      return 'another task';
+    }
+  };
+
+  const handleStartTaskClick = async (task: Task) => {
+    if (!profile?.tenant_id) return;
+    setStartSwitchLoading(true);
+    try {
+      const result = await startTaskDetailed(task.id, { pauseExisting: false });
+      if (result.ok) {
+        toast({ title: 'Task Started', description: 'Task is now in progress.' });
+        return;
+      }
+
+      if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
+        setStartSwitchTask(task);
+        setActiveJobLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setStartSwitchOpen(true);
+        return;
+      }
+
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: result.error_message || 'Failed to start task',
+      });
+    } finally {
+      setStartSwitchLoading(false);
+    }
+  };
 
   // Filter tasks locally for search (avoid refetch on search)
   const filteredTasks = tasks
@@ -324,7 +385,8 @@ export default function Tasks() {
           key="start"
           size="sm"
           variant="outline"
-          onClick={() => startTask(task.id)}
+          onClick={() => handleStartTaskClick(task)}
+          disabled={startSwitchLoading}
           className="h-7 px-2 text-xs"
         >
           <span className="mr-1">▶️</span>
@@ -655,6 +717,57 @@ export default function Tasks() {
         onOpenChange={setCompletionBlockedOpen}
         validationResult={completionValidationResult}
       />
+
+      {/* Pause existing job confirmation */}
+      <AlertDialog open={startSwitchOpen} onOpenChange={setStartSwitchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{activeJobLabel ? ` (${activeJobLabel})` : ''}.
+              Do you want to pause it and start this task?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setStartSwitchTask(null);
+                setActiveJobLabel(null);
+              }}
+              disabled={startSwitchLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!startSwitchTask) return;
+                setStartSwitchLoading(true);
+                try {
+                  const result = await startTaskDetailed(startSwitchTask.id, { pauseExisting: true });
+                  if (!result.ok) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to start task',
+                      description: result.error_message || 'Failed to start task',
+                    });
+                    return;
+                  }
+                  toast({ title: 'Task Started', description: 'Paused your previous job and started this task.' });
+                  setStartSwitchOpen(false);
+                  setStartSwitchTask(null);
+                  setActiveJobLabel(null);
+                } finally {
+                  setStartSwitchLoading(false);
+                }
+              }}
+              disabled={startSwitchLoading}
+            >
+              Pause & Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
