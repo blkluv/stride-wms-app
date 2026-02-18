@@ -675,7 +675,7 @@ export function useRepairQuoteWorkflow() {
       });
       return null;
     }
-  }, [profile, toast, fetchQuotes, logQuoteItemsActivity]);
+  }, [profile, toast, fetchQuotes]);
 
   // Assign technician
   const assignTechnician = useCallback(async (

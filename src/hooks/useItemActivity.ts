@@ -103,6 +103,32 @@ function toItemActivityRows(itemId: string, rows: ActivityRow[], tenantId?: stri
   }));
 }
 
+function activitySemanticKey(row: Pick<ItemActivity, 'event_type' | 'details'>): string | null {
+  const eventType = String(row.event_type || '');
+  const details = (row.details || {}) as Record<string, unknown>;
+
+  if (
+    eventType === 'item_shipment_linked' ||
+    eventType === 'item_received_in_shipment' ||
+    eventType === 'item_released_in_shipment'
+  ) {
+    const shipmentId = details.shipment_id;
+    if (typeof shipmentId === 'string' && shipmentId.length > 0) return `${eventType}|shipment:${shipmentId}`;
+  }
+
+  if (eventType === 'document_uploaded' || eventType === 'document_removed') {
+    const documentId = details.document_id;
+    if (typeof documentId === 'string' && documentId.length > 0) return `${eventType}|document:${documentId}`;
+  }
+
+  if (eventType.startsWith('repair_quote_')) {
+    const repairQuoteId = details.repair_quote_id;
+    if (typeof repairQuoteId === 'string' && repairQuoteId.length > 0) return `${eventType}|repair_quote:${repairQuoteId}`;
+  }
+
+  return null;
+}
+
 async function fetchDerivedShipmentActivity(itemId: string): Promise<ActivityRow[]> {
   const rows: ActivityRow[] = [];
 
@@ -470,10 +496,21 @@ export function useItemActivity(
         ...toItemActivityRows(itemId, docs, tenantId),
       ] as ItemActivity[];
 
+      // Prefer logged `item_activity` rows; use derived rows only when missing.
+      const loggedKeys = new Set<string>();
+      for (const r of (data || []) as ItemActivity[]) {
+        const key = activitySemanticKey(r);
+        if (key) loggedKeys.add(key);
+      }
+
       // Deduplicate by id and sort newest first
       const seen = new Set<string>();
       const deduped = unified.filter((row) => {
         if (!row?.id) return false;
+        if (row.id.startsWith('derived-')) {
+          const key = activitySemanticKey(row);
+          if (key && loggedKeys.has(key)) return false;
+        }
         if (seen.has(row.id)) return false;
         seen.add(row.id);
         return true;
