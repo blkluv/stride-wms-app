@@ -427,7 +427,6 @@ export function DocumentScanner({
         right: clampPct(((rect.x + rect.width) / w) * 100),
         bottom: clampPct(((rect.y + rect.height) / h) * 100),
       });
-      setCropRects((prev) => prev.map((r, i) => (i === index ? rect : r)));
     } catch (err) {
       console.warn('[DocumentScanner] auto detect crop failed:', err);
     } finally {
