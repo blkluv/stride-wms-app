@@ -96,3 +96,7 @@ User decision (default sender display name):
 User decision (Reply-To behavior when using platform default sender):
 - When a tenant is using the platform default sender, replies should go to the tenant’s configured Reply-To email address (not a platform inbox, and not “no-reply”).
 
+### QA-2026-02-17-ADMINOPS-017
+User decision (Reply-To fallback):
+- If a tenant has not configured a Reply-To email yet, default Reply-To to the tenant owner/admin login email (not a platform inbox and not blocked).
+
