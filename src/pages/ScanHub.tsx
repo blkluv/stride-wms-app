@@ -687,6 +687,21 @@ export default function ScanHub() {
     
     try {
       if (mode === 'lookup') {
+        // Auto-differentiate: if it's a location barcode, tell the user
+        const likelyLoc = isLikelyLocationCode(input);
+        if (likelyLoc) {
+          const loc = await lookupLocation(input);
+          if (loc) {
+            hapticMedium();
+            toast({
+              title: `Location: ${loc.code}`,
+              description: loc.name || loc.type || 'Location found',
+            });
+            setProcessing(false);
+            return;
+          }
+        }
+
         const item = await lookupItem(input);
         if (item) {
           hapticMedium(); // Item found
@@ -704,11 +719,25 @@ export default function ScanHub() {
 
           navigate(`/inventory/${item.id}`);
         } else {
-          hapticError(); // Item not found
+          // If not quickly detected as location, try full async lookup
+          if (!likelyLoc) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticMedium();
+              toast({
+                title: `Location: ${loc.code}`,
+                description: loc.name || loc.type || 'Location found',
+              });
+              setProcessing(false);
+              return;
+            }
+          }
+
+          hapticError(); // Not found at all
           toast({
             variant: 'destructive',
-            title: 'Item Not Found',
-            description: 'No item found with that code.',
+            title: 'Not Found',
+            description: 'No item or location found with that code.',
           });
         }
         setProcessing(false);
