@@ -299,6 +299,7 @@ interface ClassEditFormProps {
 }
 
 function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassEditFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState(itemClass.name);
   const [code, setCode] = useState(itemClass.code);
   const [notes, setNotes] = useState(itemClass.notes ?? '');
@@ -329,7 +330,12 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     if (!name.trim() || !code.trim()) return;
     const min = minCubicFeet.trim() ? Number(minCubicFeet) : null;
     const max = maxCubicFeet.trim() ? Number(maxCubicFeet) : null;
-    if (min !== null && max !== null && max <= min) {
+    if (min !== null && max !== null && max < min) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid cubic feet range',
+        description: 'Max cubic feet must be greater than or equal to Min cubic feet.',
+      });
       return;
     }
     await onSave({
@@ -439,6 +445,7 @@ interface AddClassFormProps {
 }
 
 function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [codeManual, setCodeManual] = useState(false);
@@ -457,7 +464,12 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
     if (!name.trim() || !code.trim()) return;
     const min = minCubicFeet.trim() ? Number(minCubicFeet) : null;
     const max = maxCubicFeet.trim() ? Number(maxCubicFeet) : null;
-    if (min !== null && max !== null && max <= min) {
+    if (min !== null && max !== null && max < min) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid cubic feet range',
+        description: 'Max cubic feet must be greater than or equal to Min cubic feet.',
+      });
       return;
     }
     await onSave({

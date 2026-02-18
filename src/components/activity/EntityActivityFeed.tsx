@@ -27,7 +27,7 @@ interface ActivityRow {
 }
 
 interface EntityActivityFeedProps {
-  entityType: Exclude<ActivityEntityType, 'item'>;
+  entityType: Exclude<ActivityEntityType, 'item'> | 'manifest';
   entityId: string;
   title?: string;
   description?: string;
@@ -462,6 +462,49 @@ async function fetchShipmentComprehensiveActivity(shipmentId: string): Promise<A
   return deduplicated;
 }
 
+async function fetchManifestHistoryActivity(manifestId: string): Promise<ActivityRow[]> {
+  const { data, error } = await (supabase as any)
+    .from('stocktake_manifest_history')
+    .select(`
+      id,
+      action,
+      description,
+      changed_at,
+      old_values,
+      new_values,
+      affected_item_ids,
+      changed_by_user:users!stocktake_manifest_history_changed_by_fkey(first_name, last_name, email)
+    `)
+    .eq('manifest_id', manifestId)
+    .order('changed_at', { ascending: false })
+    .limit(200);
+
+  if (error) throw error;
+
+  const rows = (data || []) as any[];
+  return rows.map((row) => {
+    const action = String(row.action || 'updated');
+    const user = row.changed_by_user;
+    const actorName =
+      user
+        ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || null
+        : null;
+
+    return {
+      id: row.id,
+      actor_name: actorName,
+      event_type: action,
+      event_label: row.description || action.replace(/_/g, ' '),
+      details: {
+        old_values: row.old_values || null,
+        new_values: row.new_values || null,
+        affected_item_ids: row.affected_item_ids || null,
+      },
+      created_at: row.changed_at,
+    } satisfies ActivityRow;
+  });
+}
+
 export function EntityActivityFeed({ entityType, entityId, title, description }: EntityActivityFeedProps) {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -477,6 +520,13 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
       // For shipments, use comprehensive multi-source fetch
       if (entityType === 'shipment') {
         const rows = await fetchShipmentComprehensiveActivity(entityId);
+        setActivities(rows);
+        return;
+      }
+
+      // For manifests, use stocktake manifest history
+      if (entityType === 'manifest') {
+        const rows = await fetchManifestHistoryActivity(entityId);
         setActivities(rows);
         return;
       }

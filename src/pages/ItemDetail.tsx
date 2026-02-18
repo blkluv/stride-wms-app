@@ -982,7 +982,7 @@ export default function ItemDetail() {
         {/* Status Badges Row - Removed per UI update */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <ScrollableTabsList>
+          <ScrollableTabsList activeValue={activeTab}>
             <TabsTrigger value="details">📋 Details</TabsTrigger>
             <TabsTrigger value="photos" className="relative">
               📷 Photos

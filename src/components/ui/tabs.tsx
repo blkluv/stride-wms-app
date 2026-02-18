@@ -27,8 +27,8 @@ TabsList.displayName = TabsPrimitive.List.displayName;
  */
 const ScrollableTabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, children, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & { activeValue?: string }
+>(({ className, children, activeValue, ...props }, ref) => {
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -41,7 +41,7 @@ const ScrollableTabsList = React.forwardRef<
       const scrollLeft = container.scrollLeft + (tabRect.left - containerRect.left) - (containerRect.width / 2) + (tabRect.width / 2);
       container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
     }
-  });
+  }, [activeValue]);
 
   return (
     <div

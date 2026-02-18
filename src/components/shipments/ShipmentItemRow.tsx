@@ -464,7 +464,7 @@ export function ShipmentItemRow({
       ? visibleColumns
       : (['item_code', 'quantity', 'vendor', 'description', 'location', 'sidemark', 'room'] as ItemColumnKey[]);
 
-  const expandedColSpan = 2 + columns.length + 3; // checkbox + expand + view columns + (class, status, actions)
+  const expandedColSpan = 2 + columns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
 
   return (
     <>
@@ -770,6 +770,9 @@ export function ShipmentItemRow({
             )}
           </div>
         </TableCell>
+
+        {/* Column settings header alignment */}
+        <TableCell className="w-8" />
       </TableRow>
 
       {/* Expanded Row - ONLY shows flags */}

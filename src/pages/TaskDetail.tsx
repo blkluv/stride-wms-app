@@ -1312,6 +1312,7 @@ export default function TaskDetailPage() {
                               </TableCell>
                             </>
                           )}
+                          <TableCell />
                         </TableRow>
                       ))}
                     </TableBody>

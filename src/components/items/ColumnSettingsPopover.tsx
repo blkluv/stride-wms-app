@@ -12,7 +12,9 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import {
+  BUILTIN_ITEM_COLUMNS,
   REQUIRED_ITEM_COLUMNS,
+  customFieldColumnKey,
   getColumnLabel,
   getDefaultViewId,
   getViewById,
@@ -150,8 +152,21 @@ export function ColumnSettingsPopover({ viewId }: ColumnSettingsPopoverProps) {
   );
 
   const resetToDefault = useCallback(() => {
-    setLocalDraft(null);
-  }, []);
+    setLocalDraft((prev) => {
+      const base = prev || settings;
+      const customColumns = base.custom_fields
+        .filter((f) => f.enabled && f.show_in_lists)
+        .map((f) => customFieldColumnKey(f.key));
+
+      const order: ItemColumnKey[] = [...BUILTIN_ITEM_COLUMNS.map((c) => c.key), ...customColumns];
+      const hidden: ItemColumnKey[] = BUILTIN_ITEM_COLUMNS.filter((c) => c.default_hidden).map((c) => c.key);
+
+      return {
+        ...base,
+        views: base.views.map((v) => (v.id === activeViewId ? { ...v, order, hidden } : v)),
+      };
+    });
+  }, [settings, activeViewId]);
 
   if (!activeView) return null;
 
