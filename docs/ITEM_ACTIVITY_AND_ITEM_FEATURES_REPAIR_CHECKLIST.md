@@ -20,7 +20,7 @@ Last updated: 2026-02-18
 | 5 | Remove **Advanced** tab from Item Details; keep custom field values editable inline | ✅ | `51d70be` |
 | 6 | Fix mobile tabs row formatting (horizontal scroll pill bar) | ✅ | `06ec41f` |
 | 7 | Fix flag pill/badge formatting consistency | ✅ | `b99a8e8` |
-| 8 | Add **Size** to Item Fields in Settings/Preferences (BUILTIN_ITEM_COLUMNS) | ✅ | `TBD` |
+| 8 | Add **Size** to Item Fields in Settings/Preferences (BUILTIN_ITEM_COLUMNS) | ✅ | `211f226` |
 | 9 | Classes editor: single “Cubic Feet” size per class (persist to both min/max) | ✅ | `0b26777` |
 | 10 | Auto-populate item `size` from class assignment; prompt on overwrite; default `size_unit` to `cu_ft` | ✅ | `e3b45fb` |
 | 11 | Column visibility + reorder controls on all item list pages (Inventory/Manifest/Expected/Outbound/Stocktake detail) | ⬜ | Not complete |
