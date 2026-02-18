@@ -155,6 +155,7 @@ Route:
 
 Behavior (contract):
 - Map selector (create/rename/set default)
+  - If this is the first map for the warehouse, it auto-becomes the Default Map (DL-2026-02-18-012)
 - Toolbar: select, add zone rectangle, grid snap (default on), auto-label toggle, duplicate (Ctrl/Cmd+D)
 - Canvas: SVG grid background, zoom/pan, drag-select multi-select, resize handles
 - Right sidebar for selected rectangle: label, zone dropdown, delete rectangle, optional numeric x/y/w/h

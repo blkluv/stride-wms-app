@@ -116,7 +116,7 @@ The contract's SQL and RPC definitions assume certain columns that don't exist i
 | F1 | Create `src/pages/WarehouseMapBuilder.tsx` — route page component | C2, C3 |
 | F2 | Create `src/components/warehouse-map/MapCanvas.tsx` — SVG canvas with grid, zoom/pan, drag-select | F1 |
 | F3 | Create `src/components/warehouse-map/MapToolbar.tsx` — select, add zone rect, grid snap, auto-label, duplicate | F1 |
-| F4 | Create `src/components/warehouse-map/MapHeader.tsx` — map selector, create/rename/set default, heat viewer link | C2 |
+| F4 | Create `src/components/warehouse-map/MapHeader.tsx` — map selector, create/rename/set default (first map auto-default: DL-2026-02-18-012), heat viewer link | C2 |
 | F5 | Create `src/components/warehouse-map/NodeSidebar.tsx` — label, zone dropdown, delete, x/y/w/h | C3 |
 | F6 | Implement autosave with debounce (300–500ms) + saving/saved indicator | C3 |
 | F7 | Implement duplicate (Ctrl/Cmd+D) and row helpers | F2 |
