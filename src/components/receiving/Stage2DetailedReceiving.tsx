@@ -1,4 +1,4 @@
-import { Fragment, useState, useCallback, useEffect } from 'react';
+import { Fragment, useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,8 @@ import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
 import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
+import { AutosaveIndicator } from '@/components/receiving/AutosaveIndicator';
+import type { AutosaveStatus } from '@/hooks/useReceivingAutosave';
 import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
@@ -91,6 +93,8 @@ interface Stage2DetailedReceivingProps {
   /** Called whenever Stage 2 row count changes (Entry Count) */
   onEntryCountChange?: (count: number) => void;
   onOpenExceptions?: () => void;
+  /** Bump Stage 1 BillingCalculator refresh (preview updates as items autosave). */
+  onBillingRefresh?: () => void;
   /** Render in read-only mode (view-only). */
   readOnly?: boolean;
   /** Show the Stage 2 completion flow/button. */
@@ -107,6 +111,7 @@ export function Stage2DetailedReceiving({
   onItemMatchingParamsChange,
   onEntryCountChange,
   onOpenExceptions,
+  onBillingRefresh,
   readOnly = false,
   showCompleteButton = true,
 }: Stage2DetailedReceivingProps) {
@@ -172,6 +177,27 @@ export function Stage2DetailedReceiving({
   // Completing
   const [completing, setCompleting] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+
+  // Autosave Stage 2 item rows into shipment_items so:
+  // - rows persist across tab switches / refresh
+  // - Stage 1 BillingCalculator preview updates as items are entered
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const autosaveIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const billingRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowSaveInFlightRef = useRef<Record<string, boolean>>({});
+  const rowResaveQueuedRef = useRef<Record<string, boolean>>({});
+  const itemsRef = useRef<ReceivedItem[]>([]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveIdleTimerRef.current) clearTimeout(autosaveIdleTimerRef.current);
+      if (billingRefreshTimerRef.current) clearTimeout(billingRefreshTimerRef.current);
+    };
+  }, []);
 
   // Load existing shipment items
   useEffect(() => {
@@ -269,6 +295,101 @@ export function Stage2DetailedReceiving({
     });
   };
 
+  const bumpBillingPreview = useCallback(() => {
+    if (!onBillingRefresh) return;
+    if (billingRefreshTimerRef.current) return;
+    billingRefreshTimerRef.current = setTimeout(() => {
+      billingRefreshTimerRef.current = null;
+      onBillingRefresh();
+    }, 150);
+  }, [onBillingRefresh]);
+
+  const isRowMeaningful = useCallback((row: ReceivedItem): boolean => {
+    const hasQty = Number(row.received_quantity) > 0;
+    const hasFlags = Array.isArray(row.flags) && row.flags.length > 0;
+    const hasText = Boolean(
+      row.vendor.trim() ||
+        row.description.trim() ||
+        row.sidemark.trim() ||
+        row.room.trim()
+    );
+    const hasClass = Boolean(row.class_id);
+    return hasQty || hasFlags || hasText || hasClass;
+  }, []);
+
+  const upsertShipmentItemRow = useCallback(async (row: ReceivedItem) => {
+    if (!shipmentId || !profile?.id) return;
+    if (!canEdit) return;
+    if (!isRowMeaningful(row)) return;
+
+    // Avoid insert/update races on repeated blur events.
+    if (rowSaveInFlightRef.current[row.id]) {
+      rowResaveQueuedRef.current[row.id] = true;
+      return;
+    }
+
+    rowSaveInFlightRef.current[row.id] = true;
+    setAutosaveStatus('saving');
+
+    const payload: Record<string, unknown> = {
+      expected_description: row.description.trim() || null,
+      expected_vendor: row.vendor.trim() || null,
+      expected_sidemark: row.sidemark.trim() || null,
+      expected_class_id: row.class_id || null,
+      room: row.room.trim() || null,
+      expected_quantity: row.expected_quantity && row.expected_quantity > 0 ? row.expected_quantity : 1,
+      actual_quantity: Number.isFinite(row.received_quantity) ? row.received_quantity : 0,
+      flags: row.flags,
+    };
+
+    try {
+      if (row.shipment_item_id) {
+        const { error } = await (supabase.from('shipment_items') as any)
+          .update(payload)
+          .eq('id', row.shipment_item_id);
+
+        if (error) throw error;
+      } else {
+        const { data, error } = await (supabase.from('shipment_items') as any)
+          .insert({ shipment_id: shipmentId, ...payload })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+
+        const newId = (data as any)?.id as string | undefined;
+        if (newId) {
+          setItems((prev) => prev.map((i) => (i.id === row.id ? { ...i, shipment_item_id: newId } : i)));
+        }
+      }
+
+      bumpBillingPreview();
+      setAutosaveStatus('saved');
+      if (autosaveIdleTimerRef.current) clearTimeout(autosaveIdleTimerRef.current);
+      autosaveIdleTimerRef.current = setTimeout(() => setAutosaveStatus('idle'), 1200);
+    } catch (err: any) {
+      console.error('[Stage2] item autosave error:', err);
+      setAutosaveStatus('error');
+      // Keep this lightweight (no spam): a single toast is okay; persistent error state is also visible.
+      toast({
+        variant: 'destructive',
+        title: 'Autosave Failed',
+        description: err?.message || 'Failed to save item row. Please try again.',
+      });
+    } finally {
+      rowSaveInFlightRef.current[row.id] = false;
+
+      // If changes came in while we were saving, write the newest snapshot once more.
+      if (rowResaveQueuedRef.current[row.id]) {
+        rowResaveQueuedRef.current[row.id] = false;
+        const latest = itemsRef.current.find((i) => i.id === row.id);
+        if (latest) {
+          void upsertShipmentItemRow(latest);
+        }
+      }
+    }
+  }, [shipmentId, profile?.id, canEdit, isRowMeaningful, bumpBillingPreview, toast]);
+
   const duplicateItem = (id: string) => {
     if (!canEdit) return;
     setItems((prev) => {
@@ -298,6 +419,7 @@ export function Stage2DetailedReceiving({
 
   const toggleItemFlag = (id: string, serviceCode: string) => {
     if (!canEdit) return;
+    let nextRow: ReceivedItem | null = null;
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
@@ -307,9 +429,14 @@ export function Stage2DetailedReceiving({
         } else {
           nextFlags.add(serviceCode);
         }
-        return { ...item, flags: Array.from(nextFlags) };
+        nextRow = { ...item, flags: Array.from(nextFlags) };
+        return nextRow;
       })
     );
+
+    if (nextRow) {
+      void upsertShipmentItemRow(nextRow);
+    }
   };
 
   // Container placement handlers
@@ -903,15 +1030,18 @@ export function Stage2DetailedReceiving({
               <MaterialIcon name="list_alt" size="sm" />
               Items ({items.length})
             </CardTitle>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowManifestSelector(true)} disabled={!canEdit}>
-                <MaterialIcon name="content_paste_go" size="sm" className="mr-1" />
-                Add From Manifest
-              </Button>
-              <Button variant="outline" size="sm" onClick={addManualItem} disabled={!canEdit}>
-                <MaterialIcon name="add" size="sm" className="mr-1" />
-                Add Item
-              </Button>
+            <div className="flex flex-col items-end gap-1">
+              <AutosaveIndicator status={autosaveStatus} />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowManifestSelector(true)} disabled={!canEdit}>
+                  <MaterialIcon name="content_paste_go" size="sm" className="mr-1" />
+                  Add From Manifest
+                </Button>
+                <Button variant="outline" size="sm" onClick={addManualItem} disabled={!canEdit}>
+                  <MaterialIcon name="add" size="sm" className="mr-1" />
+                  Add Item
+                </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -956,6 +1086,10 @@ export function Stage2DetailedReceiving({
                             min={0}
                             value={item.received_quantity}
                             onChange={(e) => updateItem(item.id, 'received_quantity', parseInt(e.target.value) || 0)}
+                            onBlur={(e) => {
+                              const qty = parseInt(e.currentTarget.value) || 0;
+                              void upsertShipmentItemRow({ ...item, received_quantity: qty });
+                            }}
                             className="w-20 h-9 text-right ml-auto"
                             disabled={!canEdit}
                           />
@@ -964,6 +1098,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.vendor}
                             onChange={(e) => updateItem(item.id, 'vendor', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, vendor: e.currentTarget.value })}
                             placeholder="Vendor"
                             className="h-9"
                             disabled={!canEdit}
@@ -973,6 +1108,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.description}
                             onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, description: e.currentTarget.value })}
                             placeholder="Description"
                             className="h-9"
                             disabled={!canEdit}
@@ -981,7 +1117,11 @@ export function Stage2DetailedReceiving({
                         <TableCell>
                           <Select
                             value={item.class_id || '__none__'}
-                            onValueChange={(value) => updateItem(item.id, 'class_id', value === '__none__' ? null : value)}
+                            onValueChange={(value) => {
+                              const next = value === '__none__' ? null : value;
+                              updateItem(item.id, 'class_id', next);
+                              void upsertShipmentItemRow({ ...item, class_id: next });
+                            }}
                             disabled={!canEdit}
                           >
                             <SelectTrigger className="h-9">
@@ -1001,6 +1141,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.sidemark}
                             onChange={(e) => updateItem(item.id, 'sidemark', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, sidemark: e.currentTarget.value })}
                             placeholder="Side Mark"
                             className="h-9"
                             disabled={!canEdit}
@@ -1010,6 +1151,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.room}
                             onChange={(e) => updateItem(item.id, 'room', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, room: e.currentTarget.value })}
                             placeholder="Room"
                             className="h-9"
                             disabled={!canEdit}

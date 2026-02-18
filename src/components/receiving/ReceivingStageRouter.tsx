@@ -72,6 +72,10 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   // Stage 2 row count (Entry Count) computed from Stage 2 items table
   const [entryCount, setEntryCount] = useState<number>(0);
 
+  // Billing calculator refresh key (shared across Stage 1 + Stage 2)
+  // Stage 2 autosaves bump this so Stage 1 billing preview updates in real time.
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+
   // Stage 2 UI state (expanded/collapsed) persists locally per shipment
   const stage2ExpandedKey = `receiving.stage2.expanded.${shipmentId}`;
   const [stage2Expanded, setStage2Expanded] = useState<boolean>(false);
@@ -416,6 +420,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               onMatchingParamsChange={handleMatchingParamsChange}
               onOpenExceptions={() => setTab('exceptions')}
               entryCount={entryCount}
+              externalBillingRefreshKey={billingRefreshKey}
               showCompleteButton={true}
             />
 
@@ -445,6 +450,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               onMatchingParamsChange={handleMatchingParamsChange}
               onOpenExceptions={() => setTab('exceptions')}
               entryCount={entryCount}
+              externalBillingRefreshKey={billingRefreshKey}
               showCompleteButton={false}
             />
 
@@ -489,6 +495,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               onMatchingParamsChange={handleMatchingParamsChange}
               onOpenExceptions={() => setTab('exceptions')}
               entryCount={entryCount}
+              externalBillingRefreshKey={billingRefreshKey}
               showCompleteButton={false}
             />
 
@@ -520,6 +527,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   onItemMatchingParamsChange={handleItemMatchingParamsChange}
                   onEntryCountChange={setEntryCount}
                   onOpenExceptions={() => setTab('exceptions')}
+                  onBillingRefresh={() => setBillingRefreshKey((prev) => prev + 1)}
                 />
               </CollapsibleContent>
             </Collapsible>
@@ -593,6 +601,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               onMatchingParamsChange={handleMatchingParamsChange}
               onOpenExceptions={() => setTab('exceptions')}
               entryCount={entryCount}
+              externalBillingRefreshKey={billingRefreshKey}
               showCompleteButton={false}
               readOnly={!closedEditMode}
             />
@@ -625,6 +634,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   onItemMatchingParamsChange={handleItemMatchingParamsChange}
                   onEntryCountChange={setEntryCount}
                   onOpenExceptions={() => setTab('exceptions')}
+                  onBillingRefresh={() => setBillingRefreshKey((prev) => prev + 1)}
                   readOnly={!closedEditMode}
                   showCompleteButton={false}
                 />

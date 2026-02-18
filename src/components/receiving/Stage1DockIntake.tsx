@@ -87,6 +87,11 @@ interface Stage1DockIntakeProps {
   onOpenExceptions?: () => void;
   /** Stage 2 row-count (each row = 1 carton/package/piece) */
   entryCount?: number;
+  /**
+   * External refresh key for the BillingCalculator (e.g., Stage 2 autosaves).
+   * Stage 1 also maintains its own internal refresh key for Add Charge/Credit.
+   */
+  externalBillingRefreshKey?: number;
   /** Draft-only: show the "Complete Dock Intake" action */
   showCompleteButton?: boolean;
   /** Render in read-only mode (view-only). */
@@ -102,6 +107,7 @@ export function Stage1DockIntake({
   onMatchingParamsChange,
   onOpenExceptions,
   entryCount = 0,
+  externalBillingRefreshKey = 0,
   showCompleteButton = true,
   readOnly = false,
 }: Stage1DockIntakeProps) {
@@ -149,6 +155,7 @@ export function Stage1DockIntake({
 
   // Billing UI (manager/admin only)
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+  const effectiveBillingRefreshKey = billingRefreshKey + externalBillingRefreshKey;
   const [addChargeOpen, setAddChargeOpen] = useState(false);
   const [addCreditOpen, setAddCreditOpen] = useState(false);
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
@@ -1160,7 +1167,7 @@ export function Stage1DockIntake({
           {accountId ? (
             <BillingCalculator
               shipmentId={shipmentId}
-              refreshKey={billingRefreshKey}
+              refreshKey={effectiveBillingRefreshKey}
               title="Billing Calculator"
             />
           ) : (
