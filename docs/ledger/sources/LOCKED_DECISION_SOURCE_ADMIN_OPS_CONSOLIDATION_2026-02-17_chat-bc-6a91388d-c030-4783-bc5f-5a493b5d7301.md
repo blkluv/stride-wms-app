@@ -88,3 +88,7 @@ User decision (default sender + admin config):
 - Tenants who do not configure their own domain will use a platform default sender email.
 - The platform default sender email must be configurable by `admin_dev` in the new `/admin/saas-ops` Email section (not hard-coded).
 
+### QA-2026-02-17-ADMINOPS-015
+User decision (default sender display name):
+- Do not add a separate configurable “From name” field for the platform default sender; keep it as an email address only.
+
