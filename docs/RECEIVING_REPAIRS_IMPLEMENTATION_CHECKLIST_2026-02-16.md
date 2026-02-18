@@ -8,55 +8,55 @@ This checklist tracks implementation of each of the **89** logged decisions.
 ## Checklist
 
 - [ ] 1. Real scan scope: mobile/tablet only in-app; desktop upload-only.
-- [ ] 2. Stage 1 completion action: "Complete Stage 1" button unlocks Stage 2.
-- [ ] 3. Stage 2 auto-expand behavior: collapsed until user clicks "Start Stage 2"; then defaults expanded unless minimized.
-- [ ] 4. Persist "Start Stage 2" click to DB.
-- [ ] 5. Stage 1 remains editable after Stage 1 complete.
-- [ ] 6. Enforce piece-count mismatch prompting.
-- [ ] 7. Block completion until mismatch corrected or exception+note; add Shortage/Overage chips for piece discrepancies.
-- [ ] 8. Dedicated Overage chip exists.
-- [ ] 9. Exception chips are multi-select.
-- [ ] 10. Exceptions note model: initially shared but refined to per-exception inline notes.
+- [x] 2. Stage 1 completion action: "Complete Stage 1" button unlocks Stage 2.
+- [x] 3. Stage 2 auto-expand behavior: collapsed until user clicks "Start Stage 2"; then defaults expanded unless minimized.
+- [x] 4. Persist "Start Stage 2" click to DB.
+- [x] 5. Stage 1 remains editable after Stage 1 complete.
+- [x] 6. Enforce piece-count mismatch prompting.
+- [x] 7. Block completion until mismatch corrected or exception+note; add Shortage/Overage chips for piece discrepancies.
+- [x] 8. Dedicated Overage chip exists.
+- [x] 9. Exception chips are multi-select.
+- [x] 10. Exceptions note model: initially shared but refined to per-exception inline notes.
 - [ ] 11. Exception note scope: shipment-level notes system (not stage-specific).
 - [ ] 12. Intake notes types: Public + Internal toggles like Item Details.
 - [ ] 13. Exception notes must be Public; mismatch between manifest vs expected doesn’t require note; piece discrepancies do.
-- [ ] 14. Stage 1 mismatch (Carrier vs Dock): live sync Shortage/Overage; keep those chips locked until mismatch corrected.
-- [ ] 15. Mis-Ship exception: manual; available once Stage 2 is visible (Stage 1 remains editable).
-- [ ] 16. Stage 2 mismatch (Dock vs Entry): no sync; prompt on Stage 2 completion; require correction or exception+note.
-- [ ] 17. Entry Count definition: row count (each row = piece).
-- [ ] 18. Signature not required for Stage 1 completion.
+- [x] 14. Stage 1 mismatch (Carrier vs Dock): live sync Shortage/Overage; keep those chips locked until mismatch corrected.
+- [x] 15. Mis-Ship exception: manual; available once Stage 2 is visible (Stage 1 remains editable).
+- [x] 16. Stage 2 mismatch (Dock vs Entry): no sync; prompt on Stage 2 completion; require correction or exception+note.
+- [x] 17. Entry Count definition: row count (each row = piece).
+- [x] 18. Signature not required for Stage 1 completion.
 - [ ] 19. Intake notes UI style matches Item Details notes UI (multi-note list + filters).
 - [ ] 20. Notes storage is shipment-level.
 - [ ] 21. Exception-note enforcement UX: Notes tab (later refined to inline per-chip notes).
 - [ ] 22. Public exception note required for all exception chips.
 - [ ] 23. Add "Exception" note type (tabs: All/Public/Internal/Exception).
 - [ ] 24. Generic Public note does NOT satisfy exception requirement; each selected chip needs its exception note(s).
-- [ ] 25. Carrier paperwork pieces input is manual.
-- [ ] 26. Carrier count required for Stage 1 completion; label "Carrier count" and tooltip help.
-- [ ] 27. Dock count required for Stage 1 completion; label "Dock Count" and tooltip help to all 3 counts.
-- [ ] 28. Stage 2 count labeled "Entry Count", read-only computed from row count.
-- [ ] 29. Removing an exception chip removes its corresponding exception note(s); log add/remove in activity history.
-- [ ] 30. Inline quick entry is one note per chip; more notes can be added later in Notes tab.
+- [x] 25. Carrier paperwork pieces input is manual.
+- [x] 26. Carrier count required for Stage 1 completion; label "Carrier count" and tooltip help.
+- [x] 27. Dock count required for Stage 1 completion; label "Dock Count" and tooltip help to all 3 counts.
+- [x] 28. Stage 2 count labeled "Entry Count", read-only computed from row count.
+- [x] 29. Removing an exception chip removes its corresponding exception note(s); log add/remove in activity history.
+- [x] 30. Inline quick entry is one note per chip; more notes can be added later in Notes tab.
 - [ ] 31. Chip-generated exception notes are tied to that chip; exception notes created directly in Notes tab need not have a chip.
 - [ ] 32. Per-exception note entry appears inline in Exceptions section; still stored under Notes tab (Exception filter).
-- [ ] 33. Signature applies to Stage 1 carrier sign-for.
+- [x] 33. Signature applies to Stage 1 carrier sign-for.
 - [ ] 34. Signature is persisted + viewable later on intake page and Shipment Details page.
-- [ ] 35. Signature metadata displayed (typed name + timestamp if present).
-- [ ] 36. Signature optional; if drawn signature is used, Driver name required; typed-only acceptable.
-- [ ] 37. Driver name label is "Driver name".
-- [ ] 38. Signature edit allows switching Draw/Type and Clear.
-- [ ] 39. Scanner output supports multi-page PDF.
+- [x] 35. Signature metadata displayed (typed name + timestamp if present).
+- [x] 36. Signature optional; if drawn signature is used, Driver name required; typed-only acceptable.
+- [x] 37. Driver name label is "Driver name".
+- [x] 38. Signature edit allows switching Draw/Type and Clear.
+- [x] 39. Scanner output supports multi-page PDF.
 - [ ] 40. Scanner supports auto edge detection + manual crop adjustment.
 - [ ] 41. Scanner naming: no prompt; auto-name with shipment number + date + unique.
 - [ ] 42. Scanner environment: mobile web first; native later.
-- [ ] 43. Mobile web capture: prefer in-page live preview; allow file-input capture if needed.
-- [ ] 44. Implement scanner now, structure for later native swap.
+- [x] 43. Mobile web capture: prefer in-page live preview; allow file-input capture if needed.
+- [x] 44. Implement scanner now, structure for later native swap.
 - [ ] 45. Alerts: avoid double-emailing; enhance Shipment Received email with optional Exceptions section; show exception indicator near shipment number.
 - [ ] 46. Shipment received email exceptions formatting: bullet/note style (types + notes), not item-specific.
 - [ ] 47. Implement item-level flags + alert tokens now.
 - [ ] 48. Item-level flag types: Damage, Wet, Missing documents, Crushed/Torn, Other, Open.
 - [ ] 49. Flags exist at both shipment level (exception exists) and item level (which piece).
-- [ ] 50. Shipment exception chip list: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
+- [x] 50. Shipment exception chip list: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
 - [x] 51. Completed intake remains accessible on the same Dock Intake page; read-only by default; "Edit" unlocks changes without reopening status.
 - [x] 52. Receiving PDF: save on Stage 2 completion; overwrite visible version; keep older versions archived (not deleted).
 - [x] 53. Archived receiving PDFs revisited via interactive Activity feed (open/download).
