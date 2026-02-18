@@ -48,6 +48,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
@@ -854,11 +855,13 @@ export default function Inventory() {
                   <TableHeader><TableRow>
                     <TableHead className="w-10"><Checkbox checked={selectedItems.size === filteredAndSortedItems.length && filteredAndSortedItems.length > 0} onCheckedChange={toggleSelectAll} className="h-3.5 w-3.5" /></TableHead>
                     {visibleColumns.map(renderTableHead)}
+                    <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>{filteredAndSortedItems.map((item) => (
                     <TableRow key={item.id} className={`cursor-pointer hover:bg-muted/50 ${selectedItems.has(item.id) ? 'bg-muted/30' : ''}`} onClick={() => navigate(`/inventory/${item.id}`)}>
                       <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-3.5 w-3.5" /></TableCell>
                       {visibleColumns.map((key) => renderTableCell(key, item))}
+                      <TableCell />
                     </TableRow>
                   ))}</TableBody>
                 </Table>

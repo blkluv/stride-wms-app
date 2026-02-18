@@ -58,6 +58,7 @@ import { DocumentUploadButton } from '@/components/scanner/DocumentUploadButton'
 import { DocumentList } from '@/components/scanner/DocumentList';
 import { TaskHistoryTab } from '@/components/tasks/TaskHistoryTab';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { TaskCompletionBlockedDialog } from '@/components/tasks/TaskCompletionBlockedDialog';
 import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
@@ -1201,6 +1202,7 @@ export default function TaskDetailPage() {
                             <TableHead className="text-center">Fail</TableHead>
                           </>
                         )}
+                        <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
