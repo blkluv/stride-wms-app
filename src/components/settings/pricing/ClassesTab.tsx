@@ -308,6 +308,7 @@ interface ClassEditFormProps {
 }
 
 function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassEditFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState(itemClass.name);
   const [code, setCode] = useState(itemClass.code);
   const [notes, setNotes] = useState(itemClass.notes ?? '');
@@ -336,7 +337,14 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     const cubicRaw = cubicFeet.trim();
     const cubicVal = cubicRaw ? Number(cubicRaw) : null;
     const cubicValid = !cubicRaw || (Number.isFinite(cubicVal) && (cubicVal as number) >= 0);
-    if (!cubicValid) return;
+    if (!cubicValid) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid cubic feet',
+        description: 'Please enter a valid non-negative number.',
+      });
+      return;
+    }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
@@ -458,6 +466,7 @@ interface AddClassFormProps {
 }
 
 function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [codeManual, setCodeManual] = useState(false);
@@ -476,7 +485,14 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
     const cubicRaw = cubicFeet.trim();
     const cubicVal = cubicRaw ? Number(cubicRaw) : null;
     const cubicValid = !cubicRaw || (Number.isFinite(cubicVal) && (cubicVal as number) >= 0);
-    if (!cubicValid) return;
+    if (!cubicValid) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid cubic feet',
+        description: 'Please enter a valid non-negative number.',
+      });
+      return;
+    }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),

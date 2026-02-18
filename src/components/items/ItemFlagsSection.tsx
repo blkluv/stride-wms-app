@@ -20,6 +20,7 @@ import { queueBillingEventAlert, queueFlagAddedAlert } from '@/lib/alertQueue';
 import { BILLING_DISABLED_ERROR } from '@/lib/billing/chargeTypeUtils';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 
 interface ItemFlagsSectionProps {
   itemId: string;
@@ -121,6 +122,76 @@ export function ItemFlagsSection({
     } catch (error: any) {
       console.error('[ItemFlagsSection] Error toggling flag:', error);
       toast.error(error.message || 'Failed to update flag');
+    } finally {
+      setUpdatingFlag(null);
+    }
+  };
+
+  const handleBuiltinFlagToggle = async (flagCode: string, flagLabel: string, currentlyEnabled: boolean) => {
+    if (isClientUser) {
+      toast.error('Only warehouse staff can modify flags.');
+      return;
+    }
+    if (!profile?.tenant_id || !profile?.id) return;
+
+    setUpdatingFlag(flagCode);
+    try {
+      if (currentlyEnabled) {
+        const { error } = await (supabase
+          .from('item_flags') as any)
+          .delete()
+          .eq('item_id', itemId)
+          .eq('service_code', flagCode);
+        if (error) throw error;
+
+        setEnabledIndicatorFlags((prev) => {
+          const next = new Set(prev);
+          next.delete(flagCode);
+          return next;
+        });
+
+        toast.success(`${flagLabel} removed`);
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'item_exception_flag_removed',
+          eventLabel: `Exception flag removed: ${flagLabel}`,
+          details: { service_code: flagCode, service_name: flagLabel, flag_type: 'builtin_exception' },
+        });
+      } else {
+        const { error } = await (supabase
+          .from('item_flags') as any)
+          .insert({
+            tenant_id: profile.tenant_id,
+            item_id: itemId,
+            charge_type_id: null,
+            service_code: flagCode,
+            created_by: profile.id,
+          });
+        if (error) throw error;
+
+        setEnabledIndicatorFlags((prev) => {
+          const next = new Set(prev);
+          next.add(flagCode);
+          return next;
+        });
+
+        toast.success(`${flagLabel} applied`);
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'item_exception_flag_applied',
+          eventLabel: `Exception flag applied: ${flagLabel}`,
+          details: { service_code: flagCode, service_name: flagLabel, flag_type: 'builtin_exception' },
+        });
+      }
+
+      onFlagsChange?.();
+    } catch (error: any) {
+      console.error('[ItemFlagsSection] Error toggling built-in flag:', error);
+      toast.error(error?.message || 'Failed to update flag');
     } finally {
       setUpdatingFlag(null);
     }
@@ -405,25 +476,6 @@ export function ItemFlagsSection({
     );
   }
 
-  // Empty state
-  if (flagServiceEvents.length === 0) {
-    return (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <MaterialIcon name="flag" size="md" />
-            Item Flags
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            No flags configured. Add services with "Add Flag" enabled in Settings → Pricing.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Check if any damage-related flag is enabled
   const allEnabledFlags = new Set([...enabledBillingFlags, ...enabledIndicatorFlags]);
   const hasDamage = Array.from(allEnabledFlags).some(code =>
@@ -435,9 +487,16 @@ export function ItemFlagsSection({
   const activeIndicatorFlags = flagServiceEvents.filter(
     s => s.flag_is_indicator && enabledIndicatorFlags.has(s.service_code)
   );
+  const activeBuiltinFlags = BUILTIN_ITEM_EXCEPTION_FLAGS
+    .filter((f) => enabledIndicatorFlags.has(f.code))
+    .map((f) => ({ code: f.code, name: f.label }));
+  const activeIndicatorForData = [
+    ...activeBuiltinFlags,
+    ...activeIndicatorFlags.map((f) => ({ code: f.service_code, name: f.service_name })),
+  ];
 
   return (
-    <Card data-active-indicators={JSON.stringify(activeIndicatorFlags.map(f => ({ code: f.service_code, name: f.service_name })))}>
+    <Card data-active-indicators={JSON.stringify(activeIndicatorForData)}>
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <MaterialIcon name="flag" size="md" />
@@ -451,67 +510,135 @@ export function ItemFlagsSection({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {flagServiceEvents.map((service) => {
-            const isEnabled = isFlagEnabled(service);
-            const isUpdating = updatingFlag === service.service_code;
-            const hasAlert = service.alert_rule && service.alert_rule !== 'none';
-            const isIndicator = service.flag_is_indicator;
-
-            return (
-              <div
-                key={service.service_code}
-                className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
-                  isClientUser ? 'opacity-60' : 'hover:bg-muted/50'
-                } ${isEnabled ? (isIndicator ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800' : 'bg-primary/5 border border-primary/20') : ''}`}
-                title={service.notes || undefined}
-              >
-                <Checkbox
-                  id={`flag-${service.service_code}`}
-                  checked={isEnabled}
-                  onCheckedChange={() => handleFlagToggle(service, isEnabled)}
-                  disabled={isClientUser || isUpdating}
-                />
-                <Label
-                  htmlFor={`flag-${service.service_code}`}
-                  className={`flex items-center gap-2 flex-1 ${
-                    isClientUser ? 'cursor-not-allowed' : 'cursor-pointer'
-                  }`}
-                >
-                  {isUpdating ? (
-                    <MaterialIcon name="progress_activity" size="sm" className="animate-spin text-muted-foreground" />
-                  ) : (
-                    <MaterialIcon
-                      name="flag"
-                      size="sm"
-                      className={isEnabled ? 'text-primary' : 'text-muted-foreground'}
+        <div className="space-y-4">
+          {/* Built-in exception flags (always available) */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <MaterialIcon name="verified" size="sm" />
+              Built-in item exceptions
+              <Badge variant="outline" className="text-[10px] px-1">SYSTEM</Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {BUILTIN_ITEM_EXCEPTION_FLAGS.map((f) => {
+                const isEnabled = enabledIndicatorFlags.has(f.code);
+                const isUpdating = updatingFlag === f.code;
+                return (
+                  <div
+                    key={f.code}
+                    className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                      isClientUser ? 'opacity-60' : 'hover:bg-muted/50'
+                    } ${isEnabled ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800' : ''}`}
+                    title={f.description}
+                  >
+                    <Checkbox
+                      id={`builtin-flag-${f.code}`}
+                      checked={isEnabled}
+                      onCheckedChange={() => handleBuiltinFlagToggle(f.code, f.label, isEnabled)}
+                      disabled={isClientUser || isUpdating}
                     />
-                  )}
-                  <span className="text-sm">{service.service_name}</span>
-                  <div className="flex items-center gap-1 ml-auto">
-                    {!isIndicator && (
-                      <Badge variant="outline" className="text-xs px-2 py-0.5">
-                        <MaterialIcon name="attach_money" className="text-[12px]" />
-                      </Badge>
-                    )}
-                    {isIndicator && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs px-2 py-0.5 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
-                      >
-                        <MaterialIcon name="warning" className="text-[12px]" />
-                      </Badge>
-                    )}
-                    {hasAlert && (
-                      <Badge variant="outline" className="text-xs px-2 py-0.5">
-                        <MaterialIcon name="notifications" className="text-[12px]" />
-                      </Badge>
-                    )}
+                    <Label
+                      htmlFor={`builtin-flag-${f.code}`}
+                      className={`flex items-center gap-2 flex-1 ${
+                        isClientUser ? 'cursor-not-allowed' : 'cursor-pointer'
+                      }`}
+                    >
+                      {isUpdating ? (
+                        <MaterialIcon name="progress_activity" size="sm" className="animate-spin text-muted-foreground" />
+                      ) : (
+                        <MaterialIcon
+                          name={f.icon || 'warning'}
+                          size="sm"
+                          className={isEnabled ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}
+                        />
+                      )}
+                      <span className="text-sm">{f.label}</span>
+                      <div className="flex items-center gap-1 ml-auto">
+                        <Badge
+                          variant="outline"
+                          className="text-xs px-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                        >
+                          <MaterialIcon name="warning" className="text-[12px]" />
+                        </Badge>
+                      </div>
+                    </Label>
                   </div>
-                </Label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Pricing-configured flags */}
+          {flagServiceEvents.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <MaterialIcon name="tune" size="sm" />
+                Pricing flags
               </div>
-            );
-          })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {flagServiceEvents.map((service) => {
+                  const isEnabled = isFlagEnabled(service);
+                  const isUpdating = updatingFlag === service.service_code;
+                  const hasAlert = service.alert_rule && service.alert_rule !== 'none';
+                  const isIndicator = service.flag_is_indicator;
+
+                  return (
+                    <div
+                      key={service.service_code}
+                      className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                        isClientUser ? 'opacity-60' : 'hover:bg-muted/50'
+                      } ${isEnabled ? (isIndicator ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800' : 'bg-primary/5 border border-primary/20') : ''}`}
+                      title={service.notes || undefined}
+                    >
+                      <Checkbox
+                        id={`flag-${service.service_code}`}
+                        checked={isEnabled}
+                        onCheckedChange={() => handleFlagToggle(service, isEnabled)}
+                        disabled={isClientUser || isUpdating}
+                      />
+                      <Label
+                        htmlFor={`flag-${service.service_code}`}
+                        className={`flex items-center gap-2 flex-1 ${
+                          isClientUser ? 'cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                      >
+                        {isUpdating ? (
+                          <MaterialIcon name="progress_activity" size="sm" className="animate-spin text-muted-foreground" />
+                        ) : (
+                          <MaterialIcon
+                            name="flag"
+                            size="sm"
+                            className={isEnabled ? 'text-primary' : 'text-muted-foreground'}
+                          />
+                        )}
+                        <span className="text-sm">{service.service_name}</span>
+                        <div className="flex items-center gap-1 ml-auto">
+                          {!isIndicator && (
+                            <Badge variant="outline" className="text-xs px-1">
+                              <MaterialIcon name="attach_money" className="text-[12px]" />
+                            </Badge>
+                          )}
+                          {isIndicator && (
+                            <Badge variant="outline" className="text-xs px-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+                              <MaterialIcon name="warning" className="text-[12px]" />
+                            </Badge>
+                          )}
+                          {hasAlert && (
+                            <Badge variant="outline" className="text-xs px-1">
+                              <MaterialIcon name="notifications" className="text-[12px]" />
+                            </Badge>
+                          )}
+                        </div>
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No pricing flags configured. Add services with "Add Flag" enabled in Settings → Pricing.
+            </p>
+          )}
         </div>
 
         {/* Legend */}

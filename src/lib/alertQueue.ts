@@ -693,6 +693,23 @@ export async function queueReceivingDiscrepancyAlert(
   shipmentNumber: string,
   discrepancyCount: number
 ): Promise<boolean> {
+  // Guard: only queue if tenant explicitly enabled this trigger.
+  // Otherwise send-alerts can "fail open" and send a generic email.
+  try {
+    const { data: trigger } = await supabase
+      .from('communication_alerts')
+      .select('is_enabled, channels')
+      .eq('tenant_id', tenantId)
+      .eq('trigger_event', 'receiving.discrepancy_created')
+      .maybeSingle();
+
+    if (!trigger || !trigger.is_enabled || trigger.channels?.email !== true) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
   return queueAlert({
     tenantId,
     alertType: 'receiving.discrepancy_created',
@@ -711,6 +728,22 @@ export async function queueReceivingExceptionAlert(
   shipmentNumber: string,
   exceptionType: string
 ): Promise<boolean> {
+  // Guard: only queue if tenant explicitly enabled this trigger.
+  try {
+    const { data: trigger } = await supabase
+      .from('communication_alerts')
+      .select('is_enabled, channels')
+      .eq('tenant_id', tenantId)
+      .eq('trigger_event', 'receiving.exception_noted')
+      .maybeSingle();
+
+    if (!trigger || !trigger.is_enabled || trigger.channels?.email !== true) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
   return queueAlert({
     tenantId,
     alertType: 'receiving.exception_noted',

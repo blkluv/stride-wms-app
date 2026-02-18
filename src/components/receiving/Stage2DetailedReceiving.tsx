@@ -1,4 +1,4 @@
-import { Fragment, useState, useCallback, useEffect } from 'react';
+import { Fragment, useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,10 +38,13 @@ import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
 import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
+import { AutosaveIndicator } from '@/components/receiving/AutosaveIndicator';
+import type { AutosaveStatus } from '@/hooks/useReceivingAutosave';
 import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
+import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 
@@ -90,6 +93,10 @@ interface Stage2DetailedReceivingProps {
   /** Called whenever Stage 2 row count changes (Entry Count) */
   onEntryCountChange?: (count: number) => void;
   onOpenExceptions?: () => void;
+  /** Navigate to Notes tab (used for exception-note enforcement). */
+  onOpenNotes?: () => void;
+  /** Bump Stage 1 BillingCalculator refresh (preview updates as items autosave). */
+  onBillingRefresh?: () => void;
   /** Render in read-only mode (view-only). */
   readOnly?: boolean;
   /** Show the Stage 2 completion flow/button. */
@@ -106,6 +113,8 @@ export function Stage2DetailedReceiving({
   onItemMatchingParamsChange,
   onEntryCountChange,
   onOpenExceptions,
+  onOpenNotes,
+  onBillingRefresh,
   readOnly = false,
   showCompleteButton = true,
 }: Stage2DetailedReceivingProps) {
@@ -171,6 +180,29 @@ export function Stage2DetailedReceiving({
   // Completing
   const [completing, setCompleting] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+
+  // Autosave Stage 2 item rows into shipment_items so:
+  // - rows persist across tab switches / refresh
+  // - Stage 1 BillingCalculator preview updates as items are entered
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const autosaveIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const billingRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowSaveInFlightRef = useRef<Record<string, boolean>>({});
+  const rowResaveQueuedRef = useRef<Record<string, boolean>>({});
+  const rowLatestQueuedSnapshotRef = useRef<Record<string, ReceivedItem | undefined>>({});
+  const rowPersistedShipmentItemIdRef = useRef<Record<string, string>>({});
+  const itemsRef = useRef<ReceivedItem[]>([]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveIdleTimerRef.current) clearTimeout(autosaveIdleTimerRef.current);
+      if (billingRefreshTimerRef.current) clearTimeout(billingRefreshTimerRef.current);
+    };
+  }, []);
 
   // Load existing shipment items
   useEffect(() => {
@@ -268,6 +300,111 @@ export function Stage2DetailedReceiving({
     });
   };
 
+  const bumpBillingPreview = useCallback(() => {
+    if (!onBillingRefresh) return;
+    if (billingRefreshTimerRef.current) return;
+    billingRefreshTimerRef.current = setTimeout(() => {
+      billingRefreshTimerRef.current = null;
+      onBillingRefresh();
+    }, 150);
+  }, [onBillingRefresh]);
+
+  const isRowMeaningful = useCallback((row: ReceivedItem): boolean => {
+    const hasQty = Number(row.received_quantity) > 0;
+    const hasFlags = Array.isArray(row.flags) && row.flags.length > 0;
+    const hasText = Boolean(
+      row.vendor.trim() ||
+        row.description.trim() ||
+        row.sidemark.trim() ||
+        row.room.trim()
+    );
+    const hasClass = Boolean(row.class_id);
+    return hasQty || hasFlags || hasText || hasClass;
+  }, []);
+
+  const upsertShipmentItemRow = useCallback(async (row: ReceivedItem) => {
+    if (!shipmentId || !profile?.id) return;
+    if (!canEdit) return;
+    if (!isRowMeaningful(row)) return;
+
+    // Avoid insert/update races on repeated blur events.
+    if (rowSaveInFlightRef.current[row.id]) {
+      rowResaveQueuedRef.current[row.id] = true;
+      rowLatestQueuedSnapshotRef.current[row.id] = row;
+      return;
+    }
+
+    rowSaveInFlightRef.current[row.id] = true;
+    setAutosaveStatus('saving');
+
+    const payload: Record<string, unknown> = {
+      expected_description: row.description.trim() || null,
+      expected_vendor: row.vendor.trim() || null,
+      expected_sidemark: row.sidemark.trim() || null,
+      expected_class_id: row.class_id || null,
+      room: row.room.trim() || null,
+      expected_quantity: row.expected_quantity && row.expected_quantity > 0 ? row.expected_quantity : 1,
+      actual_quantity: Number.isFinite(row.received_quantity) ? row.received_quantity : 0,
+      flags: row.flags,
+    };
+
+    try {
+      if (row.shipment_item_id) {
+        const { error } = await (supabase.from('shipment_items') as any)
+          .update(payload)
+          .eq('id', row.shipment_item_id);
+
+        if (error) throw error;
+        rowPersistedShipmentItemIdRef.current[row.id] = row.shipment_item_id;
+      } else {
+        const { data, error } = await (supabase.from('shipment_items') as any)
+          .insert({ shipment_id: shipmentId, ...payload })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+
+        const newId = (data as any)?.id as string | undefined;
+        if (newId) {
+          rowPersistedShipmentItemIdRef.current[row.id] = newId;
+          setItems((prev) => prev.map((i) => (i.id === row.id ? { ...i, shipment_item_id: newId } : i)));
+        }
+      }
+
+      bumpBillingPreview();
+      setAutosaveStatus('saved');
+      if (autosaveIdleTimerRef.current) clearTimeout(autosaveIdleTimerRef.current);
+      autosaveIdleTimerRef.current = setTimeout(() => setAutosaveStatus('idle'), 1200);
+    } catch (err: any) {
+      console.error('[Stage2] item autosave error:', err);
+      setAutosaveStatus('error');
+      // Keep this lightweight (no spam): a single toast is okay; persistent error state is also visible.
+      toast({
+        variant: 'destructive',
+        title: 'Autosave Failed',
+        description: err?.message || 'Failed to save item row. Please try again.',
+      });
+    } finally {
+      rowSaveInFlightRef.current[row.id] = false;
+
+      // If changes came in while we were saving, write the newest snapshot once more.
+      if (rowResaveQueuedRef.current[row.id]) {
+        rowResaveQueuedRef.current[row.id] = false;
+        const queued = rowLatestQueuedSnapshotRef.current[row.id];
+        rowLatestQueuedSnapshotRef.current[row.id] = undefined;
+        const latest = queued ?? itemsRef.current.find((i) => i.id === row.id);
+        if (latest) {
+          const persistedId = rowPersistedShipmentItemIdRef.current[row.id];
+          const rowToSave =
+            latest.shipment_item_id || !persistedId
+              ? latest
+              : { ...latest, shipment_item_id: persistedId };
+          void upsertShipmentItemRow(rowToSave);
+        }
+      }
+    }
+  }, [shipmentId, profile?.id, canEdit, isRowMeaningful, bumpBillingPreview, toast]);
+
   const duplicateItem = (id: string) => {
     if (!canEdit) return;
     setItems((prev) => {
@@ -297,6 +434,7 @@ export function Stage2DetailedReceiving({
 
   const toggleItemFlag = (id: string, serviceCode: string) => {
     if (!canEdit) return;
+    let nextRow: ReceivedItem | null = null;
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
@@ -306,9 +444,14 @@ export function Stage2DetailedReceiving({
         } else {
           nextFlags.add(serviceCode);
         }
-        return { ...item, flags: Array.from(nextFlags) };
+        nextRow = { ...item, flags: Array.from(nextFlags) };
+        return nextRow;
       })
     );
+
+    if (nextRow) {
+      void upsertShipmentItemRow(nextRow);
+    }
   };
 
   // Container placement handlers
@@ -421,6 +564,79 @@ export function Stage2DetailedReceiving({
       return;
     }
 
+    // Enforce exception notes (all open exception chips should have a client-visible exception note).
+    // Exclude auto-matching discrepancy codes (manifest vs expected mismatches) per intake Q&A.
+    if (profile?.tenant_id) {
+      const MATCHING_DISCREPANCY_CODES = new Set<ShipmentExceptionCode>([
+        'PIECES_MISMATCH',
+        'VENDOR_MISMATCH',
+        'DESCRIPTION_MISMATCH',
+        'SIDEMARK_MISMATCH',
+        'SHIPPER_MISMATCH',
+        'TRACKING_MISMATCH',
+        'REFERENCE_MISMATCH',
+      ]);
+
+      try {
+        const { data: openExRows, error: openExErr } = await (supabase as any)
+          .from('shipment_exceptions')
+          .select('code, note')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('shipment_id', shipmentId)
+          .eq('status', 'open');
+
+        if (openExErr) throw openExErr;
+
+        const openExceptionCodes = ((openExRows || []) as Array<{ code: ShipmentExceptionCode; note: string | null }>)
+          .map((r) => r.code)
+          .filter((code) => !MATCHING_DISCREPANCY_CODES.has(code));
+
+        if (openExceptionCodes.length > 0) {
+          // Pull exception notes from shipment_notes (preferred) + shipment_exceptions.note (legacy denormalized)
+          const codesWithNotes = new Set<ShipmentExceptionCode>();
+
+          for (const row of (openExRows || []) as Array<{ code: ShipmentExceptionCode; note: string | null }>) {
+            if (!MATCHING_DISCREPANCY_CODES.has(row.code) && (row.note || '').trim()) {
+              codesWithNotes.add(row.code);
+            }
+          }
+
+          const { data: noteRows, error: notesErr } = await (supabase as any)
+            .from('shipment_notes')
+            .select('exception_code, note')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('note_type', 'exception')
+            .is('deleted_at', null)
+            .in('exception_code', openExceptionCodes);
+
+          if (notesErr) throw notesErr;
+
+          for (const n of (noteRows || []) as Array<{ exception_code: ShipmentExceptionCode | null; note: string | null }>) {
+            const code = n.exception_code;
+            if (!code) continue;
+            if ((n.note || '').trim()) codesWithNotes.add(code);
+          }
+
+          const missing = openExceptionCodes.filter((c) => !codesWithNotes.has(c));
+          if (missing.length > 0) {
+            toast({
+              variant: 'destructive',
+              title: 'Exception Notes Required',
+              description: `Add a client-visible exception note for: ${missing
+                .map((c) => SHIPMENT_EXCEPTION_CODE_META[c]?.label || c)
+                .join(', ')}.`,
+            });
+            onOpenNotes?.();
+            return;
+          }
+        }
+      } catch (err: any) {
+        console.warn('[Stage2] exception note enforcement check failed:', err);
+        // Fail open (do not block receiving completion if we can't validate).
+      }
+    }
+
     // Stage 2 mismatch gating (Dock vs Entry): allow proceed only if corrected OR has exception+note.
     if (profile?.tenant_id) {
       const dock = Number(dockCount) || 0;
@@ -436,8 +652,47 @@ export function Stage2DetailedReceiving({
             (document.activeElement as HTMLElement | null)?.blur?.();
           }
 
-          const fetchNote = async () => {
-            const { data, error } = await (supabase as any)
+          // Ensure the required exception chip exists (Stage 2 mismatch is not live-synced)
+          const { data: existingChip } = await (supabase as any)
+            .from('shipment_exceptions')
+            .select('id, note')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('status', 'open')
+            .eq('code', requiredCode)
+            .maybeSingle();
+
+          if (!existingChip) {
+            await (supabase as any)
+              .from('shipment_exceptions')
+              .insert({
+                tenant_id: profile.tenant_id,
+                shipment_id: shipmentId,
+                code: requiredCode,
+                note: null,
+                status: 'open',
+                created_by: profile.id ?? null,
+              });
+          }
+
+          const fetchAnyNote = async () => {
+            // Prefer shipment_notes exception-type notes (Notes tab), but allow legacy shipment_exceptions.note too.
+            const { data: noteRows, error: noteErr } = await (supabase as any)
+              .from('shipment_notes')
+              .select('note')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('note_type', 'exception')
+              .eq('exception_code', requiredCode)
+              .is('deleted_at', null)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            if (noteErr) throw noteErr;
+
+            const noteFromNotes = (((noteRows?.[0]?.note as string | null) ?? '') as string).trim();
+            if (noteFromNotes) return noteFromNotes;
+
+            const { data: exRows, error: exErr } = await (supabase as any)
               .from('shipment_exceptions')
               .select('note')
               .eq('tenant_id', profile.tenant_id)
@@ -445,23 +700,23 @@ export function Stage2DetailedReceiving({
               .eq('status', 'open')
               .eq('code', requiredCode)
               .limit(1);
-
-            if (error) throw error;
-            return (((data?.[0]?.note as string | null) ?? '') as string).trim();
+            if (exErr) throw exErr;
+            return (((exRows?.[0]?.note as string | null) ?? '') as string).trim();
           };
 
           // If the user just typed a note and clicked Complete, the save can still be in-flight; retry once.
-          let note = await fetchNote();
+          let note = await fetchAnyNote();
           if (!note) {
             await new Promise((resolve) => setTimeout(resolve, 400));
-            note = await fetchNote();
+            note = await fetchAnyNote();
           }
           if (!note) {
             toast({
               variant: 'destructive',
               title: 'Counts Mismatch',
-              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note.`,
+              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note in Notes.`,
             });
+            onOpenNotes?.();
             return;
           }
         } catch (err: any) {
@@ -525,12 +780,14 @@ export function Stage2DetailedReceiving({
       // Resolve default receiving location
       let receivingLocationId: string | null = null;
       try {
-        const { data: locResult } = await supabase.rpc('rpc_resolve_receiving_location', {
-          p_warehouse_id: shipment.warehouse_id || '',
-          p_account_id: effectiveShipmentAccountId,
-        });
-        const loc = locResult as any;
-        if (loc?.ok) receivingLocationId = loc.location_id;
+        if (shipment.warehouse_id) {
+          const { data: locResult } = await supabase.rpc('rpc_resolve_receiving_location', {
+            p_warehouse_id: shipment.warehouse_id,
+            p_account_id: effectiveShipmentAccountId || undefined,
+          });
+          const loc = locResult as any;
+          if (loc?.ok) receivingLocationId = loc.location_id;
+        }
       } catch {
         console.warn('[Stage2] could not resolve receiving location');
       }
@@ -902,15 +1159,18 @@ export function Stage2DetailedReceiving({
               <MaterialIcon name="list_alt" size="sm" />
               Items ({items.length})
             </CardTitle>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowManifestSelector(true)} disabled={!canEdit}>
-                <MaterialIcon name="content_paste_go" size="sm" className="mr-1" />
-                Add From Manifest
-              </Button>
-              <Button variant="outline" size="sm" onClick={addManualItem} disabled={!canEdit}>
-                <MaterialIcon name="add" size="sm" className="mr-1" />
-                Add Item
-              </Button>
+            <div className="flex flex-col items-end gap-1">
+              <AutosaveIndicator status={autosaveStatus} />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowManifestSelector(true)} disabled={!canEdit}>
+                  <MaterialIcon name="content_paste_go" size="sm" className="mr-1" />
+                  Add From Manifest
+                </Button>
+                <Button variant="outline" size="sm" onClick={addManualItem} disabled={!canEdit}>
+                  <MaterialIcon name="add" size="sm" className="mr-1" />
+                  Add Item
+                </Button>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -955,6 +1215,10 @@ export function Stage2DetailedReceiving({
                             min={0}
                             value={item.received_quantity}
                             onChange={(e) => updateItem(item.id, 'received_quantity', parseInt(e.target.value) || 0)}
+                            onBlur={(e) => {
+                              const qty = parseInt(e.currentTarget.value) || 0;
+                              void upsertShipmentItemRow({ ...item, received_quantity: qty });
+                            }}
                             className="w-20 h-9 text-right ml-auto"
                             disabled={!canEdit}
                           />
@@ -963,6 +1227,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.vendor}
                             onChange={(e) => updateItem(item.id, 'vendor', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, vendor: e.currentTarget.value })}
                             placeholder="Vendor"
                             className="h-9"
                             disabled={!canEdit}
@@ -972,6 +1237,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.description}
                             onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, description: e.currentTarget.value })}
                             placeholder="Description"
                             className="h-9"
                             disabled={!canEdit}
@@ -980,7 +1246,11 @@ export function Stage2DetailedReceiving({
                         <TableCell>
                           <Select
                             value={item.class_id || '__none__'}
-                            onValueChange={(value) => updateItem(item.id, 'class_id', value === '__none__' ? null : value)}
+                            onValueChange={(value) => {
+                              const next = value === '__none__' ? null : value;
+                              updateItem(item.id, 'class_id', next);
+                              void upsertShipmentItemRow({ ...item, class_id: next });
+                            }}
                             disabled={!canEdit}
                           >
                             <SelectTrigger className="h-9">
@@ -1000,6 +1270,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.sidemark}
                             onChange={(e) => updateItem(item.id, 'sidemark', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, sidemark: e.currentTarget.value })}
                             placeholder="Side Mark"
                             className="h-9"
                             disabled={!canEdit}
@@ -1009,6 +1280,7 @@ export function Stage2DetailedReceiving({
                           <Input
                             value={item.room}
                             onChange={(e) => updateItem(item.id, 'room', e.target.value)}
+                            onBlur={(e) => void upsertShipmentItemRow({ ...item, room: e.currentTarget.value })}
                             placeholder="Room"
                             className="h-9"
                             disabled={!canEdit}
@@ -1066,30 +1338,67 @@ export function Stage2DetailedReceiving({
                                 </span>
                                 <span>Flag tray</span>
                               </div>
-                              {flagServicesLoading ? (
-                                <div className="text-sm text-muted-foreground">Loading flags...</div>
-                              ) : flagServiceEvents.length === 0 ? (
-                                <div className="text-sm text-muted-foreground">No flag services configured.</div>
-                              ) : (
-                                <div className="flex flex-wrap gap-x-5 gap-y-2">
-                                  {flagServiceEvents.map((flag) => {
-                                    const checked = item.flags.includes(flag.service_code);
-                                    return (
-                                      <label
-                                        key={`${item.id}-${flag.service_code}`}
-                                        className="flex items-center gap-2 text-sm cursor-pointer"
-                                      >
-                                        <Checkbox
-                                          checked={checked}
-                                          onCheckedChange={() => toggleItemFlag(item.id, flag.service_code)}
-                                          disabled={!canEdit}
-                                        />
-                                        <span>{flag.service_name}</span>
-                                      </label>
-                                    );
-                                  })}
+                              <div className="space-y-4">
+                                {/* Built-in item exceptions */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <MaterialIcon name="verified" size="sm" />
+                                    Item exceptions (built-in)
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                                    {BUILTIN_ITEM_EXCEPTION_FLAGS.map((f) => {
+                                      const checked = item.flags.includes(f.code);
+                                      return (
+                                        <label
+                                          key={`${item.id}-${f.code}`}
+                                          className="flex items-center gap-2 text-sm cursor-pointer"
+                                          title={f.description}
+                                        >
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={() => toggleItemFlag(item.id, f.code)}
+                                            disabled={!canEdit}
+                                          />
+                                          <span>{f.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              )}
+
+                                {/* Pricing/service flags */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <MaterialIcon name="tune" size="sm" />
+                                    Service flags (from Pricing)
+                                  </div>
+                                  {flagServicesLoading ? (
+                                    <div className="text-sm text-muted-foreground">Loading flags…</div>
+                                  ) : flagServiceEvents.length === 0 ? (
+                                    <div className="text-sm text-muted-foreground">No service flags configured.</div>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-x-5 gap-y-2">
+                                      {flagServiceEvents.map((flag) => {
+                                        const checked = item.flags.includes(flag.service_code);
+                                        return (
+                                          <label
+                                            key={`${item.id}-${flag.service_code}`}
+                                            className="flex items-center gap-2 text-sm cursor-pointer"
+                                            title={flag.notes || undefined}
+                                          >
+                                            <Checkbox
+                                              checked={checked}
+                                              onCheckedChange={() => toggleItemFlag(item.id, flag.service_code)}
+                                              disabled={!canEdit}
+                                            />
+                                            <span>{flag.service_name}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </TableCell>
                         </TableRow>

@@ -535,6 +535,9 @@ export default function Inventory() {
         />
       ),
     },
+    size: {
+      renderCell: (item) => item.size ? `${item.size} ${item.size_unit || 'cu ft'}`.trim() : '-',
+    },
     location: {
       sortField: 'location_code',
       renderCell: (item) =>

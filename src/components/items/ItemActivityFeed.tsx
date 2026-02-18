@@ -3,16 +3,17 @@
  * Shows all logged events from item_activity with filters, actor name, and time.
  */
 
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { useMemo, useState } from 'react';
 import { useItemActivity } from '@/hooks/useItemActivity';
 import { format, formatDistanceToNow } from 'date-fns';
 import { parseMessageWithLinks } from '@/utils/parseEntityLinks';
+import { useEntityMap } from '@/hooks/useEntityMap';
 import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 import {
   DropdownMenu,
@@ -98,16 +99,18 @@ function getEventIcon(eventType: string): string {
   if (eventType.startsWith('item_note')) return 'sticky_note_2';
   if (eventType.startsWith('item_photo')) return 'photo_camera';
   if (eventType.startsWith('item_document')) return 'description';
-  if (eventType.startsWith('item_shipment')) return 'local_shipping';
-  if (eventType.startsWith('item_repair_quote')) return 'handyman';
+  if (eventType.startsWith('item_shipment') || eventType.startsWith('item_manifest')) return 'local_shipping';
+  if (eventType.startsWith('item_repair_quote') || eventType.startsWith('repair_quote')) return 'handyman';
   if (eventType.startsWith('item_coverage')) return 'verified_user';
   if (eventType.startsWith('item_status')) return 'swap_horiz';
   if (eventType.startsWith('item_account')) return 'business';
   if (eventType.startsWith('item_class')) return 'category';
   if (eventType.startsWith('item_moved') || eventType.startsWith('item_location')) return 'location_on';
-  if (eventType.startsWith('item_field')) return 'edit';
+  if (eventType.startsWith('item_field') || eventType.startsWith('item_custom_field')) return 'edit';
   if (eventType.startsWith('task_')) return 'assignment';
   if (eventType.startsWith('inventory_count')) return 'inventory';
+  if (eventType.startsWith('indicator')) return 'warning';
+  if (eventType.startsWith('flag_alert')) return 'notifications';
   return 'history';
 }
 
@@ -124,31 +127,38 @@ function getEventColor(eventType: string): string {
     return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
   if (eventType.includes('photo') || eventType.includes('document'))
     return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-  if (eventType.includes('shipment'))
+  if (eventType.includes('shipment') || eventType.includes('manifest'))
     return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
   if (eventType.includes('repair_quote'))
     return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200';
   if (eventType.includes('coverage'))
-    return 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200';
+    return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200';
   if (eventType.includes('status') || eventType.includes('account') || eventType.includes('class') || eventType.includes('field'))
     return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
   if (eventType.includes('billing_charge_added'))
     return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200';
+  if (eventType.includes('indicator'))
+    return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
   return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
 }
 
 function getEventCategory(eventType: string): string {
-  if (eventType.startsWith('item_shipment_')) return 'shipments';
-  if (eventType.startsWith('item_repair_quote_')) return 'repair';
-  if (eventType.startsWith('item_document_')) return 'docs';
-  if (eventType.startsWith('item_photo_')) return 'photos';
-  if (eventType.startsWith('item_note_')) return 'notes';
-  if (eventType.startsWith('task_')) return 'tasks';
-  if (eventType.includes('moved') || eventType.includes('location')) return 'movements';
-  if (eventType.includes('coverage')) return 'coverage';
-  if (eventType.includes('flag') || eventType.includes('billing') || eventType.includes('scan_charge')) return 'billing';
-  if (eventType.includes('status') || eventType.includes('account') || eventType.includes('class') || eventType.includes('field') || eventType.includes('custom_field')) return 'update';
-  if (eventType.includes('inventory_count')) return 'counts';
+  if (eventType.includes('flag') || eventType.includes('billing') || eventType.includes('scan_charge') || eventType.includes('indicator'))
+    return 'billing';
+  if (eventType.includes('moved') || eventType.includes('location'))
+    return 'movement';
+  if (eventType.startsWith('task_'))
+    return 'task';
+  if (eventType.includes('shipment') || eventType.includes('manifest'))
+    return 'shipment';
+  if (eventType.includes('note'))
+    return 'note';
+  if (eventType.includes('photo') || eventType.includes('document'))
+    return 'media';
+  if (eventType.includes('repair_quote'))
+    return 'repair';
+  if (eventType.includes('coverage'))
+    return 'coverage';
   return 'update';
 }
 
@@ -161,6 +171,8 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
     const selected = selectedCategories.filter((c) => c !== 'all') as Array<Exclude<ItemActivityFilterCategory, 'all'>>;
     return activities.filter((a) => selected.some((cat) => matchesCategory(a.event_type, cat)));
   }, [activities, selectedCategories]);
+
+  const entityMap = useEntityMap(filteredActivities, '[ItemActivityFeed] entity resolution failed:');
 
   const activeFilterCount = selectedCategories.includes('all') ? 0 : selectedCategories.length;
 
@@ -289,7 +301,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
                     <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-0.5">
                         <span className="font-medium text-sm leading-tight">
-                          {parseMessageWithLinks(activity.event_label, undefined, { variant: 'inline' })}
+                          {parseMessageWithLinks(activity.event_label, entityMap, { variant: 'inline' })}
                         </span>
                         <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
                           {getEventCategory(activity.event_type)}
@@ -310,7 +322,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
                       </div>
 
                       {/* Expandable details */}
-                      <ActivityDetailsDisplay details={activity.details} linkVariant="inline" />
+                      <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} linkVariant="inline" />
                     </div>
                   </div>
                 ))}

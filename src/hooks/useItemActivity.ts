@@ -44,7 +44,6 @@ export function useItemActivity(
       const { data, error } = await query;
 
       if (error) {
-        // Table might not exist yet
         if (error.code !== '42P01') {
           console.error('[useItemActivity] Error:', error);
         }

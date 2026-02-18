@@ -60,6 +60,7 @@ import { DocumentUploadButton } from '@/components/scanner/DocumentUploadButton'
 import { DocumentList } from '@/components/scanner/DocumentList';
 import { TaskHistoryTab } from '@/components/tasks/TaskHistoryTab';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { TaskCompletionBlockedDialog } from '@/components/tasks/TaskCompletionBlockedDialog';
 import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
@@ -710,6 +711,7 @@ export default function TaskDetailPage() {
           toast({
             title: 'Repair Task Created',
             description: `Auto-repair task created for ${itemData.item_code}`,
+            navigateTo: `/tasks/${repairTask.id}`,
           });
         }
       }
@@ -1242,6 +1244,7 @@ export default function TaskDetailPage() {
                             <TableHead className="text-center">Fail</TableHead>
                           </>
                         )}
+                        <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1311,6 +1314,8 @@ export default function TaskDetailPage() {
                                 return <TableCell key={col}>{item?.sidemark || '-'}</TableCell>;
                               case 'room':
                                 return <TableCell key={col}>{item?.room || '-'}</TableCell>;
+                              case 'size':
+                                return <TableCell key={col}>{(item as any)?.size ? `${(item as any).size} ${(item as any).size_unit || ''}`.trim() : '-'}</TableCell>;
                               default:
                                 return <TableCell key={col}>-</TableCell>;
                             }
@@ -1350,6 +1355,7 @@ export default function TaskDetailPage() {
                               </TableCell>
                             </>
                           )}
+                          <TableCell />
                         </TableRow>
                       ))}
                     </TableBody>

@@ -40,10 +40,10 @@ import { useExternalRefs, type RefType } from '@/hooks/useExternalRefs';
 import { useClasses } from '@/hooks/useClasses';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { logActivity } from '@/lib/activity/logActivity';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { formatItemSize } from '@/lib/items/formatItemSize';
@@ -925,6 +925,14 @@ export default function ExpectedShipmentDetail() {
             </Card>
           </div>
         </div>
+
+        {/* Activity Feed */}
+        <EntityActivityFeed
+          entityType="shipment"
+          entityId={id}
+          title="Activity"
+          description="Timeline of changes to this expected shipment"
+        />
       </div>
 
       {/* Activity */}
