@@ -6,6 +6,7 @@ import { queueRepairQuoteReadyAlert, queueRepairQuoteSentToClientAlert } from '@
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { buildRepairQuoteReadyEmail } from '@/lib/email';
 import { getInvoiceStatusClasses } from '@/lib/statusColors';
+import { logItemActivities, logItemActivity } from '@/lib/activity/logItemActivity';
 
 // ============================================================================
 // NEW WORKFLOW TYPES
@@ -166,6 +167,22 @@ export function useRepairQuotes(itemId: string | undefined) {
 
       if (error) throw error;
 
+      // Item activity (best-effort)
+      if (profile?.tenant_id) {
+        void logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'repair_quote_created',
+          eventLabel: 'Repair quote created',
+          details: {
+            repair_quote_id: data.id,
+            amount: quoteData.flat_rate,
+            technician_user_id: quoteData.technician_user_id || null,
+          },
+        });
+      }
+
       // Queue repair quote ready alert
       // Fetch item code and account email for the alert
       const { data: itemData } = await supabase
@@ -219,6 +236,17 @@ export function useRepairQuotes(itemId: string | undefined) {
 
       if (error) throw error;
 
+      if (profile?.tenant_id && itemId) {
+        void logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'repair_quote_approved',
+          eventLabel: 'Repair quote approved',
+          details: { repair_quote_id: quoteId },
+        });
+      }
+
       // Create alert for repair quote approval
       const quote = quotes.find(q => q.id === quoteId);
       if (quote) {
@@ -270,6 +298,17 @@ export function useRepairQuotes(itemId: string | undefined) {
         .eq('id', quoteId);
 
       if (error) throw error;
+
+      if (profile?.tenant_id && itemId) {
+        void logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'repair_quote_declined',
+          eventLabel: 'Repair quote declined',
+          details: { repair_quote_id: quoteId },
+        });
+      }
 
       toast({
         title: 'Quote Declined',
@@ -483,6 +522,42 @@ export function useRepairQuoteWorkflow() {
     fetchQuotes();
   }, [fetchQuotes]);
 
+  const logQuoteItemsActivity = useCallback(async (params: {
+    repairQuoteId: string;
+    eventType: string;
+    eventLabel: string;
+    details?: Record<string, unknown>;
+  }) => {
+    if (!profile?.tenant_id || !profile?.id) return;
+
+    try {
+      const { data: rows, error } = await (supabase as any)
+        .from('repair_quote_items')
+        .select('item_id')
+        .eq('repair_quote_id', params.repairQuoteId);
+
+      if (error) throw error;
+      const itemIds = (rows || [])
+        .map((r: any) => r.item_id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+
+      if (itemIds.length === 0) return;
+
+      void logItemActivities(
+        itemIds.map((id) => ({ itemId: id })),
+        {
+          tenantId: profile.tenant_id,
+          actorUserId: profile.id,
+          eventType: params.eventType,
+          eventLabel: params.eventLabel,
+          details: { repair_quote_id: params.repairQuoteId, ...(params.details || {}) },
+        }
+      );
+    } catch (err) {
+      console.warn('[useRepairQuoteWorkflow] Failed to log item activity:', err);
+    }
+  }, [profile?.tenant_id, profile?.id]);
+
   // Create a new workflow quote
   const createWorkflowQuote = useCallback(async (data: {
     item_id: string;
@@ -552,6 +627,18 @@ export function useRepairQuoteWorkflow() {
         await (supabase as any).from('repair_quote_items').insert(quoteItems);
       }
 
+      // Item activity for all included items (best-effort)
+      void logItemActivities(
+        itemIds.map((id) => ({ itemId: id })),
+        {
+          tenantId: profile.tenant_id,
+          actorUserId: profile.id,
+          eventType: 'repair_quote_created',
+          eventLabel: 'Repair quote created',
+          details: { repair_quote_id: newQuote.id, status: initialStatus, item_count: itemIds.length },
+        }
+      );
+
       toast({
         title: 'Success',
         description: 'Repair quote created',
@@ -568,7 +655,7 @@ export function useRepairQuoteWorkflow() {
       });
       return null;
     }
-  }, [profile, toast, fetchQuotes]);
+  }, [profile, toast, fetchQuotes, logQuoteItemsActivity]);
 
   // Assign technician
   const assignTechnician = useCallback(async (
@@ -604,6 +691,13 @@ export function useRepairQuoteWorkflow() {
         .eq('id', quoteId);
 
       if (error) throw error;
+
+      void logQuoteItemsActivity({
+        repairQuoteId: quoteId,
+        eventType: 'repair_quote_technician_assigned',
+        eventLabel: 'Technician assigned',
+        details: { technician_id: technicianId },
+      });
 
       toast({
         title: 'Success',
@@ -688,6 +782,17 @@ export function useRepairQuoteWorkflow() {
         })
         .eq('id', quoteId);
 
+      void logQuoteItemsActivity({
+        repairQuoteId: quoteId,
+        eventType: 'repair_quote_sent_to_tech',
+        eventLabel: `Sent to technician: ${quote.technician.name}`,
+        details: {
+          technician_name: quote.technician.name,
+          technician_email: quote.technician.email,
+          expires_at: expiresAt.toISOString(),
+        },
+      });
+
       toast({
         title: 'Success',
         description: `Quote request sent to ${quote.technician.name}`,
@@ -704,7 +809,7 @@ export function useRepairQuoteWorkflow() {
       });
       return null;
     }
-  }, [profile, toast, fetchQuotes]);
+  }, [profile, toast, fetchQuotes, logQuoteItemsActivity]);
 
   // Send to client
   const sendToClient = useCallback(async (quoteId: string, testEmail?: string): Promise<string | null> => {
@@ -849,6 +954,17 @@ export function useRepairQuoteWorkflow() {
           })
           .eq('id', quoteId);
 
+        void logQuoteItemsActivity({
+          repairQuoteId: quoteId,
+          eventType: 'repair_quote_sent_to_client',
+          eventLabel: 'Sent to client',
+          details: {
+            account_name: quote.account.name,
+            contact_email: quote.account.alerts_contact_email || quote.account.primary_contact_email,
+            expires_at: expiresAt.toISOString(),
+          },
+        });
+
         toast({
           title: 'Quote Sent',
           description: `Email queued to ${recipientEmails.join(', ')}`,
@@ -872,7 +988,7 @@ export function useRepairQuoteWorkflow() {
       });
       return null;
     }
-  }, [profile, toast, fetchQuotes]);
+  }, [profile, toast, fetchQuotes, logQuoteItemsActivity]);
 
   // Review tech submission
   const reviewQuote = useCallback(async (quoteId: string): Promise<boolean> => {
@@ -904,13 +1020,19 @@ export function useRepairQuoteWorkflow() {
 
       if (error) throw error;
 
+      void logQuoteItemsActivity({
+        repairQuoteId: quoteId,
+        eventType: 'repair_quote_under_review',
+        eventLabel: 'Marked under review',
+      });
+
       await fetchQuotes();
       return true;
     } catch (error) {
       console.error('Error reviewing quote:', error);
       return false;
     }
-  }, [profile, fetchQuotes]);
+  }, [profile, fetchQuotes, logQuoteItemsActivity]);
 
   // Close/cancel quote
   const closeQuote = useCallback(async (quoteId: string, reason?: string): Promise<boolean> => {
@@ -943,6 +1065,13 @@ export function useRepairQuoteWorkflow() {
 
       if (error) throw error;
 
+      void logQuoteItemsActivity({
+        repairQuoteId: quoteId,
+        eventType: 'repair_quote_closed',
+        eventLabel: 'Repair quote closed',
+        details: { reason: reason || null },
+      });
+
       toast({
         title: 'Quote Closed',
         description: 'The quote has been closed',
@@ -959,7 +1088,7 @@ export function useRepairQuoteWorkflow() {
       });
       return false;
     }
-  }, [profile, toast, fetchQuotes]);
+  }, [profile, toast, fetchQuotes, logQuoteItemsActivity]);
 
   // Get status display info - uses invoice-consistent color scheme
   const getStatusInfo = (status: RepairQuoteWorkflowStatus | string) => {

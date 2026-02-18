@@ -20,6 +20,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { useAuth } from '@/contexts/AuthContext';
+import { logActivity } from '@/lib/activity/logActivity';
 
 interface ClassOption {
   id: string;
@@ -53,6 +55,7 @@ export function AddShipmentItemDialog({
   classOptional = false,
 }: AddShipmentItemDialogProps) {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
 
   // Form state
@@ -136,6 +139,37 @@ export function AddShipmentItemDialog({
       });
 
       if (error) throw error;
+
+      // Activity logging (best-effort; never blocks UI)
+      if (tenantId && profile?.id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId,
+          entityId: shipmentId,
+          actorUserId: profile.id,
+          eventType: 'shipment_item_added',
+          eventLabel: 'Expected item added',
+          details: {
+            item_id: itemId,
+            expected_description: description.trim(),
+            expected_vendor: vendor.trim() || null,
+            expected_quantity: itemQuantity,
+            expected_class_id: matchedClass?.id || null,
+          },
+        });
+
+        if (itemId) {
+          void logActivity({
+            entityType: 'item',
+            tenantId,
+            entityId: itemId,
+            actorUserId: profile.id,
+            eventType: 'item_shipment_linked',
+            eventLabel: 'Linked to shipment',
+            details: { shipment_id: shipmentId },
+          });
+        }
+      }
 
       // Record field usage for future suggestions
       if (vendor) addVendorSuggestion(vendor);

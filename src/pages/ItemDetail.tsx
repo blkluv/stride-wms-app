@@ -39,7 +39,6 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { RepairQuoteSection } from '@/components/items/RepairQuoteSection';
 import { ItemPhotoGallery } from '@/components/items/ItemPhotoGallery';
-import { ItemHistoryTab } from '@/components/items/ItemHistoryTab';
 import { ItemActivityFeed } from '@/components/items/ItemActivityFeed';
 import { ItemEditDialog } from '@/components/items/ItemEditDialog';
 import { useItemPhotos } from '@/hooks/useItemPhotos';
@@ -231,7 +230,7 @@ export default function ItemDetail() {
 
   // Tab state - initialize from URL param if provided
   const initialTab = searchParams.get('tab') || 'details';
-  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'history', 'advanced', 'repair'];
+  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'advanced', 'repair'];
   const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : 'details');
 
   const [item, setItem] = useState<ItemDetail | null>(null);
@@ -1013,7 +1012,6 @@ export default function ItemDetail() {
               <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>
             )}
             {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
-            {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
             {!isClientUser && (
               <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>
             )}
@@ -1474,12 +1472,6 @@ export default function ItemDetail() {
           {!isClientUser && (
             <TabsContent value="activity" className="mt-6">
               <ItemActivityFeed itemId={item.id} />
-            </TabsContent>
-          )}
-
-          {!isClientUser && (
-            <TabsContent value="history" className="mt-6">
-              <ItemHistoryTab itemId={item.id} />
             </TabsContent>
           )}
 
