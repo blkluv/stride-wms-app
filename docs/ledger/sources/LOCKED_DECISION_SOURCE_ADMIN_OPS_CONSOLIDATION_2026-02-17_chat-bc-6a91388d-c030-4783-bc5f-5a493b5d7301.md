@@ -180,3 +180,12 @@ User decision (warning badge list v1):
 User decision (add DMARC warning):
 - Add DMARC as a deliverability warning badge in Email Ops (recommended), even if it requires adding a new check/field.
 
+### QA-2026-02-17-ADMINOPS-033
+User decision (DMARC warning criteria + badge labels):
+- DMARC warning should trigger for both:
+  - DMARC missing (no `_dmarc.<domain>` record found)
+  - DMARC monitoring-only (record exists but `p=none`)
+- DMARC warning should show clearer badge text as two possible badges:
+  - “DMARC missing” (higher importance)
+  - “DMARC monitoring only (p=none)” (lower importance)
+

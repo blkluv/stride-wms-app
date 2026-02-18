@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `32`
+- Q&A items extracted: `33`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -57,6 +57,7 @@
 | DL-2026-02-17-035 | Email Ops shows warning badges (distinct) that do not count as blocked | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-030` | - | - |
 | DL-2026-02-17-036 | Email Ops warning badges include DKIM not verified and SPF not verified | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-031` | - | - |
 | DL-2026-02-17-037 | Email Ops warning badges include DMARC missing/misconfigured | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-032` | - | - |
+| DL-2026-02-17-038 | DMARC warning triggers on missing OR p=none with distinct badge labels | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-033` | - | - |
 
 ## Detailed Decision Entries
 
@@ -803,6 +804,35 @@ DMARC is a common, recommended DNS record that improves anti-spoofing posture an
 - Add a DMARC presence/validity check for tenant custom sender domains (may require new code and/or a persisted status field).
 - Surface DMARC as a yellow, non-blocking warning badge (per `DL-2026-02-17-035`).
 
+### DL-2026-02-17-038: DMARC warning triggers on missing OR p=none with distinct badge labels
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-033`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+DMARC deliverability warning behavior:
+- Treat DMARC as a warning when:
+  - DMARC record is missing (no `_dmarc.<domain>` record found), OR
+  - DMARC record exists but policy is monitoring-only (`p=none`)
+- Display DMARC warning as one of two badge labels (so it’s clear and non-technical):
+  - “DMARC missing” (higher importance)
+  - “DMARC monitoring only (p=none)” (lower importance)
+
+#### Why
+This surfaces the next best-practice DNS item (DMARC) while avoiding a false sense of completion when DMARC exists but is not enforcing.
+
+#### Implementation impact
+- Implement DMARC DNS lookup/parsing for the tenant’s custom sender domain.
+- Store/compute DMARC state with at least these values:
+  - missing
+  - present_p_none
+  - present_enforcing (not shown as warning)
+- Only show DMARC warnings for custom sender domains (platform fallback sender does not require tenant DMARC).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -841,3 +871,4 @@ DMARC is a common, recommended DNS record that improves anti-spoofing posture an
 | DLE-2026-02-17-034 | 2026-02-17 | DL-2026-02-17-035 | planned | - | builder | Add warning badges (distinct, non-blocking) such as deliverability risks; ensure they do not count as blocked. |
 | DLE-2026-02-17-035 | 2026-02-17 | DL-2026-02-17-036 | planned | - | builder | Implement DKIM/SPF warning badges based on existing verification flags (deliverability risks). |
 | DLE-2026-02-17-036 | 2026-02-17 | DL-2026-02-17-037 | planned | - | builder | Add DMARC warning badge (presence/validity check) for tenant custom sender domains. |
+| DLE-2026-02-17-037 | 2026-02-17 | DL-2026-02-17-038 | planned | - | builder | Implement DMARC parsing to distinguish “missing” vs “p=none” warnings with distinct badge labels. |
