@@ -45,8 +45,9 @@ export async function resolvePlatformInboundReplyConfig(serviceClient: any): Pro
 export async function resolveTenantReplyToRoutingAddress(
   serviceClient: any,
   tenantId: string,
+  platformConfig?: PlatformInboundReplyConfig,
 ): Promise<string | null> {
-  const platform = await resolvePlatformInboundReplyConfig(serviceClient);
+  const platform = platformConfig ?? await resolvePlatformInboundReplyConfig(serviceClient);
   if (!platform.isActive || !platform.replyDomain) return null;
 
   try {

@@ -31,9 +31,8 @@ function firstRow(data: unknown): Record<string, unknown> | null {
 }
 
 function normalizeRow(row: Record<string, unknown>): PlatformInboundEmailSettings {
-  const provider = String(row.provider || "mailgun");
   return {
-    provider: provider === "mailgun" ? "mailgun" : "mailgun",
+    provider: "mailgun",
     reply_domain: toNullableString(row.reply_domain),
     is_active: toBoolean(row.is_active, false),
     updated_at: toNullableString(row.updated_at),
