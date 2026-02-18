@@ -58,15 +58,15 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [ ] 49. Flags exist at both shipment level (exception exists) and item level (which piece).
 - [ ] 50. Shipment exception chip list: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
 - [ ] 51. Completed intake remains accessible on the same Dock Intake page; read-only by default; "Edit" unlocks changes without reopening status.
-- [ ] 52. Receiving PDF: save on Stage 2 completion; overwrite visible version; keep older versions archived (not deleted).
-- [ ] 53. Archived receiving PDFs revisited via interactive Activity feed (open/download).
-- [ ] 54. Activity entity links render inline within sentence (not chips).
+- [x] 52. Receiving PDF: save on Stage 2 completion; overwrite visible version; keep older versions archived (not deleted).
+- [x] 53. Archived receiving PDFs revisited via interactive Activity feed (open/download).
+- [x] 54. Activity entity links render inline within sentence (not chips).
 - [x] 55. Redesigned Documents field reused on Quote detail page too.
 - [x] 56. Quote detail page = Quote Builder (`/quotes/:id`).
 - [x] 57. Quote Builder: replace legacy Attachments with redesigned Documents field.
 - [x] 58. No migration needed for legacy quote attachments (none exist).
 - [x] 59. Quote Builder is staff-only (admin + manager); clients cannot access Quotes or Quote Builder pages.
-- [ ] 60. "Closed" = `shipments.inbound_status = 'closed'` after Stage 2 completion; `received_at` set; intake workflow finished.
+- [x] 60. "Closed" = `shipments.inbound_status = 'closed'` after Stage 2 completion; `received_at` set; intake workflow finished.
 - [x] 61. Stage 2 completion sets `shipments.status = 'received'`; Received Today uses `received_at` today.
 - [x] 62. Quote Builder documents: upload-only; UI + preview match Intake.
 - [x] 63. Quote Builder documents header: single full-width Upload button.
