@@ -5,30 +5,22 @@ const indicatorConfig = {
   attention: {
     icon: AlertTriangle,
     label: 'Attention',
-    textColor: 'text-red-600 dark:text-red-400',
-    glowColor: 'shadow-red-500/30',
-    borderColor: 'border-red-500/30',
+    chipClass: 'bg-red-500 text-white border-red-600/30 shadow-sm',
   },
   inspection: {
     icon: Search,
     label: 'Inspection',
-    textColor: 'text-blue-600 dark:text-blue-400',
-    glowColor: 'shadow-blue-500/30',
-    borderColor: 'border-blue-500/30',
+    chipClass: 'bg-blue-500 text-white border-blue-600/30 shadow-sm',
   },
   primary: {
     icon: Star,
     label: 'Primary',
-    textColor: 'text-amber-600 dark:text-amber-400',
-    glowColor: 'shadow-amber-500/30',
-    borderColor: 'border-amber-500/30',
+    chipClass: 'bg-amber-500 text-white border-amber-600/30 shadow-sm',
   },
   repair: {
     icon: Wrench,
     label: 'Repair',
-    textColor: 'text-purple-600 dark:text-purple-400',
-    glowColor: 'shadow-purple-500/30',
-    borderColor: 'border-purple-500/30',
+    chipClass: 'bg-purple-500 text-white border-purple-600/30 shadow-sm',
   },
 } as const;
 
@@ -49,14 +41,9 @@ export function PhotoIndicatorChip({
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1',
-        'rounded-full border',
-        'backdrop-blur-xl bg-white/60 dark:bg-black/40',
-        'shadow-sm',
-        config.textColor,
-        config.borderColor,
-        config.glowColor,
-        'min-h-[32px]',
+        // Bold, consistent pill styling (matches iOS-style status chips)
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 min-h-6',
+        config.chipClass,
         className
       )}
     >
