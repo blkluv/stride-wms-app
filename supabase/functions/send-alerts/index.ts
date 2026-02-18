@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { isValidEmail, resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { resolvePlatformInboundReplyConfig, resolveTenantReplyToRoutingAddress } from "../_shared/inboundReplyRouting.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1277,8 +1278,11 @@ const handler = async (req: Request): Promise<Response> => {
           if (brandSettings?.from_name) {
             fromName = brandSettings.from_name;
           }
+          const routingReplyTo = await resolveTenantReplyToRoutingAddress(supabase, bodyFilter.tenant_id);
           const supportEmail = (brandSettings?.brand_support_email || "").trim();
-          if (isValidEmail(supportEmail)) {
+          if (routingReplyTo) {
+            replyTo = routingReplyTo;
+          } else if (isValidEmail(supportEmail)) {
             replyTo = supportEmail;
           }
 
@@ -1389,6 +1393,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { Resend } = await import("https://esm.sh/resend@2.0.0");
     const resend = new Resend(resendApiKey);
+
+    const inboundReplyPlatformConfig = await resolvePlatformInboundReplyConfig(supabase);
 
     let sent = 0;
     let failed = 0;
@@ -1555,8 +1561,10 @@ const handler = async (req: Request): Promise<Response> => {
 
         let fromEmail = platformDefaults.fromEmail;
         let fromName = brandSettings?.from_name || variables.tenant_name || platformDefaults.fromName;
+        const routingReplyTo = await resolveTenantReplyToRoutingAddress(supabase, alert.tenant_id, inboundReplyPlatformConfig);
         const supportEmail = (brandSettings?.brand_support_email || "").trim();
-        let replyTo: string | null = isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo;
+        let replyTo: string | null =
+          routingReplyTo || (isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo);
 
         // Only use custom sender if tenant explicitly chose it and it is verified.
         const wantsCustom = brandSettings?.use_default_email === false;

@@ -12,6 +12,7 @@ import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { usePlatformEmailAdmin } from "@/hooks/usePlatformEmailAdmin";
+import { usePlatformInboundEmailAdmin } from "@/hooks/usePlatformInboundEmailAdmin";
 
 function isValidEmail(value: string): boolean {
   const trimmed = value.trim();
@@ -21,6 +22,13 @@ function isValidEmail(value: string): boolean {
 export default function EmailOps() {
   const { toast } = useToast();
   const { settings, loading, saving, saveSettings, refetch } = usePlatformEmailAdmin();
+  const {
+    settings: inboundSettings,
+    loading: inboundLoading,
+    saving: inboundSaving,
+    saveSettings: saveInboundSettings,
+    refetch: refetchInbound,
+  } = usePlatformInboundEmailAdmin();
 
   const [defaultFromEmail, setDefaultFromEmail] = useState("");
   const [defaultFromName, setDefaultFromName] = useState("");
@@ -30,6 +38,9 @@ export default function EmailOps() {
   const [testToEmail, setTestToEmail] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
 
+  const [replyDomain, setReplyDomain] = useState("");
+  const [replyRoutingActive, setReplyRoutingActive] = useState(false);
+
   useEffect(() => {
     if (!settings) return;
     setDefaultFromEmail(settings.default_from_email || "");
@@ -37,6 +48,12 @@ export default function EmailOps() {
     setDefaultReplyToEmail(settings.default_reply_to_email || "");
     setIsActive(settings.is_active);
   }, [settings]);
+
+  useEffect(() => {
+    if (!inboundSettings) return;
+    setReplyDomain(inboundSettings.reply_domain || "");
+    setReplyRoutingActive(inboundSettings.is_active);
+  }, [inboundSettings]);
 
   const hasUnsavedChanges = useMemo(() => {
     const s = settings;
@@ -133,6 +150,37 @@ export default function EmailOps() {
       toast({ variant: "destructive", title: "Test send failed", description: message });
     } finally {
       setSendingTest(false);
+    }
+  };
+
+  const webhookUrl = useMemo(() => {
+    const base = String((supabase as any)?.supabaseUrl || "").trim();
+    return base ? `${base}/functions/v1/inbound-email` : "/functions/v1/inbound-email";
+  }, []);
+
+  const handleSaveReplyRouting = async () => {
+    const domain = replyDomain.trim().toLowerCase();
+    if (replyRoutingActive && !domain) {
+      toast({
+        variant: "destructive",
+        title: "Reply domain required",
+        description: "Enter a replies subdomain (e.g. replies.stridewms.com) before enabling routing.",
+      });
+      return;
+    }
+    try {
+      await saveInboundSettings({
+        replyDomain: domain || null,
+        isActive: replyRoutingActive,
+      });
+      toast({
+        title: "Inbound reply routing saved",
+        description: "Platform reply routing settings updated.",
+      });
+      await refetchInbound();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to save inbound reply routing settings.";
+      toast({ variant: "destructive", title: "Save failed", description: message });
     }
   };
 
@@ -252,6 +300,76 @@ export default function EmailOps() {
                     Last updated: {new Date(settings.updated_at).toLocaleString()}
                   </p>
                 )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MaterialIcon name="mark_email_read" size="md" />
+              Inbound Reply Forwarding (Forward-only)
+            </CardTitle>
+            <CardDescription>
+              Configure the platform replies domain so tenants can receive replies at{" "}
+              <code className="px-1 rounded bg-muted">&lt;tenant_id&gt;@&lt;reply_domain&gt;</code> which then forwards to a tenant-configured inbox.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {inboundLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                Loading inbound settings…
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div>
+                    <div className="text-sm font-medium">Enabled</div>
+                    <div className="text-xs text-muted-foreground">
+                      When enabled, outgoing emails can set Reply-To to the tenant routing address.
+                    </div>
+                  </div>
+                  <Switch checked={replyRoutingActive} onCheckedChange={setReplyRoutingActive} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reply_domain">Replies domain (subdomain)</Label>
+                  <Input
+                    id="reply_domain"
+                    placeholder="replies.stridewms.com"
+                    value={replyDomain}
+                    onChange={(e) => setReplyDomain(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    You will set up this domain with an inbound provider (recommended: Mailgun inbound routes).
+                  </p>
+                </div>
+
+                <div className="rounded-md border p-3 bg-muted/30 space-y-2">
+                  <div className="text-sm font-medium">Inbound webhook URL</div>
+                  <code className="text-xs break-all block">{webhookUrl}</code>
+                  <p className="text-xs text-muted-foreground">
+                    Configure your inbound provider to POST inbound emails here. For Mailgun, set the webhook signing secret
+                    as <code className="px-1 rounded bg-muted">MAILGUN_WEBHOOK_SIGNING_KEY</code> in Supabase Edge Function secrets.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={refetchInbound} disabled={inboundSaving}>
+                    <MaterialIcon name="refresh" size="sm" className="mr-2" />
+                    Refresh
+                  </Button>
+                  <Button onClick={handleSaveReplyRouting} disabled={inboundSaving}>
+                    {inboundSaving ? (
+                      <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                    ) : (
+                      <MaterialIcon name="save" size="sm" className="mr-2" />
+                    )}
+                    Save Reply Routing
+                  </Button>
+                </div>
               </>
             )}
           </CardContent>

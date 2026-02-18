@@ -208,9 +208,11 @@
   }
 
   /* Minimum touch target utility (44x44px iOS guideline) */
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
+  @media (pointer: coarse) {
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
   }
 
   /* Data Label - Micro uppercase text for labels */
@@ -436,9 +438,9 @@ a:hover svg,
   filter: none;
 }
 
-.stoplight-sm { width: 10px; height: 10px; }
-.stoplight-md { width: 12px; height: 12px; }
-.stoplight-lg { width: 14px; height: 14px; }
+.stoplight-sm { width: 12px; height: 12px; }
+.stoplight-md { width: 14px; height: 14px; }
+.stoplight-lg { width: 16px; height: 16px; }
 
 .stoplight-close {
   background: linear-gradient(180deg, #FF6058 0%, #E7483B 100%);
@@ -473,9 +475,10 @@ a:hover svg,
   -webkit-overflow-scrolling: touch;
 }
 
-[data-radix-dialog-content],
-[data-radix-sheet-content],
-[role="dialog"] {
+/* Use :where() so component utility classes can override these defaults. */
+:where([data-radix-dialog-content]),
+:where([data-radix-sheet-content]),
+:where([role="dialog"]) {
   max-height: 85vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;

@@ -1420,24 +1420,14 @@ export default function ItemDetail() {
           <TabsContent value="documents" className="mt-6">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <span>📄</span>
-                      Documents
-                    </CardTitle>
-                    <CardDescription>
-                      Scanned documents and files for this item
-                    </CardDescription>
-                  </div>
-                  {!isClientUser && (
-                    <ScanDocumentButton
-                      context={{ type: 'item', itemId: item.id, description: item.description || undefined }}
-                      onSuccess={() => {
-                        toast({ title: 'Document saved' });
-                      }}
-                    />
-                  )}
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <span>📄</span>
+                    Documents
+                  </CardTitle>
+                  <CardDescription>
+                    Scanned documents and files for this item
+                  </CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1447,6 +1437,17 @@ export default function ItemDetail() {
                   showSearch
                   canDelete={!isClientUser}
                 />
+                {/* Action button - centered at bottom */}
+                {!isClientUser && (
+                  <div className="flex justify-center mt-6 pt-4 border-t">
+                    <ScanDocumentButton
+                      context={{ type: 'item', itemId: item.id, description: item.description || undefined }}
+                      onSuccess={() => {
+                        toast({ title: 'Document saved' });
+                      }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

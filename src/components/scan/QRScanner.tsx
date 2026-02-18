@@ -4,7 +4,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { hapticMedium } from "@/lib/haptics";
+import { hapticSelection } from "@/lib/haptics";
 
 /** Barcode formats to support across both native and fallback scanners */
 const SUPPORTED_FORMATS: Html5QrcodeSupportedFormats[] = [
@@ -152,7 +152,8 @@ export function QRScanner({ onScan, onError, scanning = true, className }: QRSca
     if (decodedText !== lastScannedRef.current || now - lastScanTimeRef.current > 1500) {
       lastScannedRef.current = decodedText;
       lastScanTimeRef.current = now;
-      hapticMedium(); // Tactile feedback on successful scan
+      // Very short tick so we don't double-buzz (pages often do their own success/error haptics)
+      hapticSelection();
       onScan(decodedText);
     }
   }, [onScan]);
@@ -210,7 +211,7 @@ export function QRScanner({ onScan, onError, scanning = true, className }: QRSca
       await html5Qr.start(
         { facingMode: "environment" },
         {
-          fps: 10,
+          fps: 15,
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1,
         },
