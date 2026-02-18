@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1606,6 +1607,18 @@ export default function QuoteBuilder() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Activity Feed */}
+      {id && (
+        <div className="mt-6">
+          <EntityActivityFeed
+            entityType="quote"
+            entityId={id}
+            title="Activity"
+            description="Timeline of changes to this quote"
+          />
+        </div>
+      )}
 
       {/* Send Quote Dialog */}
       <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>

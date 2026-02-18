@@ -23,8 +23,10 @@ export type ActivityFilterCategory =
   | 'movements'
   | 'billing'
   | 'tasks'
-  | 'notes_photos'
-  | 'status_account_class';
+  | 'shipments'
+  | 'notes'
+  | 'photos_docs'
+  | 'status_account';
 
 const CATEGORY_PREFIX_MAP: Record<Exclude<ActivityFilterCategory, 'all'>, string[]> = {
   movements: ['item_moved', 'item_location_changed'],
@@ -41,19 +43,34 @@ const CATEGORY_PREFIX_MAP: Record<Exclude<ActivityFilterCategory, 'all'>, string
     'flag_alert_sent',
   ],
   tasks: ['task_assigned', 'task_completed', 'task_started', 'task_unable'],
-  notes_photos: [
+  shipments: [
+    'item_shipment_linked',
+    'item_shipment_received',
+    'item_shipment_released',
+    'item_manifest_linked',
+  ],
+  notes: [
     'item_note_added',
     'item_note_edited',
     'item_note_deleted',
+  ],
+  photos_docs: [
     'item_photo_added',
     'item_photo_removed',
+    'item_document_added',
+    'item_document_removed',
   ],
-  status_account_class: [
+  status_account: [
     'item_status_changed',
     'item_account_changed',
     'item_class_changed',
     'item_field_updated',
+    'item_custom_field_updated',
+    'item_coverage_changed',
     'inventory_count_recorded',
+    'repair_quote_created',
+    'repair_quote_approved',
+    'repair_quote_rejected',
   ],
 };
 
@@ -61,6 +78,7 @@ export function useItemActivity(itemId: string | undefined) {
   const [activities, setActivities] = useState<ItemActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ActivityFilterCategory>('all');
+  const [multiFilter, setMultiFilter] = useState<Set<Exclude<ActivityFilterCategory, 'all'>>>(new Set());
 
   const fetchActivities = useCallback(async () => {
     if (!itemId) return;
@@ -73,18 +91,21 @@ export function useItemActivity(itemId: string | undefined) {
         .order('created_at', { ascending: false })
         .limit(200);
 
-      // Apply filter if not 'all'
-      if (filter !== 'all') {
-        const prefixes = CATEGORY_PREFIX_MAP[filter];
-        if (prefixes && prefixes.length > 0) {
-          query = query.in('event_type', prefixes);
+      // Apply multi-filter if any categories selected
+      if (multiFilter.size > 0) {
+        const allPrefixes: string[] = [];
+        for (const cat of multiFilter) {
+          const prefixes = CATEGORY_PREFIX_MAP[cat];
+          if (prefixes) allPrefixes.push(...prefixes);
+        }
+        if (allPrefixes.length > 0) {
+          query = query.in('event_type', allPrefixes);
         }
       }
 
       const { data, error } = await query;
 
       if (error) {
-        // Table might not exist yet
         if (error.code !== '42P01') {
           console.error('[useItemActivity] Error:', error);
         }
@@ -99,17 +120,36 @@ export function useItemActivity(itemId: string | undefined) {
     } finally {
       setLoading(false);
     }
-  }, [itemId, filter]);
+  }, [itemId, multiFilter]);
 
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
+
+  const toggleFilterCategory = useCallback((category: Exclude<ActivityFilterCategory, 'all'>) => {
+    setMultiFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setMultiFilter(new Set());
+  }, []);
 
   return {
     activities,
     loading,
     filter,
     setFilter,
+    multiFilter,
+    toggleFilterCategory,
+    clearFilters,
     refetch: fetchActivities,
   };
 }

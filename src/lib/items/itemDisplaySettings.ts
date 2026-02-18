@@ -5,6 +5,7 @@ export type BuiltinItemColumnKey =
   | 'quantity'
   | 'vendor'
   | 'description'
+  | 'size'
   | 'location'
   | 'client_account'
   | 'sidemark'
@@ -55,6 +56,7 @@ export const BUILTIN_ITEM_COLUMNS: Array<{
   { key: 'quantity', label: 'Qty' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'description', label: 'Description' },
+  { key: 'size', label: 'Size', default_hidden: true },
   { key: 'location', label: 'Location' },
   { key: 'client_account', label: 'Account' },
   { key: 'sidemark', label: 'Sidemark' },

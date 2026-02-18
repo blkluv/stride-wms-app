@@ -92,3 +92,30 @@ User decision (default sender + admin config):
 User decision (default sender display name):
 - Do not add a separate configurable “From name” field for the platform default sender; keep it as an email address only.
 
+### QA-2026-02-17-ADMINOPS-016
+User decision (Reply-To behavior when using platform default sender):
+- When a tenant is using the platform default sender, replies should go to the tenant’s configured Reply-To email address (not a platform inbox, and not “no-reply”).
+
+### QA-2026-02-17-ADMINOPS-017
+User decision (Reply-To fallback):
+- If a tenant has not configured a Reply-To email yet, default Reply-To to the tenant owner/admin login email (not a platform inbox and not blocked).
+
+### QA-2026-02-17-ADMINOPS-018
+User decision (Reply-To field + onboarding clarity):
+- Tenant email settings should include a separate “Reply-To / inbound email” field so tenants can receive and control where incoming replies go.
+- If a tenant has not set up a verified custom sender domain, the UI should clearly state outbound emails will be sent from a platform-managed address like: `"tenantid"@subdomain.stridewms.com` (exact address/domain may be updated later).
+- The UI should clearly explain that the tenant must set their Reply-To / inbound email address to receive incoming replies.
+
+### QA-2026-02-17-ADMINOPS-019
+User decision (fallback From address is per-tenant):
+- If a tenant has not set up a verified custom sender domain, the platform-managed “From” email should be per-tenant (e.g. `"tenantid"@subdomain.stridewms.com`) rather than one global default sender shared by all tenants.
+
+### QA-2026-02-17-ADMINOPS-020
+User decision (fallback sender local-part identifier):
+- The `"tenantid"` portion of the platform-managed fallback sender email should use a human-friendly tenant code/slug (not UUID, not company name).
+
+### QA-2026-02-17-ADMINOPS-021
+User decision (fallback sender domain not finalized yet):
+- The app’s domain (and therefore the fallback sender domain/subdomain) has not been picked yet because the product is still in development.
+- Do not hardcode a final domain value into code; this should remain configurable and can be set later in admin Email Ops.
+

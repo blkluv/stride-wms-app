@@ -34,9 +34,14 @@ interface EntityActivityFeedProps {
 }
 
 const TABLE_MAP: Record<string, { table: string; idColumn: string }> = {
-  shipment: { table: 'shipment_activity', idColumn: 'shipment_id' },
-  task:     { table: 'task_activity',     idColumn: 'task_id' },
-  account:  { table: 'account_activity',  idColumn: 'account_id' },
+  shipment:     { table: 'shipment_activity',     idColumn: 'shipment_id' },
+  task:         { table: 'task_activity',         idColumn: 'task_id' },
+  account:      { table: 'account_activity',      idColumn: 'account_id' },
+  claim:        { table: 'claim_activity',        idColumn: 'claim_id' },
+  repair_quote: { table: 'repair_quote_activity', idColumn: 'repair_quote_id' },
+  quote:        { table: 'quote_activity',        idColumn: 'quote_id' },
+  invoice:      { table: 'invoice_activity',      idColumn: 'invoice_id' },
+  stocktake:    { table: 'stocktake_activity',    idColumn: 'stocktake_id' },
 };
 
 function getEventIcon(eventType: string): string {

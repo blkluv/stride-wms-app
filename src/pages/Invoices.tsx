@@ -22,6 +22,7 @@ import { InvoiceTemplateTab } from "@/components/invoices/InvoiceTemplateTab";
 import { sendEmail, buildInvoiceSentEmail } from "@/lib/email";
 import { queueInvoiceSentAlert } from "@/lib/alertQueue";
 import { downloadInvoicePdf, printInvoicePdf, InvoicePdfData } from "@/lib/invoicePdf";
+import { EntityActivityFeed } from "@/components/activity/EntityActivityFeed";
 
 interface Account {
   id: string;
@@ -1715,6 +1716,19 @@ export default function Invoices() {
                 </div>
               </>
             )}
+
+            {/* Activity Feed */}
+            {selectedInvoice && (
+              <div className="mt-4">
+                <EntityActivityFeed
+                  entityType="invoice"
+                  entityId={selectedInvoice.id}
+                  title="Activity"
+                  description="Timeline of changes to this invoice"
+                />
+              </div>
+            )}
+
             <DialogFooter className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t gap-4">
               <div className="flex items-center gap-4">
                 <div className="text-lg font-semibold tabular-nums whitespace-nowrap">

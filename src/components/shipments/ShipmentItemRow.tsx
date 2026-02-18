@@ -681,6 +681,14 @@ export function ShipmentItemRow({
                   )}
                 </TableCell>
               );
+            case 'size':
+              return (
+                <TableCell key={col} className="w-20">
+                  <span className="text-sm">
+                    {(item.item as any)?.size ? `${(item.item as any).size} ${(item.item as any).size_unit || ''}`.trim() : '-'}
+                  </span>
+                </TableCell>
+              );
             default:
               return (
                 <TableCell key={col}>
