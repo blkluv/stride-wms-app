@@ -52,7 +52,7 @@ import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { useCommunications } from '@/hooks/useCommunications';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
-import { HelpTip } from '@/components/ui/HelpTip';
+import { HelpTip } from '@/components/ui/help-tip';
 import {
   DropdownMenu,
   DropdownMenuContent,
