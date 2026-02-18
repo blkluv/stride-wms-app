@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `30`
+- Q&A items extracted: `31`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -55,6 +55,7 @@
 | DL-2026-02-17-033 | Email Ops tenant table shows multiple issue badges and computes an overall worst status | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-028` | - | - |
 | DL-2026-02-17-034 | Email Ops issue badges represent setup blockers (anything preventing successful email setup) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-029` | - | - |
 | DL-2026-02-17-035 | Email Ops shows warning badges (distinct) that do not count as blocked | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-030` | - | - |
+| DL-2026-02-17-036 | Email Ops warning badges include DKIM not verified and SPF not verified | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-031` | - | - |
 
 ## Detailed Decision Entries
 
@@ -761,6 +762,27 @@ Operators should be able to see best-practice risks at a glance without confusin
   - Warning badges (do not count as blocked; still visible)
 - Overall status computation should treat warnings as lower severity than blockers.
 
+### DL-2026-02-17-036: Email Ops warning badges include DKIM not verified and SPF not verified
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-031`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The initial warning badge list (deliverability risks) will include:
+- DKIM not verified
+- SPF not verified
+
+#### Why
+These are the two most common DNS-level deliverability improvements and are already represented by existing verification fields in the system, making them practical to surface to operators.
+
+#### Implementation impact
+- Derive the warning badges from the existing `dkim_verified` and `spf_verified` flags.
+- If additional deliverability risks are added later (e.g., DMARC), they should be appended as additional warning badges via follow-up decisions and data fields.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -797,3 +819,4 @@ Operators should be able to see best-practice risks at a glance without confusin
 | DLE-2026-02-17-032 | 2026-02-17 | DL-2026-02-17-033 | planned | - | builder | Add per-tenant issue badges and compute overall worst status for sorting/filtering in Email Ops table. |
 | DLE-2026-02-17-033 | 2026-02-17 | DL-2026-02-17-034 | planned | - | builder | Define which derived issues count as “setup blockers” for issue badges and map them from concrete config/verification fields. |
 | DLE-2026-02-17-034 | 2026-02-17 | DL-2026-02-17-035 | planned | - | builder | Add warning badges (distinct, non-blocking) such as deliverability risks; ensure they do not count as blocked. |
+| DLE-2026-02-17-035 | 2026-02-17 | DL-2026-02-17-036 | planned | - | builder | Implement DKIM/SPF warning badges based on existing verification flags (deliverability risks). |

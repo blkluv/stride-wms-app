@@ -169,3 +169,10 @@ User decision (warnings as badges):
 - Show non-blocking warnings (e.g., deliverability risk like DKIM/SPF incomplete) as badges too.
 - Warnings must be visually distinct (yellow) and must not count as “blocked”.
 
+### QA-2026-02-17-ADMINOPS-031
+User decision (warning badge list v1):
+- Warning badges (deliverability risks) will include:
+  - DKIM not verified
+  - SPF not verified
+- User question: whether those are the only deliverability risks (builder to advise; follow-up decision if expanding the warning list).
+
