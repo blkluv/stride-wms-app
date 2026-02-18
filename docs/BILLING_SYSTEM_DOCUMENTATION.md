@@ -101,8 +101,8 @@ Items are assigned a **class** that determines their pricing tier:
 |-------|-------------|
 | `code` | Short code (XS, S, M, L, XL, XXL) |
 | `name` | Display name |
-| `min_cubic_feet` | Lower size bound |
-| `max_cubic_feet` | Upper size bound |
+| `min_cubic_feet` | Class cubic-feet size (single value; stored here for compatibility) |
+| `max_cubic_feet` | Same as `min_cubic_feet` (should match; legacy range configs may exist) |
 | `storage_rate_per_day` | Default daily storage rate |
 | `inspection_fee_per_item` | Default inspection rate |
 | `default_inspection_minutes` | Labor time estimate |
