@@ -45,7 +45,6 @@ interface TaggablePhotoGridProps {
   photos: (string | TaggablePhoto)[];
   onPhotosChange?: (photos: TaggablePhoto[]) => void;
   readonly?: boolean;
-  columns?: 3 | 4;
   enableTagging?: boolean;
 }
 
@@ -53,7 +52,6 @@ export function TaggablePhotoGrid({
   photos,
   onPhotosChange,
   readonly = false,
-  columns = 4,
   enableTagging = true,
 }: TaggablePhotoGridProps) {
   const { toast } = useToast();
