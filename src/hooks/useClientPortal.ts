@@ -113,6 +113,7 @@ export function useClientItems() {
           id,
           account_id,
           item_code,
+          quantity,
           description,
           status,
           condition,

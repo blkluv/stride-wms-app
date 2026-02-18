@@ -21,6 +21,7 @@ import type { SpaceTrackingMode, ContainerVolumeMode } from '@/hooks/useOrgPrefe
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { ClientGroupedItemSplitSection } from './ClientGroupedItemSplitSection';
 import {
   DndContext,
   closestCenter,
@@ -41,6 +42,7 @@ import {
 const DEFAULT_CARD_ORDER = [
   'space-tracking',
   'storage-inspection',
+  'client-grouped-split',
   'item-display-settings',
   'display-settings',
   'label-customization',
@@ -195,6 +197,14 @@ export function PreferencesContent() {
           onShouldAutoApplyArrivalNoIdFlagChange={(value) => setFormData(prev => ({ ...prev, auto_apply_arrival_no_id_flag: value }))}
           onShouldAutoAssemblyChange={(value) => setFormData(prev => ({ ...prev, auto_assembly_on_receiving: value }))}
           onShouldAutoRepairChange={(value) => setFormData(prev => ({ ...prev, auto_repair_on_damage: value }))}
+        />
+      </SortableCard>
+    ),
+    'client-grouped-split': (
+      <SortableCard id="client-grouped-split" key="client-grouped-split">
+        <ClientGroupedItemSplitSection
+          enabled={orgPrefs.client_partial_grouped_enabled}
+          onEnabledChange={(next) => updateOrgPref('client_partial_grouped_enabled', next)}
         />
       </SortableCard>
     ),
