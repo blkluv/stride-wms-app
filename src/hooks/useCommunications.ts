@@ -176,6 +176,9 @@ export const COMMUNICATION_VARIABLES = [
   { key: 'shipment_expected_date', label: 'Expected Date', group: 'Shipment', sample: '2024-01-15', description: 'Expected arrival date' },
   { key: 'shipment_received_date', label: 'Received Date', group: 'Shipment', sample: '2024-01-14', description: 'Actual received date' },
   { key: 'shipment_link', label: 'Shipment Link', group: 'Shipment', sample: 'https://portal.stride.com/shipments/123', description: 'Direct link to shipment' },
+  { key: 'exceptions_count', label: 'Exceptions Count', group: 'Shipment', sample: '2', description: 'Number of open receiving exceptions (blank/0 when none)' },
+  { key: 'exceptions_list_text', label: 'Exceptions List (Text)', group: 'Shipment', sample: '- Damage: Corner torn\\n- Wet: Box soaked', description: 'Bullet list of exceptions (type + note)' },
+  { key: 'exceptions_section_html', label: 'Exceptions Section (HTML)', group: 'Shipment', sample: '<div>...</div>', description: 'Preformatted Exceptions section for emails (blank when none)' },
 
   // Item
   { key: 'item_id', label: 'Item ID', group: 'Item', sample: 'ITM-001', description: 'Unique item identifier' },
@@ -186,6 +189,10 @@ export const COMMUNICATION_VARIABLES = [
   { key: 'item_location', label: 'Item Location', group: 'Item', sample: 'Row A, Rack 5', description: 'Current warehouse location' },
   { key: 'item_sidemark', label: 'Item Sidemark', group: 'Item', sample: 'ACME-2024', description: 'Sidemark identifier' },
   { key: 'item_photos_link', label: 'Item Photos Link', group: 'Item', sample: 'https://portal.stride.com/items/123/photos', description: 'Link to item photos' },
+  { key: 'flag_service_name', label: 'Flag Name', group: 'Item', sample: 'Fragile', description: 'Name of the flag/service for item.flag_added alerts' },
+  { key: 'flag_service_code', label: 'Flag Code', group: 'Item', sample: 'FLG_FRAGILE', description: 'Service code of the applied flag (per-flag triggers use this as suffix)' },
+  { key: 'flag_added_by_name', label: 'Flag Added By', group: 'Item', sample: 'John Doe', description: 'User who applied the flag (best-effort)' },
+  { key: 'flag_added_at', label: 'Flag Added At', group: 'Item', sample: 'Jan 15, 2026 2:05 PM', description: 'When the flag was applied (best-effort)' },
 
   // Inspection
   { key: 'inspection_number', label: 'Inspection Number', group: 'Inspection', sample: 'INSP-001', description: 'Inspection task identifier' },
