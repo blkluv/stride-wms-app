@@ -293,3 +293,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 88. Q: Tapping the "Expected Today" card (not expanding): where should it go?
     A: Incoming Manager (`/incoming/manager`) on the expected view (option A).
 
+89. Q: Tapping the "Shipped Today" card (not expanding): where should it go?
+    A: `/shipments/released` (option A).
+
