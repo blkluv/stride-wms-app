@@ -42,6 +42,7 @@ import { logActivity } from '@/lib/activity/logActivity';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '-';
@@ -770,6 +771,16 @@ export default function ExpectedShipmentDetail() {
             </Card>
           </div>
         </div>
+      </div>
+
+      {/* Activity */}
+      <div className="mt-6">
+        <EntityActivityFeed
+          entityType="shipment"
+          entityId={id}
+          title="Activity"
+          description="Complete timeline of billing, operations, and status changes for this expected intake"
+        />
       </div>
 
       {/* Add Item Dialog */}

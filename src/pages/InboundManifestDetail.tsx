@@ -44,6 +44,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import AllocationPicker from '@/components/incoming/AllocationPicker';
 import ManifestImportDialog from '@/components/incoming/ManifestImportDialog';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '-';
@@ -820,6 +821,16 @@ export default function InboundManifestDetail() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Activity */}
+      <div className="mt-6">
+        <EntityActivityFeed
+          entityType="shipment"
+          entityId={id}
+          title="Activity"
+          description="Complete timeline of billing, operations, and status changes for this manifest"
+        />
       </div>
 
       {showImportDialog && (

@@ -35,6 +35,7 @@ import { HelpButton } from '@/components/prompts';
 import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
 import { logActivity } from '@/lib/activity/logActivity';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 
 // ============================================
 // TYPES
@@ -1247,6 +1248,18 @@ export default function OutboundCreate() {
             </Button>
           </div>
         </form>
+
+        {/* Activity (draft shipment timeline) */}
+        {draftShipmentId && (
+          <div className="pb-6">
+            <EntityActivityFeed
+              entityType="shipment"
+              entityId={draftShipmentId}
+              title="Activity"
+              description="Timeline of changes to this outbound shipment draft"
+            />
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

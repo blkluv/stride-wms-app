@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -96,9 +96,11 @@ const actionLabels: Record<string, { label: string; iconName: string; color: str
 export default function ManifestDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
 
-  const [activeTab, setActiveTab] = useState('items');
+  const initialTab = location.pathname.endsWith('/history') ? 'activity' : 'items';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [addItemOpen, setAddItemOpen] = useState(false);
@@ -143,6 +145,13 @@ export default function ManifestDetail() {
     () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
     [activeItemView]
   );
+
+  // Support legacy /history route (now maps to Activity tab)
+  useEffect(() => {
+    if (location.pathname.endsWith('/history')) {
+      setActiveTab('activity');
+    }
+  }, [location.pathname]);
 
   // Search results for adding items
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -425,9 +434,9 @@ export default function ManifestDetail() {
             <MaterialIcon name="assignment" size="sm" />
             Items ({items.length})
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
-            <MaterialIcon name="history" size="sm" />
-            Audit History
+          <TabsTrigger value="activity" className="flex items-center gap-2">
+            <MaterialIcon name="timeline" size="sm" />
+            Activity
           </TabsTrigger>
         </TabsList>
 
@@ -688,13 +697,13 @@ export default function ManifestDetail() {
           </Card>
         </TabsContent>
 
-        {/* History Tab */}
-        <TabsContent value="history" className="mt-4">
+        {/* Activity Tab (formerly Audit History) */}
+        <TabsContent value="activity" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Audit History</CardTitle>
+              <CardTitle>Activity</CardTitle>
               <CardDescription>
-                Complete history of all changes made to this manifest
+                Complete timeline of all changes made to this manifest
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -705,7 +714,7 @@ export default function ManifestDetail() {
               ) : history.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <MaterialIcon name="history" size="xl" className="mx-auto mb-4 opacity-50" />
-                  <p>No history available</p>
+                  <p>No activity recorded yet</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -801,7 +810,7 @@ export default function ManifestDetail() {
               {confirmAction?.type === 'remove' && (
                 <>
                   Remove {confirmAction.itemIds?.length} item(s) from the manifest? This action will be
-                  recorded in the audit history.
+                  recorded in the activity log.
                 </>
               )}
             </AlertDialogDescription>
