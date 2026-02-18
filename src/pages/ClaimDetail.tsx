@@ -14,7 +14,7 @@ import { PhotoGrid } from '@/components/common/PhotoGrid';
 import { useAuth } from '@/contexts/AuthContext';
 import { ScanDocumentButton } from '@/components/scanner/ScanDocumentButton';
 import { DocumentList } from '@/components/scanner/DocumentList';
-import { useClaims, CLAIM_TYPE_LABELS, CLAIM_STATUS_LABELS, type Claim, type ClaimAudit, type ClaimItem } from '@/hooks/useClaims';
+import { useClaims, CLAIM_TYPE_LABELS, CLAIM_STATUS_LABELS, type Claim, type ClaimItem } from '@/hooks/useClaims';
 import { useClaimAnalysis } from '@/hooks/useClaimAnalysis';
 import { useClaimReport } from '@/hooks/useClaimReport';
 import { ClaimAttachments } from '@/components/claims/ClaimAttachments';
@@ -28,8 +28,8 @@ import {
   ClaimAutoApprovedNotice,
 } from '@/components/claims/ClaimNotice';
 import { format } from 'date-fns';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { Skeleton } from '@/components/ui/skeleton';
-import { supabase } from '@/integrations/supabase/client';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,17 +42,11 @@ const CLAIM_CATEGORY_LABELS: Record<string, string> = {
   shipping_damage: 'Shipping Damage (Assistance)',
 };
 
-
-// Extended audit log type with user info
-interface AuditLogWithUser extends ClaimAudit {
-  user?: { id: string; first_name: string | null; last_name: string | null } | null;
-}
-
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { claims, loading, fetchAuditLog, fetchClaimItems, refetch } = useClaims();
+  const { claims, loading, fetchClaimItems, refetch } = useClaims();
   const {
     analyzing,
     analysis,
@@ -71,8 +65,6 @@ export default function ClaimDetail() {
 
   const [claim, setClaim] = useState<Claim | null>(null);
   const [claimItems, setClaimItems] = useState<ClaimItem[]>([]);
-  const [auditLog, setAuditLog] = useState<AuditLogWithUser[]>([]);
-  const [loadingAudit, setLoadingAudit] = useState(false);
   const [claimPhotos, setClaimPhotos] = useState<string[]>([]);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
@@ -83,59 +75,8 @@ export default function ClaimDetail() {
     }
   }, [claims, id]);
 
-  // Fetch audit log with user details
-  const fetchAuditLogWithUsers = async (claimId: string) => {
-    setLoadingAudit(true);
-    try {
-      // Fetch audit entries
-      const { data: auditData, error: auditError } = await supabase
-        .from('claim_audit')
-        .select('*')
-        .eq('claim_id', claimId)
-        .order('created_at', { ascending: false });
-
-      if (auditError) throw auditError;
-
-      if (!auditData || auditData.length === 0) {
-        setAuditLog([]);
-        setLoadingAudit(false);
-        return;
-      }
-
-      // Get unique actor IDs
-      const actorIds = [...new Set(auditData.map(a => a.actor_id).filter(Boolean))] as string[];
-
-      // Fetch user details
-      let userMap = new Map<string, { id: string; first_name: string | null; last_name: string | null }>();
-      if (actorIds.length > 0) {
-        const { data: users } = await supabase
-          .from('users')
-          .select('id, first_name, last_name')
-          .in('id', actorIds);
-
-        if (users) {
-          userMap = new Map(users.map(u => [u.id, u]));
-        }
-      }
-
-      // Merge user data with audit entries
-      const entriesWithUsers = auditData.map(entry => ({
-        ...entry,
-        user: entry.actor_id ? userMap.get(entry.actor_id) || null : null,
-      }));
-
-      setAuditLog(entriesWithUsers);
-    } catch (error) {
-      console.error('Error fetching audit log:', error);
-      setAuditLog([]);
-    } finally {
-      setLoadingAudit(false);
-    }
-  };
-
   useEffect(() => {
     if (id) {
-      fetchAuditLogWithUsers(id);
       fetchClaimItems(id).then(setClaimItems);
       fetchAnalysis(id);
     }
@@ -147,8 +88,6 @@ export default function ClaimDetail() {
     if (id) {
       const items = await fetchClaimItems(id);
       setClaimItems(items);
-      // Also refetch audit log and analysis to show changes
-      fetchAuditLogWithUsers(id);
       fetchAnalysis(id);
     }
   };
@@ -445,59 +384,12 @@ export default function ClaimDetail() {
               </TabsContent>
 
               <TabsContent value="audit" className="mt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MaterialIcon name="schedule" size="md" />
-                      Activity History
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingAudit ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                      </div>
-                    ) : auditLog.length === 0 ? (
-                      <p className="text-muted-foreground text-sm">No activity recorded yet.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {auditLog.map(entry => {
-                          const userName = entry.user
-                            ? `${entry.user.first_name || ''} ${entry.user.last_name || ''}`.trim() || 'Unknown User'
-                            : 'System';
-                          const details = entry.details as Record<string, unknown> | null;
-                          const changedFields = details?.changed_fields as string[] | undefined;
-
-                          return (
-                            <div key={entry.id} className="flex items-start gap-3 text-sm border-b border-border last:border-0 pb-3 last:pb-0">
-                              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                                <MaterialIcon name="person" size="sm" className="text-muted-foreground" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-foreground">
-                                  <span className="font-medium">{userName}</span>
-                                  <span className="text-muted-foreground mx-1">·</span>
-                                  <span className="capitalize">
-                                    {entry.action.replace(/_/g, ' ')}
-                                  </span>
-                                </p>
-                                {changedFields && changedFields.length > 0 && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    Changed: {changedFields.map(f => f.replace(/_/g, ' ')).join(', ')}
-                                  </p>
-                                )}
-                                <p className="text-muted-foreground text-xs mt-1">
-                                  {format(new Date(entry.created_at), 'MMM d, yyyy h:mm a')}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <EntityActivityFeed
+                  entityType="claim"
+                  entityId={claim.id}
+                  title="Activity"
+                  description="Timeline of all changes to this claim"
+                />
               </TabsContent>
             </Tabs>
           </div>

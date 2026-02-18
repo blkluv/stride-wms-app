@@ -41,7 +41,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { useManifestScan, useManifestHistory, useManifestItems, ManifestStatus } from '@/hooks/useManifests';
+import { useManifestScan, useManifestItems, ManifestStatus } from '@/hooks/useManifests';
 import { useManifests } from '@/hooks/useManifests';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,6 +52,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
 import { format } from 'date-fns';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 
 const statusLabels: Record<ManifestStatus, string> = {
   draft: 'Draft',
@@ -59,19 +60,6 @@ const statusLabels: Record<ManifestStatus, string> = {
   in_progress: 'In Progress',
   completed: 'Completed',
   cancelled: 'Cancelled',
-};
-
-const actionLabels: Record<string, { label: string; iconName: string; color: string }> = {
-  created: { label: 'Created', iconName: 'add', color: 'text-green-400' },
-  updated: { label: 'Updated', iconName: 'edit', color: 'text-blue-400' },
-  item_added: { label: 'Item Added', iconName: 'add', color: 'text-green-400' },
-  item_removed: { label: 'Item Removed', iconName: 'delete', color: 'text-red-400' },
-  items_bulk_added: { label: 'Items Added (Bulk)', iconName: 'add', color: 'text-green-400' },
-  items_bulk_removed: { label: 'Items Removed (Bulk)', iconName: 'delete', color: 'text-red-400' },
-  started: { label: 'Started', iconName: 'play_arrow', color: 'text-yellow-400' },
-  completed: { label: 'Completed', iconName: 'check_circle', color: 'text-green-400' },
-  cancelled: { label: 'Cancelled', iconName: 'cancel', color: 'text-red-400' },
-  status_changed: { label: 'Status Changed', iconName: 'schedule', color: 'text-blue-400' },
 };
 
 export default function ManifestDetail() {
@@ -92,7 +80,6 @@ export default function ManifestDetail() {
 
   const { profile } = useAuth();
   const { manifest, items, stats, loading, refetch } = useManifestScan(id!);
-  const { history, loading: historyLoading } = useManifestHistory(id!);
   const { addItemsBulk, removeItemsBulk } = useManifestItems(id!);
   const { startManifest, completeManifest, cancelManifest } = useManifests();
 
@@ -377,9 +364,9 @@ export default function ManifestDetail() {
             <MaterialIcon name="assignment" size="sm" />
             Items ({items.length})
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
-            <MaterialIcon name="history" size="sm" />
-            Audit History
+          <TabsTrigger value="activity" className="flex items-center gap-2">
+            <MaterialIcon name="timeline" size="sm" />
+            Activity
           </TabsTrigger>
         </TabsList>
 
@@ -550,86 +537,14 @@ export default function ManifestDetail() {
           </Card>
         </TabsContent>
 
-        {/* History Tab */}
-        <TabsContent value="history" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Audit History</CardTitle>
-              <CardDescription>
-                Complete history of all changes made to this manifest
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {historyLoading ? (
-                <div className="flex justify-center py-8">
-                  <MaterialIcon name="progress_activity" size="lg" className="animate-spin text-muted-foreground" />
-                </div>
-              ) : history.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <MaterialIcon name="history" size="xl" className="mx-auto mb-4 opacity-50" />
-                  <p>No history available</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {history.map((entry) => {
-                    const actionConfig = actionLabels[entry.action] || {
-                      label: entry.action,
-                      iconName: 'schedule',
-                      color: 'text-muted-foreground'
-                    };
-
-                    return (
-                      <div key={entry.id} className="flex gap-4 pb-4 border-b last:border-0">
-                        <div className={`mt-1 ${actionConfig.color}`}>
-                          <MaterialIcon name={actionConfig.iconName} size="md" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{actionConfig.label}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(entry.changed_at), 'MMM d, yyyy h:mm a')}
-                            </span>
-                          </div>
-                          <div className="text-sm text-muted-foreground flex items-center gap-1">
-                            <MaterialIcon name="person" size="sm" />
-                            {entry.changed_by_user?.first_name} {entry.changed_by_user?.last_name}
-                            {entry.changed_by_user?.email && (
-                              <span className="text-xs">({entry.changed_by_user.email})</span>
-                            )}
-                          </div>
-                          {entry.description && (
-                            <p className="text-sm mt-1">{entry.description}</p>
-                          )}
-                          {/* Show change details */}
-                          {entry.old_values && Object.keys(entry.old_values).length > 0 && (
-                            <div className="mt-2 text-xs bg-muted/50 rounded p-2">
-                              <div className="font-medium mb-1">Changes:</div>
-                              {Object.entries(entry.old_values).map(([key, oldVal]) => (
-                                <div key={key} className="flex gap-2">
-                                  <span className="text-muted-foreground">{key}:</span>
-                                  <span className="line-through text-red-400">{String(oldVal)}</span>
-                                  <span>→</span>
-                                  <span className="text-green-400">
-                                    {String(entry.new_values?.[key] ?? '-')}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {/* Show affected items count */}
-                          {entry.affected_item_ids && entry.affected_item_ids.length > 0 && (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {entry.affected_item_ids.length} item(s) affected
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Activity Tab */}
+        <TabsContent value="activity" className="mt-4">
+          <EntityActivityFeed
+            entityType="manifest"
+            entityId={id!}
+            title="Activity"
+            description="Complete timeline of all changes to this manifest"
+          />
         </TabsContent>
       </Tabs>
 

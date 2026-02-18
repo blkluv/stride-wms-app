@@ -38,6 +38,7 @@ import { isValidUuid } from '@/lib/utils';
 import { useExpectedShipmentDetail } from '@/hooks/useExpectedShipmentDetail';
 import { useExternalRefs, type RefType } from '@/hooks/useExternalRefs';
 import { useClasses } from '@/hooks/useClasses';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -723,6 +724,14 @@ export default function ExpectedShipmentDetail() {
             </Card>
           </div>
         </div>
+
+        {/* Activity Feed */}
+        <EntityActivityFeed
+          entityType="shipment"
+          entityId={id}
+          title="Activity"
+          description="Timeline of changes to this expected shipment"
+        />
       </div>
 
       {/* Add Item Dialog */}

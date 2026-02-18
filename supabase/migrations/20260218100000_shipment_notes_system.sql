@@ -11,6 +11,64 @@
 -- may or may not already exist.
 
 -- -----------------------------------------------------------------------------
+-- Compatibility helpers (Client Portal)
+-- -----------------------------------------------------------------------------
+-- Some environments may not yet have the Client Portal helper functions that
+-- many RLS policies rely on (e.g. older migration sets / partial deployments).
+-- The shipment_notes RLS policies below reference these helpers, so we ensure
+-- they exist here to avoid migration-time failures.
+
+-- Helper function: returns the account_id for a client portal user, or NULL for staff
+CREATE OR REPLACE FUNCTION public.client_portal_account_id()
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+    v_account_id UUID;
+BEGIN
+    SELECT account_id INTO v_account_id
+    FROM public.client_portal_users
+    WHERE auth_user_id = auth.uid()
+      AND is_active = true
+    LIMIT 1;
+
+    RETURN v_account_id;
+EXCEPTION
+    WHEN undefined_table THEN
+        -- Client portal not installed in this environment.
+        RETURN NULL;
+    WHEN OTHERS THEN
+        RETURN NULL;
+END;
+$function$;
+
+-- Helper function: check if current user is a client portal user
+CREATE OR REPLACE FUNCTION public.is_client_user()
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM public.client_portal_users
+        WHERE auth_user_id = auth.uid()
+          AND is_active = true
+    );
+EXCEPTION
+    WHEN undefined_table THEN
+        -- Client portal not installed in this environment.
+        RETURN false;
+    WHEN OTHERS THEN
+        RETURN false;
+END;
+$function$;
+
+-- -----------------------------------------------------------------------------
 -- Table
 -- -----------------------------------------------------------------------------
 

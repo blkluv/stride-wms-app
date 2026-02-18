@@ -20,6 +20,50 @@ const TabsList = React.forwardRef<
 ));
 TabsList.displayName = TabsPrimitive.List.displayName;
 
+/**
+ * ScrollableTabsList - Apple-style horizontally scrollable tabs for mobile.
+ * On mobile, the tab bar scrolls horizontally with momentum; on desktop, it wraps normally.
+ * Automatically scrolls to keep the active tab visible.
+ */
+const ScrollableTabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & { activeValue?: string }
+>(({ className, children, activeValue, ...props }, ref) => {
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const activeTab = container.querySelector('[data-state="active"]') as HTMLElement | null;
+    if (activeTab) {
+      const containerRect = container.getBoundingClientRect();
+      const tabRect = activeTab.getBoundingClientRect();
+      const scrollLeft = container.scrollLeft + (tabRect.left - containerRect.left) - (containerRect.width / 2) + (tabRect.width / 2);
+      container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+    }
+  }, [activeValue]);
+
+  return (
+    <div
+      ref={scrollRef}
+      className="w-full overflow-x-auto scrollbar-hide -webkit-overflow-scrolling-touch"
+      style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    >
+      <TabsPrimitive.List
+        ref={ref}
+        className={cn(
+          "inline-flex h-10 items-center rounded-xl bg-muted p-1 text-muted-foreground w-max min-w-full",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </TabsPrimitive.List>
+    </div>
+  );
+});
+ScrollableTabsList.displayName = "ScrollableTabsList";
+
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -50,4 +94,4 @@ const TabsContent = React.forwardRef<
 ));
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-export { Tabs, TabsList, TabsTrigger, TabsContent };
+export { Tabs, TabsList, ScrollableTabsList, TabsTrigger, TabsContent };

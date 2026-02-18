@@ -436,6 +436,108 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     />
   ) : null;
 
+  const renderStage1CompactSummary = (opts?: { showClosedStateBadge?: boolean }) => {
+    const showClosedStateBadge = !!opts?.showClosedStateBadge;
+    const carrierCount = liveMatchingParams?.pieces ?? shipment.signed_pieces ?? 0;
+    const dockCount = liveMatchingParams?.dockCount ?? shipment.received_pieces ?? 0;
+    const mismatch =
+      (Number(carrierCount) || 0) > 0 &&
+      (Number(dockCount) || 0) > 0 &&
+      Number(carrierCount) !== Number(dockCount);
+    const mismatchLabel = mismatch
+      ? dockCount > carrierCount
+        ? `Overage by ${dockCount - carrierCount}`
+        : `Shortage by ${carrierCount - dockCount}`
+      : null;
+
+    return (
+      <Card className="border-dashed">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <MaterialIcon name="local_shipping" size="sm" className="text-primary" />
+              <span className="font-medium">Stage 1</span>
+              <Badge variant="outline" className="font-mono whitespace-nowrap">
+                {shipment.shipment_number}
+              </Badge>
+              <Badge variant="outline" className="h-5 text-xs">
+                Carrier {carrierCount || 0}
+              </Badge>
+              <Badge variant="outline" className="h-5 text-xs">
+                Dock {dockCount || 0}
+              </Badge>
+              <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
+                Entry {entryCount}
+              </Badge>
+              {mismatchLabel ? (
+                <Badge variant="destructive" className="h-5 text-xs gap-1">
+                  <MaterialIcon name="warning" size="sm" />
+                  {mismatchLabel}
+                </Badge>
+              ) : null}
+              <ShipmentExceptionBadge shipmentId={shipmentId} onClick={() => setTab('exceptions')} />
+              {showClosedStateBadge ? (
+                closedEditMode ? (
+                  <Badge variant="secondary" className="h-5 text-xs">
+                    Editing unlocked
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="h-5 text-xs">
+                    Read-only
+                  </Badge>
+                )
+              ) : null}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setStage1Expanded(true)}
+            >
+              <MaterialIcon name="expand_more" size="sm" />
+              Expand Stage 1
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            <span className="font-medium text-foreground">Account:</span> {accountName || '-'}
+          </span>
+          {shipment.vendor_name ? (
+            <span>
+              <span className="font-medium text-foreground">Vendor:</span> {shipment.vendor_name}
+            </span>
+          ) : null}
+          {(shipment as any).carrier ? (
+            <span>
+              <span className="font-medium text-foreground">Carrier:</span> {(shipment as any).carrier}
+            </span>
+          ) : null}
+          {(shipment as any).tracking_number ? (
+            <span>
+              <span className="font-medium text-foreground">Tracking:</span>{' '}
+              {(shipment as any).tracking_number}
+            </span>
+          ) : null}
+          {(shipment as any).po_number ? (
+            <span>
+              <span className="font-medium text-foreground">PO/Ref:</span> {(shipment as any).po_number}
+            </span>
+          ) : null}
+          {shipment.driver_name ? (
+            <span>
+              <span className="font-medium text-foreground">Driver:</span> {shipment.driver_name}
+            </span>
+          ) : null}
+          <span>
+            <span className="font-medium text-foreground">Signature:</span>{' '}
+            {shipment.signature_data || shipment.signature_name ? 'Captured' : 'None'}
+          </span>
+        </CardContent>
+      </Card>
+    );
+  };
+
   // Render based on inbound_status
   const renderStageContent = () => {
     switch (status) {
@@ -516,93 +618,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
       case 'receiving':
         {
-          const carrierCount = liveMatchingParams?.pieces ?? shipment.signed_pieces ?? 0;
-          const dockCount = liveMatchingParams?.dockCount ?? shipment.received_pieces ?? 0;
-          const mismatch =
-            (Number(carrierCount) || 0) > 0 &&
-            (Number(dockCount) || 0) > 0 &&
-            Number(carrierCount) !== Number(dockCount);
-          const mismatchLabel = mismatch
-            ? dockCount > carrierCount
-              ? `Overage by ${dockCount - carrierCount}`
-              : `Shortage by ${carrierCount - dockCount}`
-            : null;
-
-          const stage1CompactSummary = (
-            <Card className="border-dashed">
-              <CardHeader className="pb-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap text-sm">
-                    <MaterialIcon name="local_shipping" size="sm" className="text-primary" />
-                    <span className="font-medium">Stage 1</span>
-                    <Badge variant="outline" className="font-mono whitespace-nowrap">
-                      {shipment.shipment_number}
-                    </Badge>
-                    <Badge variant="outline" className="h-5 text-xs">
-                      Carrier {carrierCount || 0}
-                    </Badge>
-                    <Badge variant="outline" className="h-5 text-xs">
-                      Dock {dockCount || 0}
-                    </Badge>
-                    <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
-                      Entry {entryCount}
-                    </Badge>
-                    {mismatchLabel ? (
-                      <Badge variant="destructive" className="h-5 text-xs gap-1">
-                        <MaterialIcon name="warning" size="sm" />
-                        {mismatchLabel}
-                      </Badge>
-                    ) : null}
-                    <ShipmentExceptionBadge shipmentId={shipmentId} onClick={() => setTab('exceptions')} />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => setStage1Expanded(true)}
-                  >
-                    <MaterialIcon name="expand_more" size="sm" />
-                    Expand Stage 1
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>
-                  <span className="font-medium text-foreground">Account:</span> {accountName || '-'}
-                </span>
-                {shipment.vendor_name ? (
-                  <span>
-                    <span className="font-medium text-foreground">Vendor:</span> {shipment.vendor_name}
-                  </span>
-                ) : null}
-                {(shipment as any).carrier ? (
-                  <span>
-                    <span className="font-medium text-foreground">Carrier:</span> {(shipment as any).carrier}
-                  </span>
-                ) : null}
-                {(shipment as any).tracking_number ? (
-                  <span>
-                    <span className="font-medium text-foreground">Tracking:</span>{' '}
-                    {(shipment as any).tracking_number}
-                  </span>
-                ) : null}
-                {(shipment as any).po_number ? (
-                  <span>
-                    <span className="font-medium text-foreground">PO/Ref:</span> {(shipment as any).po_number}
-                  </span>
-                ) : null}
-                {shipment.driver_name ? (
-                  <span>
-                    <span className="font-medium text-foreground">Driver:</span> {shipment.driver_name}
-                  </span>
-                ) : null}
-                <span>
-                  <span className="font-medium text-foreground">Signature:</span>{' '}
-                  {shipment.signature_data || shipment.signature_name ? 'Captured' : 'None'}
-                </span>
-              </CardContent>
-            </Card>
-          );
+          const stage1CompactSummary = renderStage1CompactSummary();
 
           return (
             <div className="space-y-6">
@@ -675,102 +691,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
       case 'closed':
         {
-          const carrierCount = liveMatchingParams?.pieces ?? shipment.signed_pieces ?? 0;
-          const dockCount = liveMatchingParams?.dockCount ?? shipment.received_pieces ?? 0;
-          const mismatch =
-            (Number(carrierCount) || 0) > 0 &&
-            (Number(dockCount) || 0) > 0 &&
-            Number(carrierCount) !== Number(dockCount);
-          const mismatchLabel = mismatch
-            ? dockCount > carrierCount
-              ? `Overage by ${dockCount - carrierCount}`
-              : `Shortage by ${carrierCount - dockCount}`
-            : null;
-
-          const stage1CompactSummary = (
-            <Card className="border-dashed">
-              <CardHeader className="pb-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap text-sm">
-                    <MaterialIcon name="local_shipping" size="sm" className="text-primary" />
-                    <span className="font-medium">Stage 1</span>
-                    <Badge variant="outline" className="font-mono whitespace-nowrap">
-                      {shipment.shipment_number}
-                    </Badge>
-                    <Badge variant="outline" className="h-5 text-xs">
-                      Carrier {carrierCount || 0}
-                    </Badge>
-                    <Badge variant="outline" className="h-5 text-xs">
-                      Dock {dockCount || 0}
-                    </Badge>
-                    <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
-                      Entry {entryCount}
-                    </Badge>
-                    {mismatchLabel ? (
-                      <Badge variant="destructive" className="h-5 text-xs gap-1">
-                        <MaterialIcon name="warning" size="sm" />
-                        {mismatchLabel}
-                      </Badge>
-                    ) : null}
-                    <ShipmentExceptionBadge shipmentId={shipmentId} onClick={() => setTab('exceptions')} />
-                    {closedEditMode ? (
-                      <Badge variant="secondary" className="h-5 text-xs">
-                        Editing unlocked
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="h-5 text-xs">
-                        Read-only
-                      </Badge>
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => setStage1Expanded(true)}
-                  >
-                    <MaterialIcon name="expand_more" size="sm" />
-                    Expand Stage 1
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>
-                  <span className="font-medium text-foreground">Account:</span> {accountName || '-'}
-                </span>
-                {shipment.vendor_name ? (
-                  <span>
-                    <span className="font-medium text-foreground">Vendor:</span> {shipment.vendor_name}
-                  </span>
-                ) : null}
-                {(shipment as any).carrier ? (
-                  <span>
-                    <span className="font-medium text-foreground">Carrier:</span> {(shipment as any).carrier}
-                  </span>
-                ) : null}
-                {(shipment as any).tracking_number ? (
-                  <span>
-                    <span className="font-medium text-foreground">Tracking:</span>{' '}
-                    {(shipment as any).tracking_number}
-                  </span>
-                ) : null}
-                {(shipment as any).po_number ? (
-                  <span>
-                    <span className="font-medium text-foreground">PO/Ref:</span> {(shipment as any).po_number}
-                  </span>
-                ) : null}
-                {shipment.driver_name ? (
-                  <span>
-                    <span className="font-medium text-foreground">Driver:</span> {shipment.driver_name}
-                  </span>
-                ) : null}
-                <span>
-                  <span className="font-medium text-foreground">Signature:</span>{' '}
-                  {shipment.signature_data || shipment.signature_name ? 'Captured' : 'None'}
-                </span>
-              </CardContent>
-            </Card>
-          );
+          const stage1CompactSummary = renderStage1CompactSummary({ showClosedStateBadge: true });
 
           return (
             <div className="space-y-6">

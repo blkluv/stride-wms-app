@@ -46,6 +46,7 @@ import { ShipmentItemRow } from '@/components/shipments/ShipmentItemRow';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { SignatureDialog } from '@/components/shipments/SignatureDialog';
 import { generateReleasePdf, ReleasePdfData, ReleasePdfItem } from '@/lib/releasePdf';
@@ -206,7 +207,7 @@ export default function ShipmentDetail() {
     () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
     [activeItemView]
   );
-  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 3; // checkbox + expand + view columns + (class, status, actions)
+  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
 
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
@@ -3066,6 +3067,7 @@ export default function ShipmentDetail() {
                 <TableHead className="w-24">Class</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-20"></TableHead>
+                <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

@@ -48,6 +48,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
@@ -90,6 +91,8 @@ interface Item {
   account_id: string | null;
   received_at: string | null;
   primary_photo_url: string | null;
+  size: number | null;
+  size_unit: string | null;
   metadata?: Record<string, unknown> | null;
   has_indicator_flags?: boolean;
 }
@@ -223,7 +226,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, metadata,
+          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, size, size_unit, metadata,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -248,6 +251,8 @@ export default function Inventory() {
         sidemark: item.sidemark,
         vendor: item.vendor,
         room: item.room,
+        size: item.size ?? null,
+        size_unit: item.size_unit ?? null,
         location_id: item.current_location_id,
         location_code: item.location?.code || null,
         location_name: item.location?.name || null,
@@ -514,6 +519,9 @@ export default function Inventory() {
           showEditIcon={false}
         />
       ),
+    },
+    size: {
+      renderCell: (item) => item.size ? `${item.size} ${item.size_unit || 'cu ft'}`.trim() : '-',
     },
     location: {
       sortField: 'location_code',
@@ -847,11 +855,13 @@ export default function Inventory() {
                   <TableHeader><TableRow>
                     <TableHead className="w-10"><Checkbox checked={selectedItems.size === filteredAndSortedItems.length && filteredAndSortedItems.length > 0} onCheckedChange={toggleSelectAll} className="h-3.5 w-3.5" /></TableHead>
                     {visibleColumns.map(renderTableHead)}
+                    <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>{filteredAndSortedItems.map((item) => (
                     <TableRow key={item.id} className={`cursor-pointer hover:bg-muted/50 ${selectedItems.has(item.id) ? 'bg-muted/30' : ''}`} onClick={() => navigate(`/inventory/${item.id}`)}>
                       <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-3.5 w-3.5" /></TableCell>
                       {visibleColumns.map((key) => renderTableCell(key, item))}
+                      <TableCell />
                     </TableRow>
                   ))}</TableBody>
                 </Table>
