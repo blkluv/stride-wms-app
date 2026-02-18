@@ -195,6 +195,62 @@ export async function queueTaskCompletedAlert(
 }
 
 /**
+ * Queue a Split Required alert (grouped-item partial request).
+ * Typically points at the generated Split task.
+ */
+export async function queueSplitRequiredAlert(
+  tenantId: string,
+  splitTaskId: string,
+  parentItemCode: string
+): Promise<boolean> {
+  return queueAlert({
+    tenantId,
+    alertType: 'split.required',
+    entityType: 'task',
+    entityId: splitTaskId,
+    subject: `Split required — ${parentItemCode}`,
+  });
+}
+
+/**
+ * Queue a Split Completed alert (notify requesting portal user).
+ * Uses explicit recipientEmails so we can target the requesting user first.
+ */
+export async function queueSplitCompletedAlert(
+  tenantId: string,
+  splitTaskId: string,
+  parentItemCode: string,
+  recipientEmail: string
+): Promise<boolean> {
+  return queueAlert({
+    tenantId,
+    alertType: 'split.completed',
+    entityType: 'task',
+    entityId: splitTaskId,
+    subject: `Split completed — ${parentItemCode}`,
+    recipientEmails: recipientEmail ? [recipientEmail] : undefined,
+  });
+}
+
+/**
+ * Queue a Split Pending Review alert (manual review flow when client partial requests are disabled).
+ */
+export async function queueSplitManualReviewAlert(
+  tenantId: string,
+  entityType: 'shipment' | 'task',
+  entityId: string,
+  parentItemCode: string
+): Promise<boolean> {
+  return queueAlert({
+    tenantId,
+    alertType: 'split.manual_review',
+    entityType,
+    entityId,
+    subject: `Pending review — ${parentItemCode}`,
+  });
+}
+
+/**
  * Queue an item damaged alert
  */
 export async function queueItemDamagedAlert(
