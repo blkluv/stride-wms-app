@@ -124,3 +124,10 @@ User decision (Email Ops config format for fallback sender domain):
 - In `/admin/saas-ops` → Email Ops, configure the platform-managed fallback sender as a domain/subdomain value only (example: `mail.yourapp.com`), not as a full pattern like `{tenant_slug}@mail.yourapp.com`.
 - The app will generate the full From email automatically as: `{tenant_slug}@<configured_domain>`.
 
+### QA-2026-02-17-ADMINOPS-023
+User decision (Email Ops tenant list UX):
+- `/admin/saas-ops` → Email Ops will include a tenant list/table view.
+- The table must support sorting by tapping/clicking column headers (all columns).
+- The table must include a Status column that supports filtering so the operator can quickly view all tenants in a given status (e.g., “pending”, etc.).
+- The table must include a search autocomplete dropdown/select to quickly find a tenant by typing (for large tenant counts).
+
