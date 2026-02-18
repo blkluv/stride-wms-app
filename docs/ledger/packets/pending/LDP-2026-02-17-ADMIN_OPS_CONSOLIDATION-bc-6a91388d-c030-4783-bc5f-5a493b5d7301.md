@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `15`
+- Q&A items extracted: `16`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -39,6 +39,7 @@
 | DL-2026-02-17-017 | Tenant enters full “From email address” (not just domain) for Resend sender setup | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-013` | - | - |
 | DL-2026-02-17-018 | Platform default sender email is configurable in /admin/saas-ops Email section | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-014` | - | - |
 | DL-2026-02-17-019 | Platform default sender does not include a configurable “From name” (email only) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-015` | - | - |
+| DL-2026-02-17-020 | Platform default sender uses tenant-configured Reply-To email address for replies | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-016` | - | - |
 
 ## Detailed Decision Entries
 
@@ -413,6 +414,25 @@ This keeps the Email Ops UI simpler for non-technical operators and avoids confu
 - `/admin/saas-ops` Email settings should collect only the default From email address.
 - Outbound mail should format the From header using the configured email address without requiring an operator-provided display name.
 
+### DL-2026-02-17-020: Platform default sender uses tenant-configured Reply-To email address for replies
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-016`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+When a tenant is sending using the platform default sender (because they have not configured/verified their own sender), the email “Reply-To” should be set to the tenant’s configured Reply-To email address so customer replies go back to the tenant.
+
+#### Why
+This preserves a simple platform-managed sending setup while ensuring tenants still receive and can respond to customer email replies.
+
+#### Implementation impact
+- Add/confirm a tenant-configurable Reply-To email field in tenant settings (used regardless of whether the tenant uses a custom From sender or the platform default sender).
+- Update send-email functions to set the Reply-To header to the tenant’s configured Reply-To email (with a safe fallback policy if not configured).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -433,3 +453,4 @@ This keeps the Email Ops UI simpler for non-technical operators and avoids confu
 | DLE-2026-02-17-016 | 2026-02-17 | DL-2026-02-17-017 | completed | - | builder | Confirmed: tenant will enter full From email address; domain will be derived for Resend verification. |
 | DLE-2026-02-17-017 | 2026-02-17 | DL-2026-02-17-018 | planned | - | builder | Add admin-dev configurable platform default sender settings (DB-backed) and ensure email sending respects tenant-verified sender or platform default fallback. |
 | DLE-2026-02-17-018 | 2026-02-17 | DL-2026-02-17-019 | planned | - | builder | Keep platform default sender configuration to a single From email field (no separate configurable From name). |
+| DLE-2026-02-17-019 | 2026-02-17 | DL-2026-02-17-020 | planned | - | builder | Set Reply-To to the tenant-configured Reply-To email even when using the platform default sender (so replies route to the tenant). |
