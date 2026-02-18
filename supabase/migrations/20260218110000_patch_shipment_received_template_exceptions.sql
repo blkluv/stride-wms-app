@@ -10,7 +10,7 @@ BEGIN
   SET body_template = regexp_replace(
     ct.body_template,
     E'\\[\\[items_table_html\\]\\]',
-    E'[[items_table_html]]\\n\\n[[exceptions_section_html]]'
+    E'[[items_table_html]]\n\n[[exceptions_section_html]]'
   )
   FROM public.communication_alerts ca
   WHERE ca.id = ct.alert_id
