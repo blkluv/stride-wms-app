@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
-export type JobType = 'task' | 'shipment' | 'stocktake';
+// Allow "plug-in" future job types while preserving autocomplete for core ones.
+export type JobType = 'task' | 'shipment' | 'stocktake' | (string & {});
 
 export interface JobTimeIntervalRow {
   id: string;

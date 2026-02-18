@@ -49,6 +49,7 @@ import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { mergeServiceTimeActualSnapshot, mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 // ============================================
 // TYPES
@@ -1783,7 +1784,7 @@ export default function ShipmentDetail() {
         <Card className="mb-6 border-blue-500 dark:border-blue-400 bg-blue-50/50 dark:bg-blue-950/20">
           <CardContent className="py-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="h-3 w-3 bg-blue-500 rounded-full animate-pulse" />
                 <span className="font-medium">
                   {allReleased
@@ -1792,6 +1793,12 @@ export default function ShipmentDetail() {
                       ? 'Outbound items staged at dock'
                       : 'Outbound pull in progress'}
                 </span>
+                <JobTimerWidget
+                  jobType="shipment"
+                  jobId={shipment.id}
+                  variant="inline"
+                  showControls={false}
+                />
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)}>

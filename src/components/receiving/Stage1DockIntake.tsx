@@ -28,6 +28,7 @@ import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentException
 import { AccountSelect } from '@/components/ui/account-select';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import {
   Dialog,
   DialogContent,
@@ -717,7 +718,15 @@ export function Stage1DockIntake({
                 Record the delivery at the dock. All fields autosave.
               </CardDescription>
             </div>
-            <AutosaveIndicator status={autosave.status} onRetry={autosave.retryNow} />
+            <div className="flex items-center gap-2">
+              <JobTimerWidget
+                jobType="shipment"
+                jobId={shipmentId}
+                variant="inline"
+                showControls={false}
+              />
+              <AutosaveIndicator status={autosave.status} onRetry={autosave.retryNow} />
+            </div>
           </div>
         </CardHeader>
       </Card>

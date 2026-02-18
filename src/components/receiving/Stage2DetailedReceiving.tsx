@@ -46,6 +46,7 @@ import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculatio
 import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 interface ReceivedItem {
   id: string;
@@ -914,7 +915,13 @@ export function Stage2DetailedReceiving({
                 Receive items, create inventory units, and verify quantities.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <JobTimerWidget
+                jobType="shipment"
+                jobId={shipmentId}
+                variant="inline"
+                showControls={false}
+              />
               <Badge variant="secondary" className="text-sm">
                 Carrier: {shipment.signed_pieces ?? '-'}
               </Badge>

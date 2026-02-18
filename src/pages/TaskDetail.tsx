@@ -41,6 +41,7 @@ import { useRepairQuoteWorkflow } from '@/hooks/useRepairQuotes';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useTasks } from '@/hooks/useTasks';
 import { useJobTimer } from '@/hooks/useJobTimer';
+import { JobTimerWidgetFromState } from '@/components/time/JobTimerWidget';
 import { format } from 'date-fns';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
@@ -1094,59 +1095,28 @@ export default function TaskDetailPage() {
                 <div className="flex items-center gap-3">
                   <div className="h-3 w-3 bg-primary rounded-full animate-pulse" />
                   <span className="font-medium">{task.task_type} in progress</span>
-                  <Badge variant="secondary" className="text-xs">
-                    Time: {formatMinutesShort(taskTimer.laborMinutes)}
-                  </Badge>
-                  {!taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
-                    <Badge variant="outline" className="text-xs">
-                      Paused
-                    </Badge>
-                  )}
+                  <JobTimerWidgetFromState
+                    timer={taskTimer}
+                    jobType="task"
+                    jobId={id}
+                    variant="inline"
+                    showControls={false}
+                  />
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setUnableDialogOpen(true)} disabled={actionLoading}>
                     <MaterialIcon name="cancel" size="sm" className="mr-2" />
                     Cancel
                   </Button>
-                  {taskTimer.isActiveForMe ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        const res = await taskTimer.pause();
-                        if (!res.ok) {
-                          toast({ variant: 'destructive', title: 'Pause failed', description: res.error_message || 'Unable to pause timer' });
-                        } else {
-                          toast({ title: 'Paused', description: 'Timer paused. Resume when ready.' });
-                        }
-                      }}
-                      disabled={actionLoading || taskTimer.loading}
-                    >
-                      <MaterialIcon name="pause" size="sm" className="mr-2" />
-                      Pause
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        const res = await taskTimer.startOrResume();
-                        if (!res.ok) {
-                          const description =
-                            res.error_code === 'ACTIVE_TIMER_EXISTS'
-                              ? 'You already have another job running. Pause it first, then resume.'
-                              : res.error_message || 'Unable to resume timer';
-                          toast({ variant: 'destructive', title: 'Resume failed', description });
-                        } else {
-                          toast({ title: 'Resumed', description: 'Timer resumed.' });
-                        }
-                      }}
-                      disabled={actionLoading || taskTimer.loading}
-                    >
-                      <MaterialIcon name="play_arrow" size="sm" className="mr-2" />
-                      Resume
-                    </Button>
-                  )}
+                  <JobTimerWidgetFromState
+                    timer={taskTimer}
+                    jobType="task"
+                    jobId={id}
+                    variant="inline"
+                    showControls
+                    showTime={false}
+                    showStatus={false}
+                  />
                   <Button size="sm" onClick={handleCompleteTask} disabled={actionLoading}>
                     <MaterialIcon name="check" size="sm" className="mr-2" />
                     Finish {task.task_type}
