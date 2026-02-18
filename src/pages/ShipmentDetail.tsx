@@ -149,6 +149,7 @@ interface Shipment {
   receiving_notes: string | null;
   receiving_photos: (string | TaggablePhoto)[] | null;
   receiving_documents: string[] | null;
+  metadata?: Record<string, any> | null;
   release_type: string | null;
   released_to: string | null;
   release_to_phone: string | null;
@@ -421,7 +422,7 @@ export default function ShipmentDetail() {
       if (itemIds.length > 0) {
         const { data: itemsRows, error: itemsFetchError } = await supabase
           .from('items')
-          .select('id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
+          .select('id, item_code, quantity, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
           .in('id', itemIds);
 
         if (itemsFetchError) {
@@ -1048,6 +1049,24 @@ export default function ShipmentDetail() {
           return;
         }
 
+        const groupedQty =
+          typeof (matched.item as any).quantity === 'number' && Number.isFinite((matched.item as any).quantity)
+            ? (matched.item as any).quantity
+            : 1;
+        if (groupedQty > 1) {
+          const ok = window.confirm(
+            `This label represents quantity ${groupedQty}.\n\nMark ALL ${groupedQty} units as Released for this outbound?`
+          );
+          if (!ok) {
+            setLastScan({
+              itemCode: matched.item.item_code,
+              result: 'error',
+              message: 'Release cancelled.',
+            });
+            return;
+          }
+        }
+
         await updateItemLocation(matched.item.id, releasedLocation.id);
         await updateItemReleasedState(matched.item.id);
         await updateShipmentItemRelease(matched.id);
@@ -1086,6 +1105,22 @@ export default function ShipmentDetail() {
 
   const handleStartPull = async () => {
     if (!shipment) return;
+    const meta = shipment.metadata && typeof shipment.metadata === 'object' ? shipment.metadata : null;
+    const splitRequired = !!(meta && (meta as any).split_required === true);
+    const splitTaskIds = splitRequired && Array.isArray((meta as any).split_required_task_ids)
+      ? ((meta as any).split_required_task_ids as any[]).map(String)
+      : [];
+
+    if (splitRequired) {
+      toast({
+        variant: 'destructive',
+        title: 'Split required',
+        description: splitTaskIds.length > 0
+          ? `This outbound is blocked until ${splitTaskIds.length} Split task(s) are completed.`
+          : 'This outbound is blocked until the required Split task is completed.',
+      });
+      return;
+    }
     if (!outboundDockLocation?.id) {
       toast({
         variant: 'destructive',
