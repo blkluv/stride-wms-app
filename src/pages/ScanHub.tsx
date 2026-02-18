@@ -32,6 +32,7 @@ import { SuggestionPanel } from '@/components/scanhub/SuggestionPanel';
 import { CrossWarehouseBanner } from '@/components/scanhub/CrossWarehouseBanner';
 import { OverrideConfirmModal, type OverrideReason } from '@/components/scanhub/OverrideConfirmModal';
 import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
+import { isUuid, parseScanPayload } from '@/lib/scanPayload';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -438,32 +439,23 @@ export default function ScanHub() {
     };
   };
 
-  const parseQRPayload = (input: string): { type: string; id: string; code?: string } | null => {
-    try {
-      const parsed = JSON.parse(input);
-      if (parsed.type && parsed.id) {
-        return parsed;
-      }
-    } catch {
-      return { type: 'unknown', id: '', code: input.trim() };
-    }
-    return null;
-  };
-
   const lookupItem = async (input: string): Promise<ScannedItem | null> => {
-    const payload = parseQRPayload(input);
-    if (!payload) return null;
+    const payload = parseScanPayload(input);
 
     let query = supabase
       .from('v_items_with_location')
       .select('id, item_code, description, location_code, warehouse_name');
 
-    if (payload.type === 'item' && payload.id) {
-      query = query.eq('id', payload.id);
-    } else if (payload.code) {
-      query = query.eq('item_code', payload.code);
+    // Prefer explicit item IDs; also support raw UUID scans.
+    const idCandidate =
+      (payload.type === 'item' && payload.id && isUuid(payload.id))
+        ? payload.id
+        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+
+    if (idCandidate) {
+      query = query.eq('id', idCandidate);
     } else {
-      return null;
+      query = query.eq('item_code', payload.code);
     }
 
     const { data, error } = await query.maybeSingle();
@@ -481,8 +473,7 @@ export default function ScanHub() {
 
   // Extended lookup for service events - includes class, account, sidemark
   const lookupItemForService = async (input: string): Promise<ServiceScannedItem | null> => {
-    const payload = parseQRPayload(input);
-    if (!payload) return null;
+    const payload = parseScanPayload(input);
 
     // Query items table directly to get class (via class_id join), account_id, sidemark_id, account_name
     let query = supabase
@@ -499,12 +490,15 @@ export default function ScanHub() {
         warehouse:warehouses(name)
       `);
 
-    if (payload.type === 'item' && payload.id) {
-      query = query.eq('id', payload.id);
-    } else if (payload.code) {
-      query = query.eq('item_code', payload.code);
+    const idCandidate =
+      (payload.type === 'item' && payload.id && isUuid(payload.id))
+        ? payload.id
+        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+
+    if (idCandidate) {
+      query = query.eq('id', idCandidate);
     } else {
-      return null;
+      query = query.eq('item_code', payload.code);
     }
 
     const { data, error } = await query.maybeSingle();
@@ -525,12 +519,16 @@ export default function ScanHub() {
   };
 
   const lookupLocation = async (input: string): Promise<ScannedLocation | null> => {
-    const payload = parseQRPayload(input);
-    if (!payload) return null;
+    const payload = parseScanPayload(input);
 
     // Check if it's a location QR with explicit type
-    if (payload.type === 'location' && payload.id) {
-      const loc = locations.find(l => l.id === payload.id);
+    const idCandidate =
+      (payload.type === 'location' && payload.id && isUuid(payload.id))
+        ? payload.id
+        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+
+    if (idCandidate) {
+      const loc = locations.find(l => l.id === idCandidate);
       if (loc) {
         return { id: loc.id, code: loc.code, name: loc.name, type: loc.type };
       }
@@ -538,7 +536,7 @@ export default function ScanHub() {
       const { data } = await supabase
         .from('locations')
         .select('id, code, name, type')
-        .eq('id', payload.id)
+        .eq('id', idCandidate)
         .is('deleted_at', null)
         .maybeSingle();
       if (data) {
@@ -547,7 +545,7 @@ export default function ScanHub() {
     }
     
     // Try matching by code against in-memory locations (case-insensitive)
-    const codeToMatch = (payload.code || input).trim();
+    const codeToMatch = payload.code.trim();
     const loc = locations.find(l => 
       l.code.toLowerCase() === codeToMatch.toLowerCase()
     );
@@ -577,10 +575,9 @@ export default function ScanHub() {
    * before making any async DB calls.
    */
   const isLikelyLocationCode = (input: string): boolean => {
-    const payload = parseQRPayload(input);
-    if (!payload) return false;
+    const payload = parseScanPayload(input);
     if (payload.type === 'location') return true;
-    const codeToMatch = (payload.code || input).trim().toLowerCase();
+    const codeToMatch = payload.code.trim().toLowerCase();
     return locations.some(l => l.code.toLowerCase() === codeToMatch);
   };
 

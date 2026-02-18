@@ -33,6 +33,7 @@ import {
 } from '@/lib/haptics';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
+import { isUuid, parseScanPayload } from '@/lib/scanPayload';
 
 const scanResultConfig: Record<ScanResult, {
   color: string;
@@ -320,32 +321,21 @@ export default function StocktakeScanView() {
     return sortDirection === 'asc' ? <MaterialIcon name="arrow_upward" size="sm" /> : <MaterialIcon name="arrow_downward" size="sm" />;
   };
 
-  const parseQRPayload = (input: string): { type: string; id: string; code?: string } | null => {
-    try {
-      const parsed = JSON.parse(input);
-      if (parsed.type && parsed.id) {
-        return parsed;
-      }
-    } catch {
-      return { type: 'unknown', id: '', code: input.trim() };
-    }
-    return null;
-  };
-
   const lookupItem = async (input: string) => {
-    const payload = parseQRPayload(input);
-    if (!payload) return null;
+    const payload = parseScanPayload(input);
 
     let query = supabase
       .from('items')
       .select('id, item_code, description, status, current_location_id');
 
-    if (payload.type === 'item' && payload.id) {
-      query = query.eq('id', payload.id);
-    } else if (payload.code) {
-      query = query.eq('item_code', payload.code);
+    const idCandidate =
+      (payload.type === 'item' && payload.id && isUuid(payload.id))
+        ? payload.id
+        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+    if (idCandidate) {
+      query = query.eq('id', idCandidate);
     } else {
-      return null;
+      query = query.eq('item_code', payload.code);
     }
 
     const { data, error } = await query.maybeSingle();
