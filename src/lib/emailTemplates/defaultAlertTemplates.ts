@@ -283,11 +283,14 @@ export const DEFAULT_ALERT_TEMPLATES: Record<string, DefaultAlertTemplate> = {
     body: `A flag has been added to an item.
 
 **Item:** [[item_code]]
-**Description:** [[item_description]]`,
+**Description:** [[item_description]]
+**Flag:** [[flag_service_name]] ([[flag_service_code]])
+**Applied by:** [[flag_added_by_name]]
+**Applied at:** [[flag_added_at]]`,
     ctaLabel: 'View Item',
     ctaLink: '[[item_photos_link]]',
-    smsBody: '[[tenant_name]]: Flag added to item [[item_code]]. View: [[item_photos_link]]',
-    inAppBody: 'Flag added to item [[item_code]].',
+    smsBody: '[[tenant_name]]: [[flag_service_name]] flag added to item [[item_code]]. View: [[item_photos_link]]',
+    inAppBody: '[[flag_service_name]] flag added to item [[item_code]].',
     inAppRecipients: '[[manager_role]], [[warehouse_role]]',
   },
 

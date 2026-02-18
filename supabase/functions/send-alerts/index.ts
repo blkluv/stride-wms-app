@@ -677,6 +677,11 @@ async function buildTemplateVariables(
     exceptions_count: '0',
     exceptions_list_text: '',
     exceptions_section_html: '',
+    // ── Item flag tokens (item.flag_added / item.flag_added.{SERVICE_CODE}) ──
+    flag_service_name: '',
+    flag_service_code: '',
+    flag_added_by_name: '',
+    flag_added_at: '',
     portal_invoice_url: '',
     portal_claim_url: '',
     portal_release_url: '',
@@ -867,6 +872,75 @@ async function buildTemplateVariables(
         variables.item_photos_link = portalBase ? `${portalBase}/inventory/${entityId}` : '';
         variables.items_count = '1';
         itemIds = [entityId];
+
+        // Item flag tokens (service flags): available for item.flag_added and per-flag triggers.
+        // Per-flag triggers use: item.flag_added.{SERVICE_CODE}
+        if (alertType === 'item.flag_added' || alertType.startsWith('item.flag_added.')) {
+          const explicitCode = alertType.startsWith('item.flag_added.')
+            ? alertType.slice('item.flag_added.'.length).trim()
+            : '';
+
+          try {
+            let query = supabase
+              .from('item_flags')
+              .select('service_code, created_at, created_by')
+              .eq('tenant_id', tenantId)
+              .eq('item_id', entityId);
+
+            if (explicitCode) {
+              query = query.eq('service_code', explicitCode);
+            }
+
+            const { data: flagRow } = await query
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const serviceCode = explicitCode || flagRow?.service_code || '';
+            variables.flag_service_code = serviceCode;
+
+            if (flagRow?.created_at) {
+              variables.flag_added_at = new Date(flagRow.created_at).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              });
+            }
+
+            if (flagRow?.created_by) {
+              const { data: actor } = await supabase
+                .from('users')
+                .select('first_name, last_name, email')
+                .eq('id', flagRow.created_by)
+                .maybeSingle();
+
+              const fullName = `${actor?.first_name || ''} ${actor?.last_name || ''}`.trim();
+              variables.flag_added_by_name = fullName || actor?.email || flagRow.created_by;
+            }
+          } catch (flagErr) {
+            console.warn('[send-alerts] failed to resolve item flag tokens:', flagErr);
+          }
+
+          try {
+            if (variables.flag_service_code) {
+              const { data: svc } = await supabase
+                .from('service_events')
+                .select('service_name')
+                .eq('tenant_id', tenantId)
+                .eq('service_code', variables.flag_service_code)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              variables.flag_service_name = svc?.service_name || variables.flag_service_code;
+            }
+          } catch (svcErr) {
+            console.warn('[send-alerts] failed to resolve flag service name:', svcErr);
+            variables.flag_service_name = variables.flag_service_name || variables.flag_service_code || '';
+          }
+        }
 
         // Repair-specific tokens (for repair_started, repair_completed, repair_requires_approval)
         if (alertType.startsWith('repair')) {
