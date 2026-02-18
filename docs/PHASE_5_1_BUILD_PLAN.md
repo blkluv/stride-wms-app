@@ -131,7 +131,7 @@ The contract's SQL and RPC definitions assume certain columns that don't exist i
 | G1 | Create `src/pages/WarehouseHeatMap.tsx` — route page component | C4 |
 | G2 | Create `src/components/warehouse-map/HeatMapCanvas.tsx` — SVG with gradient fill zones | C4 |
 | G3 | Create `src/components/warehouse-map/HeatMapLegend.tsx` — fixed thresholds (green/yellow/orange/red/deep red/gray) | G2 |
-| G4 | Single data call: `rpc_get_warehouse_map_zone_capacity(mapId)` on load + refresh button | C4 |
+| G4 | Resolve warehouse Default Map, then single call `rpc_get_warehouse_map_zone_capacity(default_map_id)` on load + refresh button (DL-2026-02-18-011) | C4 |
 | G5 | Add route `/warehouses/:warehouseId/heatmap` to `App.tsx` | G1 |
 
 ### Phase H: (Out of scope) Zone-level alert integration

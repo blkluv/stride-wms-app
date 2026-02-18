@@ -147,10 +147,11 @@ Changes:
 
 ---
 
-## 5) Map Builder (Admin only)
+## 5) Map Builder (Admin/Manager)
 
 Route:
 - `/warehouses/:warehouseId/map?mapId=<uuid>`
+  - If `mapId` is omitted, load the warehouse Default Map (if present).
 
 Behavior (contract):
 - Map selector (create/rename/set default)
@@ -172,17 +173,19 @@ Implementation approach (no new heavy dependencies):
   - use batched `upsert` for nodes on save to avoid excessive network chatter
 
 Role gating:
-- require `tenant_admin` (and/or `admin`) to access route and to write maps/nodes
+- require `admin` + `manager` to access route and to write maps/nodes (DL-2026-02-15-201)
 
 ---
 
 ## 6) Heat Map Viewer (Read-only)
 
 Route:
-- `/warehouses/:warehouseId/heatmap?mapId=<uuid>`
+- `/warehouses/:warehouseId/heatmap`
+  - Viewer always renders the warehouse Default Map (DL-2026-02-18-011)
 
 Data:
-- **single** call: `rpc_get_warehouse_map_zone_capacity(mapId)`
+- Resolve `default_map_id` for the warehouse (query `warehouse_maps` where `is_default=true`)
+- **single** call: `rpc_get_warehouse_map_zone_capacity(default_map_id)`
 
 Rendering:
 - draw the same rectangles as map nodes, but fill with gradient based on utilization thresholds:
@@ -194,7 +197,7 @@ Rendering:
 - legend + refresh button
 
 Access:
-- clarify whether all `warehouse_user` can view, or admin-only (contract says read-only but not explicitly admin-only).
+- `admin` + `manager` + `warehouse` access (DL-2026-02-15-201)
 
 ---
 
