@@ -41,7 +41,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { useManifestScan, useManifestHistory, useManifestItems, ManifestStatus } from '@/hooks/useManifests';
+import { useManifestScan, useManifestItems, ManifestStatus } from '@/hooks/useManifests';
 import { useManifests } from '@/hooks/useManifests';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,19 +62,6 @@ const statusLabels: Record<ManifestStatus, string> = {
   cancelled: 'Cancelled',
 };
 
-const actionLabels: Record<string, { label: string; iconName: string; color: string }> = {
-  created: { label: 'Created', iconName: 'add', color: 'text-green-400' },
-  updated: { label: 'Updated', iconName: 'edit', color: 'text-blue-400' },
-  item_added: { label: 'Item Added', iconName: 'add', color: 'text-green-400' },
-  item_removed: { label: 'Item Removed', iconName: 'delete', color: 'text-red-400' },
-  items_bulk_added: { label: 'Items Added (Bulk)', iconName: 'add', color: 'text-green-400' },
-  items_bulk_removed: { label: 'Items Removed (Bulk)', iconName: 'delete', color: 'text-red-400' },
-  started: { label: 'Started', iconName: 'play_arrow', color: 'text-yellow-400' },
-  completed: { label: 'Completed', iconName: 'check_circle', color: 'text-green-400' },
-  cancelled: { label: 'Cancelled', iconName: 'cancel', color: 'text-red-400' },
-  status_changed: { label: 'Status Changed', iconName: 'schedule', color: 'text-blue-400' },
-};
-
 export default function ManifestDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -93,7 +80,6 @@ export default function ManifestDetail() {
 
   const { profile } = useAuth();
   const { manifest, items, stats, loading, refetch } = useManifestScan(id!);
-  const { history, loading: historyLoading } = useManifestHistory(id!);
   const { addItemsBulk, removeItemsBulk } = useManifestItems(id!);
   const { startManifest, completeManifest, cancelManifest } = useManifests();
 
@@ -554,7 +540,7 @@ export default function ManifestDetail() {
         {/* Activity Tab */}
         <TabsContent value="activity" className="mt-4">
           <EntityActivityFeed
-            entityType="shipment"
+            entityType="manifest"
             entityId={id!}
             title="Activity"
             description="Complete timeline of all changes to this manifest"

@@ -206,7 +206,7 @@ export default function ShipmentDetail() {
     () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
     [activeItemView]
   );
-  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 3; // checkbox + expand + view columns + (class, status, actions)
+  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
 
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
