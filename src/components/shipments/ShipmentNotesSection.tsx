@@ -125,14 +125,17 @@ export function ShipmentNotesSection({
 
     setSubmitting(true);
     try {
+      let created: ShipmentNote | null = null;
       if (noteType === 'exception') {
         const code = exceptionCode === '__general__' ? null : exceptionCode;
-        await addNote(newNote, 'exception', { exceptionCode: code });
+        created = await addNote(newNote, 'exception', { exceptionCode: code });
       } else {
-        await addNote(newNote, noteType);
+        created = await addNote(newNote, noteType);
       }
-      setNewNote('');
-      setExceptionCode('__general__');
+      if (created) {
+        setNewNote('');
+        setExceptionCode('__general__');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -146,9 +149,11 @@ export function ShipmentNotesSection({
       const parent = flattened.find((n) => n.id === parentId);
       const parentType = (parent?.note_type || 'internal') as ShipmentNoteType;
       const parentExceptionCode = parent?.exception_code || null;
-      await addNote(replyText, parentType, { parentNoteId: parentId, exceptionCode: parentExceptionCode });
-      setReplyText('');
-      setReplyingTo(null);
+      const created = await addNote(replyText, parentType, { parentNoteId: parentId, exceptionCode: parentExceptionCode });
+      if (created) {
+        setReplyText('');
+        setReplyingTo(null);
+      }
     } finally {
       setSubmitting(false);
     }

@@ -189,6 +189,8 @@ export function Stage2DetailedReceiving({
   const billingRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rowSaveInFlightRef = useRef<Record<string, boolean>>({});
   const rowResaveQueuedRef = useRef<Record<string, boolean>>({});
+  const rowLatestQueuedSnapshotRef = useRef<Record<string, ReceivedItem | undefined>>({});
+  const rowPersistedShipmentItemIdRef = useRef<Record<string, string>>({});
   const itemsRef = useRef<ReceivedItem[]>([]);
 
   useEffect(() => {
@@ -328,6 +330,7 @@ export function Stage2DetailedReceiving({
     // Avoid insert/update races on repeated blur events.
     if (rowSaveInFlightRef.current[row.id]) {
       rowResaveQueuedRef.current[row.id] = true;
+      rowLatestQueuedSnapshotRef.current[row.id] = row;
       return;
     }
 
@@ -352,6 +355,7 @@ export function Stage2DetailedReceiving({
           .eq('id', row.shipment_item_id);
 
         if (error) throw error;
+        rowPersistedShipmentItemIdRef.current[row.id] = row.shipment_item_id;
       } else {
         const { data, error } = await (supabase.from('shipment_items') as any)
           .insert({ shipment_id: shipmentId, ...payload })
@@ -362,6 +366,7 @@ export function Stage2DetailedReceiving({
 
         const newId = (data as any)?.id as string | undefined;
         if (newId) {
+          rowPersistedShipmentItemIdRef.current[row.id] = newId;
           setItems((prev) => prev.map((i) => (i.id === row.id ? { ...i, shipment_item_id: newId } : i)));
         }
       }
@@ -385,9 +390,16 @@ export function Stage2DetailedReceiving({
       // If changes came in while we were saving, write the newest snapshot once more.
       if (rowResaveQueuedRef.current[row.id]) {
         rowResaveQueuedRef.current[row.id] = false;
-        const latest = itemsRef.current.find((i) => i.id === row.id);
+        const queued = rowLatestQueuedSnapshotRef.current[row.id];
+        rowLatestQueuedSnapshotRef.current[row.id] = undefined;
+        const latest = queued ?? itemsRef.current.find((i) => i.id === row.id);
         if (latest) {
-          void upsertShipmentItemRow(latest);
+          const persistedId = rowPersistedShipmentItemIdRef.current[row.id];
+          const rowToSave =
+            latest.shipment_item_id || !persistedId
+              ? latest
+              : { ...latest, shipment_item_id: persistedId };
+          void upsertShipmentItemRow(rowToSave);
         }
       }
     }
