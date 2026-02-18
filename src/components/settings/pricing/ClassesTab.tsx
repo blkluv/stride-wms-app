@@ -313,6 +313,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
   const [notes, setNotes] = useState(itemClass.notes ?? '');
   const [isActive, setIsActive] = useState(itemClass.is_active ?? true);
   const [cubicFeet, setCubicFeet] = useState<string>(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+  const [cubicFeetTouched, setCubicFeetTouched] = useState(false);
 
   useEffect(() => {
     setName(itemClass.name);
@@ -320,6 +321,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
     setCubicFeet(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+    setCubicFeetTouched(false);
   }, [itemClass]);
 
   const handleCancel = () => {
@@ -328,6 +330,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
     setCubicFeet(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+    setCubicFeetTouched(false);
     onCancel();
   };
 
@@ -340,8 +343,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
-      min_cubic_feet: cubicVal,
-      max_cubic_feet: cubicVal,
+      ...(cubicFeetTouched ? { min_cubic_feet: cubicVal, max_cubic_feet: cubicVal } : {}),
       is_active: isActive,
       notes: notes.trim() || null,
     });
@@ -351,9 +353,11 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
   const cubicAsNum = cubicRaw ? Number(cubicRaw) : null;
   const cubicValid = !cubicRaw || (Number.isFinite(cubicAsNum) && (cubicAsNum as number) >= 0);
   const legacyRange =
-    itemClass.min_cubic_feet !== null &&
-    itemClass.max_cubic_feet !== null &&
-    itemClass.min_cubic_feet !== itemClass.max_cubic_feet;
+    (itemClass.min_cubic_feet !== null &&
+      itemClass.max_cubic_feet !== null &&
+      itemClass.min_cubic_feet !== itemClass.max_cubic_feet) ||
+    (itemClass.min_cubic_feet !== null && itemClass.max_cubic_feet === null) ||
+    (itemClass.min_cubic_feet === null && itemClass.max_cubic_feet !== null);
 
   return (
     <div className="space-y-4 pt-3 border-t border-dashed">
@@ -387,7 +391,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
         <Input
           id={`cls-cubic-${itemClass.id}`}
           value={cubicFeet}
-          onChange={(e) => setCubicFeet(e.target.value)}
+          onChange={(e) => { setCubicFeet(e.target.value); setCubicFeetTouched(true); }}
           type="number"
           inputMode="decimal"
           min={0}
@@ -396,7 +400,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
         />
         {legacyRange && (
           <p className="text-xs text-muted-foreground">
-            This class previously had a cubic-feet range configured. Set a single value to enable auto-filling item size.
+            This class previously had a legacy cubic-feet range/bound configured. Set a single value to enable auto-filling item size.
           </p>
         )}
         {!cubicValid && (
