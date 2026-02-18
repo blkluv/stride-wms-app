@@ -10,7 +10,12 @@ import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTy
 import { fetchTaskServiceLinesStatic, isServiceLineRow } from '@/hooks/useTaskServiceLines';
 import type { CompletionLineValues } from '@/components/tasks/TaskCompletionPanel';
 import { estimateServiceMinutes } from '@/lib/time/serviceTimeEstimate';
-import { mergeServiceTimeSnapshot, type ServiceTimeSnapshotV1 } from '@/lib/time/serviceTimeSnapshot';
+import {
+  mergeServiceTimeSnapshot,
+  mergeServiceTimeActualSnapshot,
+  type ServiceTimeSnapshotV1,
+  type ServiceTimeActualSnapshotV1,
+} from '@/lib/time/serviceTimeSnapshot';
 
 export interface Task {
   id: string;
@@ -699,23 +704,57 @@ export function useTasks(filters?: {
     }
   };
 
-  const startTask = async (taskId: string) => {
+  const startTask = async (taskId: string, options?: { pauseExisting?: boolean }) => {
     if (!profile?.id) return false;
 
     try {
       // Get task info first
       const { data: taskData } = await (supabase
         .from('tasks') as any)
-        .select('task_type')
+        .select('task_type, started_at')
         .eq('id', taskId)
         .single();
 
+      // Start timer interval first (so we don't mark a task in-progress without a timer)
+      const { data: timerStart, error: timerError } = await supabase.rpc('rpc_timer_start_job', {
+        p_job_type: 'task',
+        p_job_id: taskId,
+        p_pause_existing: options?.pauseExisting ?? false,
+      });
+
+      if (timerError) throw timerError;
+      const startResult = (timerStart || {}) as { ok?: boolean; error_code?: string; error_message?: string };
+
+      if (!startResult.ok) {
+        if (startResult.error_code === 'ACTIVE_TIMER_EXISTS') {
+          toast({
+            variant: 'destructive',
+            title: 'Another job is already in progress',
+            description: 'Pause your active job before starting this task.',
+          });
+          return false;
+        }
+        toast({
+          variant: 'destructive',
+          title: 'Unable to start timer',
+          description: startResult.error_message || 'Failed to start timer',
+        });
+        return false;
+      }
+
+      const nowIso = new Date().toISOString();
+      const taskUpdates: any = {
+        status: 'in_progress',
+        assigned_to: profile.id,
+      };
+      if (!taskData?.started_at) {
+        taskUpdates.started_at = nowIso;
+        taskUpdates.started_by = profile.id;
+      }
+
       const { error } = await (supabase
         .from('tasks') as any)
-        .update({
-          status: 'in_progress',
-          assigned_to: profile.id,
-        })
+        .update(taskUpdates)
         .eq('id', taskId);
 
       if (error) throw error;
@@ -960,6 +999,65 @@ export function useTasks(filters?: {
     }
   };
 
+  const computeTaskActualTimeSnapshot = async (params: {
+    taskId: string;
+    snapshotAt: string;
+  }): Promise<ServiceTimeActualSnapshotV1 | null> => {
+    if (!profile?.tenant_id || !profile?.id) return null;
+
+    const minutesBetweenIso = (startIso: string, endIso: string) => {
+      const start = new Date(startIso).getTime();
+      const end = new Date(endIso).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+      return (end - start) / 60000;
+    };
+
+    try {
+      // End any active interval for THIS user + task (idempotent)
+      try {
+        await supabase.rpc('rpc_timer_end_job', {
+          p_job_type: 'task',
+          p_job_id: params.taskId,
+          p_reason: 'complete',
+        });
+      } catch (endErr) {
+        // Best-effort — still compute from what we have
+        console.warn('[useTasks] Failed to end active task timer on completion:', endErr);
+      }
+
+      // Sum labor minutes across all users for this job.
+      // For phase 1 (single-user default) this equals cycle time as well.
+      const { data: rows, error } = await (supabase
+        .from('job_time_intervals') as any)
+        .select('started_at, ended_at')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('job_type', 'task')
+        .eq('job_id', params.taskId);
+
+      if (error) throw error;
+
+      const endFallbackIso = params.snapshotAt;
+      const labor = (rows || []).reduce((sum: number, r: any) => {
+        const start = r.started_at as string;
+        const end = (r.ended_at as string | null) || endFallbackIso;
+        return sum + minutesBetweenIso(start, end);
+      }, 0);
+
+      const laborMinutes = Math.round(labor);
+      const cycleMinutes = laborMinutes;
+
+      return {
+        actual_cycle_minutes: cycleMinutes,
+        actual_labor_minutes: laborMinutes,
+        actual_snapshot_at: params.snapshotAt,
+        actual_version: 1,
+      };
+    } catch (error) {
+      console.warn('[useTasks] computeTaskActualTimeSnapshot error:', error);
+      return null;
+    }
+  };
+
   const completeTask = async (taskId: string, pickupName?: string) => {
     if (!profile?.id) return false;
 
@@ -977,6 +1075,16 @@ export function useTasks(filters?: {
 
       const completedAt = new Date().toISOString();
 
+      // Guard: Will Call completion requires pickup name (avoid ending timers if missing)
+      if (taskData.task_type === SPECIAL_TASK_TYPES.WILL_CALL && !pickupName) {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Pickup name is required for Will Call completion',
+        });
+        return false;
+      }
+
       // Snapshot estimated service time on completion (best-effort; must not block completion)
       let completedMetadata: any | undefined = undefined;
       try {
@@ -992,6 +1100,20 @@ export function useTasks(filters?: {
         }
       } catch (err) {
         console.warn('[useTasks] Failed to snapshot estimated service time (completeTask):', err);
+      }
+
+      // Snapshot actual service time on completion (best-effort)
+      let actualSnapshot: ServiceTimeActualSnapshotV1 | null = null;
+      try {
+        actualSnapshot = await computeTaskActualTimeSnapshot({ taskId, snapshotAt: completedAt });
+        if (actualSnapshot) {
+          completedMetadata = mergeServiceTimeActualSnapshot(
+            completedMetadata ?? taskData.metadata ?? null,
+            actualSnapshot,
+          );
+        }
+      } catch (err) {
+        console.warn('[useTasks] Failed to snapshot actual service time (completeTask):', err);
       }
 
       // Handle Will Call completion - requires pickup name
@@ -1013,7 +1135,12 @@ export function useTasks(filters?: {
             billing_charge_date: completedAt,
             pickup_name: pickupName,
             pickup_completed_at: completedAt,
+            ended_at: completedAt,
+            ended_by: profile.id,
           };
+        if (actualSnapshot) {
+          willCallUpdates.duration_minutes = actualSnapshot.actual_labor_minutes;
+        }
         if (completedMetadata !== undefined) {
           willCallUpdates.metadata = completedMetadata;
         }
@@ -1073,7 +1200,12 @@ export function useTasks(filters?: {
             completed_at: completedAt,
             completed_by: profile.id,
             billing_charge_date: completedAt,
+            ended_at: completedAt,
+            ended_by: profile.id,
           };
+        if (actualSnapshot) {
+          disposalUpdates.duration_minutes = actualSnapshot.actual_labor_minutes;
+        }
         if (completedMetadata !== undefined) {
           disposalUpdates.metadata = completedMetadata;
         }
@@ -1134,7 +1266,12 @@ export function useTasks(filters?: {
           completed_at: completedAt,
           completed_by: profile.id,
           billing_charge_date: completedAt,
+          ended_at: completedAt,
+          ended_by: profile.id,
         };
+      if (actualSnapshot) {
+        normalUpdates.duration_minutes = actualSnapshot.actual_labor_minutes;
+      }
       if (completedMetadata !== undefined) {
         normalUpdates.metadata = completedMetadata;
       }
@@ -1655,6 +1792,20 @@ export function useTasks(filters?: {
         console.warn('[useTasks] Failed to snapshot estimated service time (completeTaskWithServices):', err);
       }
 
+      // Snapshot actual service time on completion (best-effort)
+      let actualSnapshot: ServiceTimeActualSnapshotV1 | null = null;
+      try {
+        actualSnapshot = await computeTaskActualTimeSnapshot({ taskId, snapshotAt: completedAt });
+        if (actualSnapshot) {
+          completedMetadata = mergeServiceTimeActualSnapshot(
+            completedMetadata ?? taskData.metadata ?? null,
+            actualSnapshot,
+          );
+        }
+      } catch (err) {
+        console.warn('[useTasks] Failed to snapshot actual service time (completeTaskWithServices):', err);
+      }
+
       // Handle Will Call special completion
       if (taskType === SPECIAL_TASK_TYPES.WILL_CALL) {
         // Will Call still needs pickup name — delegate to standard completeTask
@@ -1668,7 +1819,12 @@ export function useTasks(filters?: {
             completed_at: completedAt,
             completed_by: profile.id,
             billing_charge_date: completedAt,
+            ended_at: completedAt,
+            ended_by: profile.id,
           };
+        if (actualSnapshot) {
+          disposalUpdates.duration_minutes = actualSnapshot.actual_labor_minutes;
+        }
         if (completedMetadata !== undefined) {
           disposalUpdates.metadata = completedMetadata;
         }
@@ -1718,7 +1874,12 @@ export function useTasks(filters?: {
           completed_at: completedAt,
           completed_by: profile.id,
           billing_charge_date: completedAt,
+          ended_at: completedAt,
+          ended_by: profile.id,
         };
+      if (actualSnapshot) {
+        completionUpdates.duration_minutes = actualSnapshot.actual_labor_minutes;
+      }
       if (completedMetadata !== undefined) {
         completionUpdates.metadata = completedMetadata;
       }

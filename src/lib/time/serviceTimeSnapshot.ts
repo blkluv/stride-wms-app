@@ -23,6 +23,13 @@ export type ServiceTimeSnapshotV1 = {
   }>;
 };
 
+export type ServiceTimeActualSnapshotV1 = {
+  actual_cycle_minutes: number;
+  actual_labor_minutes: number;
+  actual_snapshot_at: string; // ISO timestamp
+  actual_version: 1;
+};
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -30,6 +37,24 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export function mergeServiceTimeSnapshot(
   metadata: Json | null | undefined,
   snapshot: ServiceTimeSnapshotV1,
+): Json {
+  const metaObj: Record<string, unknown> = isPlainObject(metadata) ? { ...(metadata as any) } : {};
+  const existingServiceTime: Record<string, unknown> = isPlainObject(metaObj.service_time)
+    ? { ...(metaObj.service_time as any) }
+    : {};
+
+  return {
+    ...metaObj,
+    service_time: {
+      ...existingServiceTime,
+      ...snapshot,
+    },
+  } as unknown as Json;
+}
+
+export function mergeServiceTimeActualSnapshot(
+  metadata: Json | null | undefined,
+  snapshot: ServiceTimeActualSnapshotV1,
 ): Json {
   const metaObj: Record<string, unknown> = isPlainObject(metadata) ? { ...(metadata as any) } : {};
   const existingServiceTime: Record<string, unknown> = isPlainObject(metaObj.service_time)
