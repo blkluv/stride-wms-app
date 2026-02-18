@@ -14,7 +14,7 @@
 - Decision:
   - Do not hide/disable sidebar sections based on selection; keep all sections available when the preferences sidebar is open.
   - Avoid UX where clicking in the sidebar clears selection and causes tool sections to disappear.
-  - Use a dropdown to switch between sections since the sidebar now contains multiple tools (Zones, Alias, Rows, etc.).
+  - Use a dropdown to switch between sections since the sidebar now contains multiple tools (Zones, Alias, Groups, etc.).
 
 ### QA-MAP-2026-02-18-002
 - Context: Terminology.

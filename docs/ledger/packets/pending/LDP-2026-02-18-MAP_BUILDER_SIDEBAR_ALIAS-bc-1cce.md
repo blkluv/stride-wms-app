@@ -12,7 +12,7 @@
 | Decision ID | Action | Title | State | Notes |
 |---|---|---|---|---|
 | DL-2026-02-18-001 | add | Map Builder preferences sidebar sections remain available regardless of selection | accepted | Avoid disappearing tools due to selection clearing. |
-| DL-2026-02-18-002 | add | Map Builder preferences sidebar uses dropdown section switcher (not tabs) | accepted | Sidebar contains Zones + Alias + Rows + Properties modes. |
+| DL-2026-02-18-002 | add | Map Builder preferences sidebar uses dropdown section switcher (not tabs) | accepted | Sidebar contains Properties + Zones + Alias + Groups modes. |
 | DL-2026-02-18-003 | add | Use term Alias (not Nickname) across map/zone labeling UX | accepted | Rename in UI copy and build-out artifacts. |
 
 ## Detailed Decision Entries
@@ -42,7 +42,7 @@ Selection-gated tabs that disappear when focus changes are confusing and slow, e
 - Superseded by: -
 
 #### Decision
-Use a dropdown section switcher (not tabs) in the Map Builder preferences sidebar to navigate between sections (e.g., Properties, Zones, Alias, Rows).
+Use a dropdown section switcher (not tabs) in the Map Builder preferences sidebar to navigate between sections (e.g., Properties, Zones, Alias, Groups).
 
 #### Why
 As the sidebar adds multiple tools, a dropdown is simpler and avoids a cramped/tab-overflow UI.
