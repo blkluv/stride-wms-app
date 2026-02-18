@@ -72,6 +72,7 @@ import ClientOutboundCreate from "./pages/ClientOutboundCreate";
 import ClientTaskCreate from "./pages/ClientTaskCreate";
 import ScanHub from "./pages/ScanHub";
 import ScanItemRedirect from "./pages/ScanItemRedirect";
+import ScanShipmentRedirect from "./pages/ScanShipmentRedirect";
 import PrintPreview from "./pages/PrintPreview";
 import Diagnostics from "./pages/Diagnostics";
 import BotQA from "./pages/admin/BotQA";
@@ -129,7 +130,7 @@ const App = () => (
             <Route path="/shipments" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><Shipments /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/list" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             {/* Legacy entry point: keep URL working but route to new Incoming Manager */}
-            <Route path="/shipments/incoming" element={<Navigate to="/incoming/manager?tab=expected" replace />} />
+            <Route path="/shipments/incoming" element={<Navigate to="/incoming/manager?tab=intakes" replace />} />
             <Route path="/shipments/outbound" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/received" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/released" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
@@ -142,6 +143,7 @@ const App = () => (
             <Route path="/tasks/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><TaskDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/scan" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ScanHub /></RequireRole></ProtectedRoute>} />
             <Route path="/scan/item/:codeOrId" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ScanItemRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/scan/shipment/:numberOrId" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ScanShipmentRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><Messages /></RequireRole></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><RequireRole role="tenant_admin"><Billing /></RequireRole></ProtectedRoute>} />
             <Route path="/billing/reports" element={<ProtectedRoute><RequireRole role="tenant_admin"><BillingReports /></RequireRole></ProtectedRoute>} />

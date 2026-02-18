@@ -11,7 +11,9 @@ export const ENTITY_CONFIG = {
   },
   shipment: {
     prefix: 'SHP',
-    pattern: /\b((?:SHP|MAN|EXP|INT|OUT)-\d{5,6})\b/gi,
+    // Supports both current 5-digit sequence (e.g., INT-00042) and any legacy formats
+    // that may still appear in logs (e.g., SHP-000001, SHP-2024-001).
+    pattern: /\b((?:SHP|MAN|EXP|INT|OUT)-(?:\d{5,6}|\d{4}-\d{3}))\b/gi,
     route: '/shipments',
     color: 'green',
     icon: 'Truck',
@@ -27,7 +29,9 @@ export const ENTITY_CONFIG = {
   },
   item: {
     prefix: 'ITM',
-    pattern: /\b(ITM-\d{5})\b/gi,
+    // Current item_code format: ITM-###-#### (e.g., ITM-123-4567).
+    // Keep legacy ITM-##### support for older references.
+    pattern: /\b(ITM-(?:\d{3}-\d{4}|\d{5,7}))\b/gi,
     route: '/inventory',
     color: 'purple',
     icon: 'Package',
@@ -43,7 +47,8 @@ export const ENTITY_CONFIG = {
   },
   invoice: {
     prefix: 'INV',
-    pattern: /\b(INV-\d{5})\b/gi,
+    // Supports both simple INV-00001 and account-coded INV-ACCT-00001 patterns.
+    pattern: /\b(INV-(?:[A-Z0-9]{2,12}-)?\d{5})\b/gi,
     route: '/billing/invoices',
     color: 'emerald',
     icon: 'Receipt',

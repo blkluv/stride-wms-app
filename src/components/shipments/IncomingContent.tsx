@@ -471,9 +471,9 @@ function ExpectedList({
                   {formatStatus(s.inbound_status)}
                 </Badge>
               </div>
-              <div className="text-sm text-muted-foreground">{s.account_name || '-'}</div>
+              <div className="text-sm text-muted-foreground">{s.account_name || 'Unknown'}</div>
               <div className="text-xs text-muted-foreground">
-                {s.expected_pieces ?? '-'} pcs / {s.open_items_count ?? '-'} items
+                {s.expected_pieces ?? '-'} expected pcs
               </div>
             </CardContent>
           </Card>
@@ -493,20 +493,14 @@ function ExpectedList({
               <TableHead aria-sort={sort.key === 'vendor_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
                 <SortHeaderButton label="Vendor" sortKey="vendor_name" sort={sort} onSort={onSortChange} />
               </TableHead>
-              <TableHead aria-sort={sort.key === 'eta' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
-                <SortHeaderButton label="ETA Window" sortKey="eta" sort={sort} onSort={onSortChange} />
-              </TableHead>
               <TableHead className="text-right" aria-sort={sort.key === 'expected_pieces' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
                 <SortHeaderButton label="Expected Pieces" sortKey="expected_pieces" sort={sort} onSort={onSortChange} align="right" />
-              </TableHead>
-              <TableHead className="text-right" aria-sort={sort.key === 'open_items_count' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
-                <SortHeaderButton label="Items" sortKey="open_items_count" sort={sort} onSort={onSortChange} align="right" />
               </TableHead>
               <TableHead aria-sort={sort.key === 'inbound_status' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
                 <SortHeaderButton label="Status" sortKey="inbound_status" sort={sort} onSort={onSortChange} />
               </TableHead>
-              <TableHead aria-sort={sort.key === 'created_at' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
-                <SortHeaderButton label="Created" sortKey="created_at" sort={sort} onSort={onSortChange} />
+              <TableHead aria-sort={sort.key === 'eta' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="ETA" sortKey="eta" sort={sort} onSort={onSortChange} />
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -523,29 +517,20 @@ function ExpectedList({
                     <ShipmentExceptionBadge shipmentId={s.id} count={s.exception_count} />
                   </div>
                 </TableCell>
-                <TableCell>{s.account_name || '-'}</TableCell>
-                <TableCell>{s.vendor_name || '-'}</TableCell>
                 <TableCell>
-                  {s.eta_start || s.eta_end ? (
-                    <span className="text-sm">
-                      {formatDate(s.eta_start)}
-                      {s.eta_end ? ` - ${formatDate(s.eta_end)}` : ''}
-                    </span>
-                  ) : (
-                    '-'
+                  {s.account_name || (
+                    <span className="text-muted-foreground italic">Unknown</span>
                   )}
                 </TableCell>
+                <TableCell>{s.vendor_name || '-'}</TableCell>
                 <TableCell className="text-right">{s.expected_pieces ?? '-'}</TableCell>
-                <TableCell className="text-right text-muted-foreground">
-                  {s.open_items_count ?? '-'}
-                </TableCell>
                 <TableCell>
                   <Badge variant={statusBadgeVariant(s.inbound_status)}>
                     {formatStatus(s.inbound_status)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
-                  {formatDate(s.created_at)}
+                  {formatDate(s.eta_start)}
                 </TableCell>
               </TableRow>
             ))}
@@ -684,7 +669,9 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
   const mapInitialTab = (): TabValue => {
     if (initialSubTab === 'intakes') return 'dock_intakes';
     if (initialSubTab === 'expected') return 'expected';
-    return 'manifests';
+    if (initialSubTab === 'manifests') return 'manifests';
+    // Default inbound landing: Dock Intakes (most common operational workflow)
+    return 'dock_intakes';
   };
 
   const [activeTab, setActiveTab] = useState<TabValue>(mapInitialTab);
@@ -914,14 +901,17 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           />
         </TabsContent>
 
-        <TabsContent value="expected" className="mt-4">
-          <ExpectedList
-            shipments={activeTab === 'expected' ? sortedShipments : []}
-            loading={loading}
-            onRowClick={handleRowClick}
-            sort={sortByTab.expected}
-            onSortChange={handleExpectedSort}
-          />
+        <TabsContent value="expected" className="mt-4 space-y-6">
+          <div>
+            <h3 className="font-medium text-sm text-muted-foreground mb-3">All Expected Shipments</h3>
+            <ExpectedList
+              shipments={activeTab === 'expected' ? sortedShipments : []}
+              loading={loading}
+              onRowClick={handleRowClick}
+              sort={sortByTab.expected}
+              onSortChange={handleExpectedSort}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="dock_intakes" className="mt-4 space-y-6">

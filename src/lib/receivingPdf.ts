@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { supabase } from '@/integrations/supabase/client';
+import { logActivity } from '@/lib/activity/logActivity';
 
 export interface ReceivingPdfData {
   // Shipment info
@@ -327,6 +328,27 @@ export async function storeReceivingPdf(
   userId: string
 ): Promise<{ success: boolean; storageKey?: string }> {
   try {
+    // Fetch current shipment metadata so we can:
+    // 1) "overwrite" by archiving the prior auto-generated receiving PDF (if any)
+    // 2) keep an audit trail of prior versions (activity entries)
+    const { data: shipmentRow, error: shipmentFetchError } = await supabase
+      .from('shipments')
+      .select('metadata')
+      .eq('id', shipmentId)
+      .single();
+
+    if (shipmentFetchError) {
+      console.warn('[storeReceivingPdf] failed to fetch shipment metadata:', shipmentFetchError);
+    }
+
+    const currentMetadata = (shipmentRow?.metadata as Record<string, unknown>) || {};
+    const previousStorageKey =
+      typeof currentMetadata.receiving_pdf_key === 'string' && currentMetadata.receiving_pdf_key.trim()
+        ? currentMetadata.receiving_pdf_key.trim()
+        : null;
+
+    const previousFileName = previousStorageKey ? previousStorageKey.split('/').pop() || null : null;
+
     const doc = generateReceivingPdf(data);
     const blob = doc.output('blob');
     const fileName = `Receiving_${data.shipmentNumber}_${Date.now()}.pdf`;
@@ -339,11 +361,11 @@ export async function storeReceivingPdf(
 
     if (uploadError) throw uploadError;
 
-    // Create document record via edge function
+    // Create document record via edge function. We also ask it to archive the previous
+    // auto-generated receiving PDF (soft delete) so only the latest is visible.
     try {
-      await supabase.functions.invoke('create-document', {
+      const { data: createData, error: createError } = await supabase.functions.invoke('create-document', {
         body: {
-          tenant_id: tenantId,
           context_type: 'shipment',
           context_id: shipmentId,
           storage_key: storageKey,
@@ -353,34 +375,90 @@ export async function storeReceivingPdf(
           label: `Receiving Document - ${data.shipmentNumber}`,
           notes: `Receiving completed for ${data.shipmentNumber}`,
           is_sensitive: false,
-          created_by: userId,
+          // Overwrite behavior: hide the prior version but keep it archived for audit.
+          replace_storage_key: previousStorageKey,
         },
       });
-    } catch {
-      // Document record creation is non-critical
-      console.warn('[storeReceivingPdf] document record creation failed');
+
+      if (createError || !createData?.ok || !createData?.document?.id) {
+        throw new Error(createError?.message || createData?.error || 'Failed to create document record');
+      }
+      const createdDocumentId = String(createData.document.id);
+
+      // Store reference in shipment metadata (used for "Download PDF" and overwrite authorization)
+      const nowIso = new Date().toISOString();
+      // Re-fetch metadata right before the update to avoid overwriting concurrent metadata changes
+      // made while we were generating/uploading the PDF and calling the edge function.
+      const { data: latestShipmentRow, error: latestShipmentFetchError } = await supabase
+        .from('shipments')
+        .select('metadata')
+        .eq('id', shipmentId)
+        .single();
+
+      if (latestShipmentFetchError) {
+        console.warn('[storeReceivingPdf] failed to re-fetch shipment metadata:', latestShipmentFetchError);
+      }
+
+      const latestMetadata =
+        (latestShipmentRow?.metadata as Record<string, unknown>) || currentMetadata || {};
+      await supabase
+        .from('shipments')
+        .update({
+          metadata: {
+            ...latestMetadata,
+            receiving_pdf_key: storageKey,
+            receiving_pdf_generated_at: nowIso,
+            receiving_pdf_document_id: createdDocumentId,
+          },
+        } as any)
+        .eq('id', shipmentId);
+
+      // Activity log entry for audit + interactive access to prior versions
+      try {
+        const eventType = previousStorageKey ? 'receiving_pdf_regenerated' : 'receiving_pdf_generated';
+        const eventLabel = previousStorageKey
+          ? `Receiving Document regenerated (previous version archived)`
+          : `Receiving Document generated`;
+
+        await logActivity({
+          entityType: 'shipment',
+          tenantId,
+          entityId: shipmentId,
+          actorUserId: userId,
+          eventType,
+          eventLabel,
+          details: {
+            receiving_document: {
+              storage_key: storageKey,
+              file_name: fileName,
+              document_id: createdDocumentId,
+              label: `Receiving Document - ${data.shipmentNumber}`,
+            },
+            ...(previousStorageKey
+              ? {
+                  previous_receiving_document: {
+                    storage_key: previousStorageKey,
+                    file_name: previousFileName,
+                  },
+                }
+              : {}),
+          },
+        });
+      } catch {
+        // Non-blocking
+      }
+
+      return { success: true, storageKey };
+    } catch (err) {
+      // If document record creation fails, clean up the uploaded file to avoid orphaned storage.
+      console.warn('[storeReceivingPdf] document record creation failed:', err);
+      try {
+        await supabase.storage.from('documents-private').remove([storageKey]);
+      } catch {
+        // Ignore cleanup errors
+      }
+      return { success: false };
     }
-
-    // Store reference in shipment metadata
-    const { data: shipment } = await supabase
-      .from('shipments')
-      .select('metadata')
-      .eq('id', shipmentId)
-      .single();
-
-    const currentMetadata = (shipment?.metadata as Record<string, unknown>) || {};
-    await supabase
-      .from('shipments')
-      .update({
-        metadata: {
-          ...currentMetadata,
-          receiving_pdf_key: storageKey,
-          receiving_pdf_generated_at: new Date().toISOString(),
-        },
-      } as any)
-      .eq('id', shipmentId);
-
-    return { success: true, storageKey };
   } catch (err) {
     console.error('[storeReceivingPdf] error:', err);
     return { success: false };

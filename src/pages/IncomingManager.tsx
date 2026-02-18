@@ -12,7 +12,7 @@ export default function IncomingManager() {
     if (tab === 'expected') return 'expected' as const;
     if (tab === 'intakes' || tab === 'dock' || tab === 'dock_intakes') return 'intakes' as const;
     if (tab === 'manifests' || tab === 'manifest') return 'manifests' as const;
-    return undefined;
+    return 'intakes' as const;
   }, [searchParams]);
 
   return (

@@ -7,18 +7,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { supabase } from '@/integrations/supabase/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { ActivityEntityType } from '@/lib/activity/logActivity';
+import { parseMessageWithLinks } from '@/utils/parseEntityLinks';
+import { useEntityMap } from '@/hooks/useEntityMap';
+import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
 
 interface ActivityRow {
   id: string;
@@ -93,37 +90,6 @@ function getEventCategory(eventType: string): string {
   if (eventType.includes('photo')) return 'media';
   if (eventType.includes('item')) return 'items';
   return 'update';
-}
-
-function ActivityDetailsDisplay({ details }: { details: Record<string, unknown> }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
-  if (entries.length === 0) return null;
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="mt-1 p-1 h-auto text-xs text-muted-foreground hover:text-foreground">
-          <MaterialIcon name="info" className="text-[12px] mr-1" />
-          {isOpen ? 'Hide' : 'View'} details
-          <MaterialIcon name={isOpen ? 'expand_less' : 'expand_more'} className="text-[12px] ml-1" />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-1 p-2 bg-background rounded border text-xs space-y-1">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex justify-between gap-4">
-              <span className="text-muted-foreground">{key.replace(/_/g, ' ')}:</span>
-              <span className="font-medium text-right truncate max-w-[200px]">
-                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
 }
 
 /**
@@ -494,6 +460,7 @@ async function fetchShipmentComprehensiveActivity(shipmentId: string): Promise<A
 export function EntityActivityFeed({ entityType, entityId, title, description }: EntityActivityFeedProps) {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const entityMap = useEntityMap(activities, '[EntityActivityFeed] entity resolution failed:');
 
   const mapping = TABLE_MAP[entityType];
 
@@ -601,7 +568,9 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
                     {/* Event content */}
                     <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-0.5">
-                        <span className="font-medium text-sm leading-tight">{activity.event_label}</span>
+                        <span className="font-medium text-sm leading-tight">
+                          {parseMessageWithLinks(activity.event_label, entityMap, { variant: 'inline' })}
+                        </span>
                         <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
                           {getEventCategory(activity.event_type)}
                         </Badge>
@@ -621,7 +590,7 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
                       </div>
 
                       {/* Expandable details */}
-                      <ActivityDetailsDisplay details={activity.details} />
+                      <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} linkVariant="inline" />
                     </div>
                   </div>
                 ))}
