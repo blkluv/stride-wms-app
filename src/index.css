@@ -181,6 +181,15 @@
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
 
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Safe area insets for native apps (iOS notch, Android gesture bar) */
   .pt-safe {
     padding-top: max(0.5rem, env(safe-area-inset-top));

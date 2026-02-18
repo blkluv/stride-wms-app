@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
 import { useAccountRoomSuggestions } from '@/hooks/useAccountRoomSuggestions';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, ScrollableTabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -982,7 +982,7 @@ export default function ItemDetail() {
         {/* Status Badges Row - Removed per UI update */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList>
+          <ScrollableTabsList>
             <TabsTrigger value="details">📋 Details</TabsTrigger>
             <TabsTrigger value="photos" className="relative">
               📷 Photos
@@ -1013,7 +1013,7 @@ export default function ItemDetail() {
             )}
             {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
             {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
-          </TabsList>
+          </ScrollableTabsList>
 
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Account Default Notes - Full width above details, only show if highlight enabled AND notes not blank */}
