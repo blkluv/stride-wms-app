@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useOutboundTypes, useAccountItems } from '@/hooks/useOutbound';
 import { useSidemarks } from '@/hooks/useSidemarks';
 import { useDocuments } from '@/hooks/useDocuments';
+import { useShipmentExceptions } from '@/hooks/useShipmentExceptions';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect, SelectOption } from '@/components/ui/searchable-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -34,6 +36,20 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpButton } from '@/components/prompts';
 import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
+import { logActivity } from '@/lib/activity/logActivity';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { formatItemSize } from '@/lib/items/formatItemSize';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 
 // ============================================
 // TYPES
@@ -73,6 +89,35 @@ export default function OutboundCreate() {
 
   // Hooks
   const { outboundTypes, loading: typesLoading } = useOutboundTypes();
+
+  // Item table view (tenant-managed)
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const outboundItemVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
 
   // Draft outbound shipment (create immediately to get OUT-##### number)
   const [draftShipmentId, setDraftShipmentId] = useState<string | null>(null);
@@ -159,6 +204,7 @@ export default function OutboundCreate() {
     documents,
     refetch: refetchDocuments,
   } = useDocuments({ contextType: 'shipment', contextId: draftShipmentId || undefined });
+  const { openCount: draftOpenExceptionCount } = useShipmentExceptions(draftShipmentId || undefined);
 
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
@@ -413,6 +459,11 @@ export default function OutboundCreate() {
     [accounts]
   );
 
+  const selectedAccountName = useMemo(
+    () => accounts.find((a) => a.id === accountId)?.account_name || '',
+    [accounts, accountId]
+  );
+
   const warehouseOptions: SelectOption[] = useMemo(
     () => warehouses.map(w => ({ value: w.id, label: w.name })),
     [warehouses]
@@ -616,6 +667,81 @@ export default function OutboundCreate() {
         .update({ deleted_at: null })
         .eq('id', draftShipmentId);
       if (finalizeError) throw finalizeError;
+
+      // 5b) Activity log: items linked/unlinked to shipment
+      // Do this after finalize so activity doesn't point to a "hidden" draft.
+      try {
+        const shipmentNumberForLog = draftShipmentNumber || 'OUT';
+
+        // Resolve item codes in one query (best-effort)
+        const itemCodeMap = new Map<string, string>();
+        if (itemIds.length > 0) {
+          const { data: itemRows } = await (supabase.from('items') as any)
+            .select('id, item_code')
+            .in('id', itemIds);
+          (itemRows || []).forEach((r: any) => {
+            if (r?.id && r?.item_code) itemCodeMap.set(r.id, r.item_code);
+          });
+        }
+
+        // Linked (selected items)
+        void Promise.allSettled(
+          itemIds.map((iid) =>
+            logActivity({
+              entityType: 'item',
+              tenantId: profile.tenant_id,
+              entityId: iid,
+              actorUserId: profile.id,
+              eventType: 'item_shipment_linked',
+              eventLabel: `Added to outbound shipment ${shipmentNumberForLog}`,
+              details: {
+                shipment_id: draftShipmentId,
+                shipment_number: shipmentNumberForLog,
+                shipment_type: 'outbound',
+                item_code: itemCodeMap.get(iid) || null,
+              },
+            })
+          )
+        );
+
+        // Unlinked (deselected items)
+        if (removedItemIds.length > 0) {
+          void Promise.allSettled(
+            removedItemIds.map((iid) =>
+              logActivity({
+                entityType: 'item',
+                tenantId: profile.tenant_id,
+                entityId: iid,
+                actorUserId: profile.id,
+                eventType: 'item_shipment_unlinked',
+                eventLabel: `Removed from outbound shipment ${shipmentNumberForLog}`,
+                details: {
+                  shipment_id: draftShipmentId,
+                  shipment_number: shipmentNumberForLog,
+                  shipment_type: 'outbound',
+                },
+              })
+            )
+          );
+        }
+
+        // Shipment-level activity (selected items)
+        void Promise.allSettled(
+          itemIds.map((iid) =>
+            logActivity({
+              entityType: 'shipment',
+              tenantId: profile.tenant_id,
+              entityId: draftShipmentId,
+              actorUserId: profile.id,
+              eventType: 'item_added',
+              eventLabel: `Item ${itemCodeMap.get(iid) || iid} added`,
+              details: { item_id: iid, item_code: itemCodeMap.get(iid) || null },
+            })
+          )
+        );
+      } catch {
+        // Non-blocking: activity logging must not break shipment creation
+      }
 
       // 6) Mark selected items as allocated (after the shipment is visible)
       if (itemIds.length > 0) {
@@ -871,7 +997,14 @@ export default function OutboundCreate() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="public">Public</TabsTrigger>
                     <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                    <TabsTrigger value="exceptions" className="gap-2">
+                      Exceptions
+                      {draftOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="h-5 min-w-5 text-xs">
+                          {draftOpenExceptionCount}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
                   </TabsList>
                   <TabsContent value="public" className="mt-2 space-y-2">
                     <p className="text-xs text-muted-foreground">
@@ -1062,15 +1195,47 @@ export default function OutboundCreate() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Search */}
-                  <div className="relative">
-                    <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search items..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9"
-                    />
+                  {/* Search + view */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[220px]">
+                      <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search items..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={activeItemViewId || defaultItemViewId || 'default'}
+                        onValueChange={setActiveItemViewId}
+                        disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                      >
+                        <SelectTrigger className="w-[140px] sm:w-[180px] h-10">
+                          <div className="flex items-center gap-2">
+                            <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                            <SelectValue placeholder="View" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {itemDisplaySettings.views.map((v) => (
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.name}
+                              {v.is_default ? ' (default)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <ItemColumnsPopover
+                        settings={itemDisplaySettings}
+                        viewId={activeItemViewId || defaultItemViewId || 'default'}
+                        disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                        onSave={saveItemDisplaySettings}
+                      />
+                    </div>
                   </div>
 
                   {/* Error message */}
@@ -1084,19 +1249,26 @@ export default function OutboundCreate() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-12"></TableHead>
-                          <TableHead>Item Code</TableHead>
-                          <TableHead className="w-16 text-right">Qty</TableHead>
-                          <TableHead className="hidden md:table-cell">Vendor</TableHead>
-                          <TableHead className="hidden md:table-cell">Description</TableHead>
-                          <TableHead className="hidden sm:table-cell">Location</TableHead>
-                          <TableHead className="hidden md:table-cell">Sidemark</TableHead>
-                          <TableHead className="hidden lg:table-cell">Room</TableHead>
+                          {outboundItemVisibleColumns.map((col) => (
+                            <TableHead
+                              key={col}
+                              className={
+                                col === 'quantity' || col === 'size'
+                                  ? 'text-right'
+                                  : col === 'photo'
+                                  ? 'w-12'
+                                  : undefined
+                              }
+                            >
+                              {getColumnLabel(itemDisplaySettings, col)}
+                            </TableHead>
+                          ))}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={1 + outboundItemVisibleColumns.length} className="text-center py-8 text-muted-foreground">
                               No items match your search
                             </TableCell>
                           </TableRow>
@@ -1116,25 +1288,54 @@ export default function OutboundCreate() {
                                   className="h-4 w-4 rounded border border-primary accent-primary cursor-pointer"
                                 />
                               </TableCell>
-                              <TableCell className="font-medium">{item.item_code}</TableCell>
-                              <TableCell className="text-right">
-                                {typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {item.vendor || '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell max-w-[240px] truncate">
-                                {item.description || '-'}
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                {item.location?.code || '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {item.sidemark?.sidemark_name || '-'}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                {item.room || '-'}
-                              </TableCell>
+                              {outboundItemVisibleColumns.map((col) => {
+                                const cfKey = parseCustomFieldColumnKey(col);
+                                if (cfKey) {
+                                  const meta = (item as any).metadata;
+                                  const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                                  const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                                  const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                                  return <TableCell key={col} className="max-w-[180px] truncate">{display}</TableCell>;
+                                }
+
+                                switch (col as BuiltinItemColumnKey) {
+                                  case 'photo': {
+                                    const url = (item as any).primary_photo_url as string | null | undefined;
+                                    const node = url ? (
+                                      <img src={url} alt={item.item_code} className="h-8 w-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                                    );
+                                    return (
+                                      <TableCell key={col} className="w-12" onClick={(e) => e.stopPropagation()}>
+                                        <ItemPreviewCard itemId={item.id}>{node}</ItemPreviewCard>
+                                      </TableCell>
+                                    );
+                                  }
+                                  case 'item_code':
+                                    return <TableCell key={col} className="font-medium">{item.item_code}</TableCell>;
+                                  case 'sku':
+                                    return <TableCell key={col}>{(item as any).sku || '-'}</TableCell>;
+                                  case 'quantity':
+                                    return <TableCell key={col} className="text-right tabular-nums">{typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}</TableCell>;
+                                  case 'size':
+                                    return <TableCell key={col} className="text-right tabular-nums">{formatItemSize((item as any).size ?? null, (item as any).size_unit ?? null)}</TableCell>;
+                                  case 'vendor':
+                                    return <TableCell key={col}>{item.vendor || '-'}</TableCell>;
+                                  case 'description':
+                                    return <TableCell key={col} className="max-w-[240px] truncate">{item.description || '-'}</TableCell>;
+                                  case 'location':
+                                    return <TableCell key={col}>{item.location?.code || '-'}</TableCell>;
+                                  case 'client_account':
+                                    return <TableCell key={col}>{selectedAccountName || '-'}</TableCell>;
+                                  case 'sidemark':
+                                    return <TableCell key={col}>{item.sidemark?.sidemark_name || '-'}</TableCell>;
+                                  case 'room':
+                                    return <TableCell key={col}>{item.room || '-'}</TableCell>;
+                                  default:
+                                    return <TableCell key={col}>-</TableCell>;
+                                }
+                              })}
                             </TableRow>
                           ))
                         )}
@@ -1171,6 +1372,18 @@ export default function OutboundCreate() {
             </Button>
           </div>
         </form>
+
+        {/* Activity (draft shipment timeline) */}
+        {draftShipmentId && (
+          <div className="pb-6">
+            <EntityActivityFeed
+              entityType="shipment"
+              entityId={draftShipmentId}
+              title="Activity"
+              description="Timeline of changes to this outbound shipment draft"
+            />
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

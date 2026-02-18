@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
 import { useAccountRoomSuggestions } from '@/hooks/useAccountRoomSuggestions';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, ScrollableTabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -39,13 +39,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { RepairQuoteSection } from '@/components/items/RepairQuoteSection';
 import { ItemPhotoGallery } from '@/components/items/ItemPhotoGallery';
-import { ItemHistoryTab } from '@/components/items/ItemHistoryTab';
 import { ItemActivityFeed } from '@/components/items/ItemActivityFeed';
 import { ItemEditDialog } from '@/components/items/ItemEditDialog';
 import { useItemPhotos } from '@/hooks/useItemPhotos';
 import { useItemNotes } from '@/hooks/useItemNotes';
 import { useDocuments } from '@/hooks/useDocuments';
-import { ItemAdvancedTab } from '@/components/items/ItemAdvancedTab';
 import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { AddBillingChargeDialog } from '@/components/items/AddBillingChargeDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
@@ -148,15 +146,6 @@ interface ItemTask {
   created_at: string;
 }
 
-interface ShipmentLink {
-  id: string;
-  shipment_number: string;
-  shipment_type: string;
-  status: string;
-  created_at: string;
-  received_at?: string | null;
-}
-
 // Resolves non-UUID item_code params to UUID and redirects
 function ItemCodeResolver({ itemCode }: { itemCode: string }) {
   const navigate = useNavigate();
@@ -231,13 +220,12 @@ export default function ItemDetail() {
 
   // Tab state - initialize from URL param if provided
   const initialTab = searchParams.get('tab') || 'details';
-  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'history', 'advanced', 'repair'];
+  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'repair'];
   const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : 'details');
 
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [tasks, setTasks] = useState<ItemTask[]>([]);
-  const [shipments, setShipments] = useState<ShipmentLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountSettings, setAccountSettings] = useState<{
     default_item_notes: string | null;
@@ -420,7 +408,6 @@ export default function ItemDetail() {
     fetchItem();
     fetchMovements();
     fetchTasks();
-    fetchShipments();
     fetchIndicatorFlags();
   }, [id]);
 
@@ -567,37 +554,6 @@ export default function ItemDetail() {
       setTasks(data || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
-    }
-  };
-
-  const fetchShipments = async () => {
-    try {
-      // Get shipments through shipment_items
-      const { data: shipmentItems } = await (supabase.from('shipment_items') as any)
-        .select(`
-          shipment_id,
-          shipments:shipment_id(id, shipment_number, shipment_type, status, created_at)
-        `)
-        .eq('item_id', id);
-
-      if (!shipmentItems) {
-        setShipments([]);
-        return;
-      }
-
-      const uniqueShipments = shipmentItems
-        .map((si: any) => si.shipments)
-        .filter((s: any) => s)
-        .reduce((acc: ShipmentLink[], s: any) => {
-          if (!acc.find(existing => existing.id === s.id)) {
-            acc.push(s);
-          }
-          return acc;
-        }, []);
-
-      setShipments(uniqueShipments);
-    } catch (error) {
-      console.error('Error fetching shipments:', error);
     }
   };
 
@@ -867,8 +823,9 @@ export default function ItemDetail() {
 
                 {/* Active Indicator Flags — one label per indicator, dynamic service name */}
                 {activeIndicatorFlags.map((flag) => (
-                  <Badge key={flag.code} variant="warning">
-                    {'\u26A0\uFE0F'} {flag.name}
+                  <Badge key={flag.code} variant="warning" className="shrink-0">
+                    <MaterialIcon name="warning" size="sm" />
+                    {flag.name}
                   </Badge>
                 ))}
               </div>
@@ -887,95 +844,97 @@ export default function ItemDetail() {
               )}
             >
               {/* Consolidated Actions Menu (Tasks + Item actions) */}
-              {!isClientUser && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-auto justify-center">
-                      <MaterialIcon name="more_horiz" size="sm" className="mr-2" />
-                      Actions
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64">
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Create Task</div>
-                    <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
-                      🔍 Inspection
-                      {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length > 0 && (
-                        <Badge variant="secondary" className="ml-auto">
-                          {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length}
-                        </Badge>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openTaskMenu('Assembly')}>
-                      🔧 Assembly
-                      {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length > 0 && (
-                        <Badge variant="secondary" className="ml-auto">
-                          {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length}
-                        </Badge>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openTaskMenu('Repair')}>
-                      🔨 Repair
-                      {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length > 0 && (
-                        <Badge variant="secondary" className="ml-auto">
-                          {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length}
-                        </Badge>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openTaskMenu('Disposal')}>
-                      🗑️ Disposal
-                      {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
-                        <Badge variant="secondary" className="ml-auto">
-                          {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
-                        </Badge>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => {
-                      setSelectedTaskType('');
-                      setTaskDialogOpen(true);
-                    }}>
-                      ➕ Other Task Type
-                    </DropdownMenuItem>
-
-                    <DropdownMenuSeparator />
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Shipments</div>
-                    <DropdownMenuItem onClick={() => navigate('/shipments/outbound/new', { state: { itemIds: [item.id], accountId: item.account_id } })}>
-                      🚚 Create Outbound
-                    </DropdownMenuItem>
-
-                    {/* Release (also available as a primary button on the page when applicable) */}
-                    {item.status === 'active' && (
-                      <DropdownMenuItem onClick={() => setReleaseDialogOpen(true)}>
-                        📤 Release
-                      </DropdownMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full sm:w-auto justify-center">
+                    <MaterialIcon name="more_horiz" size="sm" className="mr-2" />
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Create Task</div>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
+                    🔍 Inspection
+                    {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length}
+                      </Badge>
                     )}
-
-                    <DropdownMenuSeparator />
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Item</div>
-                    <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
-                      🖨️ Print 4x6 Label
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
-                      💰 Add Charge
-                    </DropdownMenuItem>
-                    {canAddCredit && (
-                      <DropdownMenuItem onClick={() => setAddCreditDialogOpen(true)}>
-                        💸 Add Credit
-                      </DropdownMenuItem>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Assembly')}>
+                    🔧 Assembly
+                    {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length}
+                      </Badge>
                     )}
-                    <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
-                      <MaterialIcon name="swap_horiz" size="sm" className="mr-2" />
-                      Reassign Account
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setClaimDialogOpen(true)}>
-                      ⚠️ File Claim
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
-                      ✏️ Edit Item
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Repair')}>
+                    🔨 Repair
+                    {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Disposal')}>
+                    🗑️ Disposal
+                    {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedTaskType('');
+                    setTaskDialogOpen(true);
+                  }}>
+                    ➕ Other Task Type
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Shipments</div>
+                  <DropdownMenuItem onClick={() => navigate('/shipments/outbound/new', { state: { itemIds: [item.id], accountId: item.account_id } })}>
+                    🚚 Create Outbound
+                  </DropdownMenuItem>
+
+                  {/* Staff-only item actions */}
+                  {!isClientUser && (
+                    <>
+                      {item.status === 'active' && (
+                        <DropdownMenuItem onClick={() => setReleaseDialogOpen(true)}>
+                          📤 Release
+                        </DropdownMenuItem>
+                      )}
+
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Item</div>
+                      <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
+                        🖨️ Print 4x6 Label
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
+                        💰 Add Charge
+                      </DropdownMenuItem>
+                      {canAddCredit && (
+                        <DropdownMenuItem onClick={() => setAddCreditDialogOpen(true)}>
+                          💸 Add Credit
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
+                        <MaterialIcon name="swap_horiz" size="sm" className="mr-2" />
+                        Reassign Account
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setClaimDialogOpen(true)}>
+                        ⚠️ File Claim
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                        ✏️ Edit Item
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Release Button - Only show for active items */}
               {!isClientUser && item.status === 'active' && (
@@ -1015,43 +974,41 @@ export default function ItemDetail() {
             </Select>
           </div>
 
-          {/* Desktop/tablet: keep tabs but ensure they never overflow the viewport */}
-          <TabsList className="hidden sm:inline-flex w-full max-w-full overflow-x-auto scrollbar-thin justify-start">
-            <TabsTrigger value="details" className="shrink-0">📋 Details</TabsTrigger>
-            <TabsTrigger value="photos" className="relative shrink-0">
-              📷 Photos
-              {photoCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
-                  {photoCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="relative shrink-0">
-              📄 Docs
-              {docsCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
-                  {docsCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="notes" className="relative shrink-0">
-              💬 Notes
-              {notesCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
-                  {notesCount}
-                </span>
-              )}
-            </TabsTrigger>
-            {!isClientUser && (
-              <TabsTrigger value="coverage" className="shrink-0">🛡️ Coverage</TabsTrigger>
-            )}
-            {!isClientUser && <TabsTrigger value="activity" className="shrink-0">📊 Activity</TabsTrigger>}
-            {!isClientUser && <TabsTrigger value="history" className="shrink-0">📜 History</TabsTrigger>}
-            {!isClientUser && (
-              <TabsTrigger value="advanced" className="shrink-0">⚙️ Advanced</TabsTrigger>
-            )}
-            {item.needs_repair && <TabsTrigger value="repair" className="shrink-0">🔧 Repair</TabsTrigger>}
-          </TabsList>
+          {/* Desktop/tablet: scrollable tab bar (prevents overflow) */}
+          <div className="hidden sm:block">
+            <ScrollableTabsList activeValue={activeTab}>
+              <TabsTrigger value="details">📋 Details</TabsTrigger>
+              <TabsTrigger value="photos" className="relative">
+                📷 Photos
+                {photoCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
+                    {photoCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="relative">
+                📄 Docs
+                {docsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
+                    {docsCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="notes" className="relative">
+                💬 Notes
+                {notesCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
+                    {notesCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              {!isClientUser && <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>}
+              {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
+              {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
+              {!isClientUser && <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>}
+              {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
+            </ScrollableTabsList>
+          </div>
 
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Account Default Notes - Full width above details, only show if highlight enabled AND notes not blank */}
@@ -1510,18 +1467,6 @@ export default function ItemDetail() {
             </TabsContent>
           )}
 
-          {!isClientUser && (
-            <TabsContent value="history" className="mt-6">
-              <ItemHistoryTab itemId={item.id} />
-            </TabsContent>
-          )}
-
-          {!isClientUser && (
-            <TabsContent value="advanced" className="mt-6">
-              <ItemAdvancedTab itemId={item.id} />
-            </TabsContent>
-          )}
-
           {item.needs_repair && (
             <TabsContent value="repair" className="mt-6">
               <RepairQuoteSection itemId={item.id} canApprove={!isClientUser} />
@@ -1620,7 +1565,6 @@ export default function ItemDetail() {
         itemCode={item?.item_code || ''}
         onSuccess={() => {
           setLinkShipmentDialogOpen(false);
-          fetchShipments();
         }}
       />
 

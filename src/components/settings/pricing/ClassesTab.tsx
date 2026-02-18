@@ -32,6 +32,7 @@ import { fieldDescriptions } from '@/lib/pricing/fieldDescriptions';
 import { useClasses, type ItemClass } from '@/hooks/useClasses';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { formatClassCubicFeetLabel, getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 // =============================================================================
 // CODE GENERATOR — derive class code from name
@@ -97,7 +98,7 @@ export function ClassesTab() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Define item groups for class-based pricing. Items are automatically classified when dimensions are entered.
+            Define item groups for class-based pricing. Each class can have a default cubic-feet size used to auto-fill item size.
           </p>
         </div>
         <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto">
@@ -225,7 +226,13 @@ export function ClassesTab() {
                   <span className={cn('font-medium text-sm', !cls.is_active && 'opacity-50')}>
                     {cls.name}
                   </span>
-                  <div className="ml-auto mr-2">
+                  <div className="ml-auto mr-2 flex items-center gap-2">
+                    {formatClassCubicFeetLabel(cls) && (
+                      <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                        <MaterialIcon name="straighten" size="sm" className="mr-1" />
+                        {formatClassCubicFeetLabel(cls)}
+                      </Badge>
+                    )}
                     <ActiveBadge active={cls.is_active ?? true} />
                   </div>
                 </div>
@@ -288,22 +295,34 @@ export function ClassesTab() {
 interface ClassEditFormProps {
   itemClass: ItemClass;
   saving: boolean;
-  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null }) => Promise<void>;
+  onSave: (data: {
+    code: string;
+    name: string;
+    min_cubic_feet?: number | null;
+    max_cubic_feet?: number | null;
+    is_active?: boolean | null;
+    notes?: string | null;
+  }) => Promise<void>;
   onCancel: () => void;
   onDelete: () => void;
 }
 
 function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassEditFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState(itemClass.name);
   const [code, setCode] = useState(itemClass.code);
   const [notes, setNotes] = useState(itemClass.notes ?? '');
   const [isActive, setIsActive] = useState(itemClass.is_active ?? true);
+  const [cubicFeet, setCubicFeet] = useState<string>(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+  const [cubicFeetTouched, setCubicFeetTouched] = useState(false);
 
   useEffect(() => {
     setName(itemClass.name);
     setCode(itemClass.code);
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
+    setCubicFeet(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+    setCubicFeetTouched(false);
   }, [itemClass]);
 
   const handleCancel = () => {
@@ -311,18 +330,42 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     setCode(itemClass.code);
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
+    setCubicFeet(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+    setCubicFeetTouched(false);
     onCancel();
   };
 
   const handleSave = async () => {
     if (!name.trim() || !code.trim()) return;
+    const cubicRaw = cubicFeet.trim();
+    const cubicVal = cubicRaw ? Number(cubicRaw) : null;
+    const cubicValid = !cubicRaw || (Number.isFinite(cubicVal) && (cubicVal as number) >= 0);
+    if (!cubicValid) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid cubic feet',
+        description: 'Please enter a valid non-negative number.',
+      });
+      return;
+    }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
+      ...(cubicFeetTouched ? { min_cubic_feet: cubicVal, max_cubic_feet: cubicVal } : {}),
       is_active: isActive,
       notes: notes.trim() || null,
     });
   };
+
+  const cubicRaw = cubicFeet.trim();
+  const cubicAsNum = cubicRaw ? Number(cubicRaw) : null;
+  const cubicValid = !cubicRaw || (Number.isFinite(cubicAsNum) && (cubicAsNum as number) >= 0);
+  const legacyRange =
+    (itemClass.min_cubic_feet !== null &&
+      itemClass.max_cubic_feet !== null &&
+      itemClass.min_cubic_feet !== itemClass.max_cubic_feet) ||
+    (itemClass.min_cubic_feet !== null && itemClass.max_cubic_feet === null) ||
+    (itemClass.min_cubic_feet === null && itemClass.max_cubic_feet !== null);
 
   return (
     <div className="space-y-4 pt-3 border-t border-dashed">
@@ -350,6 +393,32 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor={`cls-cubic-${itemClass.id}`} className="text-sm font-medium">
+          Cubic Feet
+        </Label>
+        <Input
+          id={`cls-cubic-${itemClass.id}`}
+          value={cubicFeet}
+          onChange={(e) => { setCubicFeet(e.target.value); setCubicFeetTouched(true); }}
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step="0.01"
+          placeholder="e.g., 12.5"
+        />
+        {legacyRange && (
+          <p className="text-xs text-muted-foreground">
+            This class previously had a legacy cubic-feet range/bound configured. Set a single value to enable auto-filling item size.
+          </p>
+        )}
+        {!cubicValid && (
+          <p className="text-xs text-destructive">
+            Enter a valid number (0 or greater), or leave blank.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor={`cls-notes-${itemClass.id}`} className="text-sm font-medium">Description</Label>
         <Input
           id={`cls-notes-${itemClass.id}`}
@@ -373,7 +442,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
           <Button variant="outline" size="sm" onClick={handleCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim()}>
+          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim() || !cubicValid}>
             {saving && <MaterialIcon name="progress_activity" size="sm" className="mr-1 animate-spin" />}
             Save Changes
           </Button>
@@ -389,16 +458,25 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
 
 interface AddClassFormProps {
   saving: boolean;
-  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null }) => Promise<void>;
+  onSave: (data: {
+    code: string;
+    name: string;
+    min_cubic_feet?: number | null;
+    max_cubic_feet?: number | null;
+    is_active?: boolean | null;
+    notes?: string | null;
+  }) => Promise<void>;
   onCancel: () => void;
 }
 
 function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
+  const { toast } = useToast();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [codeManual, setCodeManual] = useState(false);
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [cubicFeet, setCubicFeet] = useState('');
 
   useEffect(() => {
     if (!codeManual && name) {
@@ -408,13 +486,30 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
 
   const handleSave = async () => {
     if (!name.trim() || !code.trim()) return;
+    const cubicRaw = cubicFeet.trim();
+    const cubicVal = cubicRaw ? Number(cubicRaw) : null;
+    const cubicValid = !cubicRaw || (Number.isFinite(cubicVal) && (cubicVal as number) >= 0);
+    if (!cubicValid) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid cubic feet',
+        description: 'Please enter a valid non-negative number.',
+      });
+      return;
+    }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
+      min_cubic_feet: cubicVal,
+      max_cubic_feet: cubicVal,
       is_active: isActive,
       notes: notes.trim() || null,
     });
   };
+
+  const cubicRaw = cubicFeet.trim();
+  const cubicAsNum = cubicRaw ? Number(cubicRaw) : null;
+  const cubicValid = !cubicRaw || (Number.isFinite(cubicAsNum) && (cubicAsNum as number) >= 0);
 
   return (
     <Card className="border-primary/50">
@@ -457,6 +552,25 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="new-cls-cubic" className="text-sm font-medium">Cubic Feet</Label>
+          <Input
+            id="new-cls-cubic"
+            value={cubicFeet}
+            onChange={(e) => setCubicFeet(e.target.value)}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            placeholder="e.g., 12.5"
+          />
+          {!cubicValid && (
+            <p className="text-xs text-destructive">
+              Enter a valid number (0 or greater), or leave blank.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="new-cls-notes" className="text-sm font-medium">Description</Label>
           <Input
             id="new-cls-notes"
@@ -475,7 +589,7 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
           <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim()}>
+          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim() || !cubicValid}>
             {saving && <MaterialIcon name="progress_activity" size="sm" className="mr-1 animate-spin" />}
             Create
           </Button>

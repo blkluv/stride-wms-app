@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `9` (`QA-2026-02-15-017..025`)
+- Q&A items extracted: `10` (`QA-2026-02-15-017..026`)
 - Existing decisions mapped: `0`
-- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-036`
+- New decisions added: `DL-2026-02-15-024..DL-2026-02-15-037`
 - Unresolved/open (draft): `-`
 - Supersedes: `-`
 
@@ -33,6 +33,7 @@
 | DL-2026-02-15-034 | Split workflow auto-prints all generated child labels immediately | Intake Label Printing | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-023` | - | - |
 | DL-2026-02-15-035 | Parent-derived split child codes use simple non-padded numeric suffixes | Intake Labeling | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-024` | - | - |
 | DL-2026-02-15-036 | Split child units default to parent's current location/container (warn user) | Intake Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-025` | - | - |
+| DL-2026-02-15-037 | Outbound partial shipping from grouped parent requires split & relabel first | Outbound Operations | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-026` | - | - |
 
 ## Detailed Decision Entries
 
@@ -290,6 +291,26 @@ Defaulting to the current location keeps physical workflow predictable while sti
 - Child record creation must copy location/container references from the parent at the time of split.
 - Move/scan workflows must remain available immediately after split to relocate newly labeled child units when needed.
 
+### DL-2026-02-15-037: Outbound partial shipping from grouped parent requires split & relabel first
+- Domain: Outbound Operations
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md#qa-2026-02-15-026`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-15
+- Locked at: -
+
+#### Decision
+If outbound shipping requires only part of a grouped parent’s quantity, the system must not ship/decrement that partial quantity directly from the grouped parent record. Operators must run split & relabel first so shipped units have their own item labels.
+
+#### Why
+Shipping part of a grouped record without individual labels creates ambiguity and breaks per-unit traceability in outbound workflows.
+
+#### Implementation impact
+- Outbound pick/ship flows must block partial quantity fulfillment from grouped parent records without a split step.
+- Provide a guided "split for outbound" path (or an explicit prerequisite) to mint child item codes/labels for the shipped quantity.
+- Ensure outbound allocation/picking references the newly created child units, not the grouped parent quantity.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-15-029 | 2026-02-15 | DL-2026-02-15-024 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured explicit dual-path intake mode choice for multi-item single-box receiving. |
@@ -305,3 +326,4 @@ Defaulting to the current location keeps physical workflow predictable while sti
 | DLE-2026-02-15-039 | 2026-02-15 | DL-2026-02-15-034 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured auto-print-on-split behavior for all newly generated child labels. |
 | DLE-2026-02-15-040 | 2026-02-15 | DL-2026-02-15-035 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured child-code suffix standard as simple non-padded numeric sequence. |
 | DLE-2026-02-15-041 | 2026-02-15 | DL-2026-02-15-036 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured default location/container inheritance for split children plus explicit warning/confirmation UX. |
+| DLE-2026-02-15-042 | 2026-02-15 | DL-2026-02-15-037 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_CONTAINERS_QA_2026-02-15_chat-bc-93553291-7523-4d63-93a4-b47dc68b42ad.md` | builder | Captured outbound rule: partial shipping from grouped parent requires split & relabel first. |

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
@@ -13,6 +13,7 @@ import {
   getViewById,
   getVisibleColumnsForView,
 } from '@/lib/items/itemDisplaySettings';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { isValidUuid, cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -46,6 +47,7 @@ import { ShipmentItemRow } from '@/components/shipments/ShipmentItemRow';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { SignatureDialog } from '@/components/shipments/SignatureDialog';
 import { generateReleasePdf, ReleasePdfData, ReleasePdfItem } from '@/lib/releasePdf';
@@ -57,6 +59,12 @@ import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { ShipmentExceptionsChips } from '@/components/shipments/ShipmentExceptionsChips';
+import {
+  MATCHING_DISCREPANCY_CODES,
+  SHIPMENT_EXCEPTION_CODE_META,
+  useShipmentExceptions,
+  type ShipmentExceptionCode,
+} from '@/hooks/useShipmentExceptions';
 import { createCharges } from '@/services/billing';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
@@ -184,7 +192,13 @@ export default function ShipmentDetail() {
   const { hasPermission, hasRole } = usePermissions();
 
   // Tenant-managed item list views (systemwide)
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -205,7 +219,7 @@ export default function ShipmentDetail() {
     () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
     [activeItemView]
   );
-  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 3; // checkbox + expand + view columns + (class, status, actions)
+  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
 
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
@@ -252,6 +266,9 @@ export default function ShipmentDetail() {
   const [showReassignDialog, setShowReassignDialog] = useState(false);
   const [showOutboundCompleteDialog, setShowOutboundCompleteDialog] = useState(false);
   const [completingOutbound, setCompletingOutbound] = useState(false);
+  const [outboundNotesTab, setOutboundNotesTab] = useState<'public' | 'internal' | 'exceptions'>('internal');
+  const [missingExceptionNoteCodes, setMissingExceptionNoteCodes] = useState<ShipmentExceptionCode[]>([]);
+  const outboundNotesRef = useRef<HTMLDivElement | null>(null);
   const [classes, setClasses] = useState<{ id: string; code: string; name: string }[]>([]);
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
   const [documentRefreshKey, setDocumentRefreshKey] = useState(0);
@@ -292,6 +309,9 @@ export default function ShipmentDetail() {
   } = useReceivingSession(id);
 
   const { locations } = useLocations(shipment?.warehouse_id || undefined);
+  const { openCount: outboundOpenExceptionCount } = useShipmentExceptions(
+    shipment?.shipment_type === 'outbound' ? shipment?.id : undefined
+  );
 
   const normalizeLocationCode = (code?: string | null) =>
     (code || '').toUpperCase().replace(/[_\s]+/g, '-');
@@ -401,7 +421,7 @@ export default function ShipmentDetail() {
       if (itemIds.length > 0) {
         const { data: itemsRows, error: itemsFetchError } = await supabase
           .from('items')
-          .select('id, item_code, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
+          .select('id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
           .in('id', itemIds);
 
         if (itemsFetchError) {
@@ -498,6 +518,11 @@ export default function ShipmentDetail() {
   useEffect(() => {
     fetchShipment();
   }, [fetchShipment]);
+
+  // Reset exception-note validation state when navigating between shipments
+  useEffect(() => {
+    setMissingExceptionNoteCodes([]);
+  }, [shipment?.id]);
 
   // Wrapped startSession with prompt trigger and audit logging
   const startSession = useCallback(async () => {
@@ -1638,6 +1663,58 @@ export default function ShipmentDetail() {
   const handleCompleteOutbound = async () => {
     if (!shipment) return;
 
+    // Intake-style: if any OPEN shipment exception is missing its note, block completion
+    // and direct the user to the Exceptions tab to fill notes.
+    if (profile?.tenant_id) {
+      try {
+        const { data: openExceptionRows, error: openExceptionError } = await (supabase
+          .from('shipment_exceptions') as any)
+          .select('code, note')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('shipment_id', shipment.id)
+          .eq('status', 'open');
+
+        if (openExceptionError) throw openExceptionError;
+
+        const missingCodes: ShipmentExceptionCode[] = (Array.isArray(openExceptionRows) ? openExceptionRows : [])
+          .map((r: any) => ({
+            code: r?.code as ShipmentExceptionCode,
+            note: r?.note as string | null,
+          }))
+          .filter((r: any) => r?.code && !MATCHING_DISCREPANCY_CODES.has(r.code) && !String(r.note || '').trim())
+          .map((r: any) => r.code);
+
+        if (missingCodes.length > 0) {
+          setMissingExceptionNoteCodes(missingCodes);
+          setOutboundNotesTab('exceptions');
+          setShowOutboundCompleteDialog(false);
+          outboundNotesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          toast({
+            variant: 'destructive',
+            title: 'Cannot Complete Shipment',
+            description: missingCodes
+              .map((code) => `Exception note required: ${SHIPMENT_EXCEPTION_CODE_META[code]?.label || code}`)
+              .join('. '),
+          });
+          return;
+        }
+
+        // Clear any prior validation state once requirements are satisfied
+        if (missingExceptionNoteCodes.length > 0) {
+          setMissingExceptionNoteCodes([]);
+        }
+      } catch (err) {
+        console.error('[ShipmentDetail] Exception note validation error:', err);
+        setShowOutboundCompleteDialog(false);
+        toast({
+          variant: 'destructive',
+          title: 'Validation Error',
+          description: 'Failed to validate exception notes. Please try again.',
+        });
+        return;
+      }
+    }
+
     // Call SOP validator RPC first
     try {
       const { data: validationResult, error: rpcError } = await (supabase as any).rpc(
@@ -2306,7 +2383,7 @@ export default function ShipmentDetail() {
                 </div>
               )}
               {isOutbound ? (
-                <Tabs defaultValue="internal" className="w-full">
+                <Tabs value={outboundNotesTab} onValueChange={(v) => setOutboundNotesTab(v as any)} className="w-full">
                   <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger
                       value="public"
@@ -2328,6 +2405,11 @@ export default function ShipmentDetail() {
                     >
                       <MaterialIcon name="warning" size="sm" />
                       Exceptions
+                      {outboundOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="ml-1 h-5 min-w-5 text-xs">
+                          {outboundOpenExceptionCount}
+                        </Badge>
+                      )}
                     </TabsTrigger>
                   </TabsList>
 
@@ -2391,7 +2473,14 @@ export default function ShipmentDetail() {
                         </div>
                       </div>
                     </div>
-                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    <ShipmentExceptionsChips
+                      shipmentId={shipment.id}
+                      showHistory={true}
+                      missingNoteCodes={missingExceptionNoteCodes}
+                      onMissingNoteCodeFilled={(code) =>
+                        setMissingExceptionNoteCodes((prev) => prev.filter((c) => c !== code))
+                      }
+                    />
                   </TabsContent>
                 </Tabs>
               ) : (
@@ -2676,9 +2765,9 @@ export default function ShipmentDetail() {
             )}
 
             {isOutbound ? (
-              <div className="space-y-2">
+              <div className="space-y-2" ref={outboundNotesRef}>
                 <Label className="text-muted-foreground">Notes</Label>
-                <Tabs defaultValue="internal" className="w-full">
+                <Tabs value={outboundNotesTab} onValueChange={(v) => setOutboundNotesTab(v as any)} className="w-full">
                   <TabsList className="grid w-full grid-cols-3 h-auto">
                     <TabsTrigger
                       value="public"
@@ -2700,6 +2789,11 @@ export default function ShipmentDetail() {
                     >
                       <MaterialIcon name="warning" size="sm" />
                       Exceptions
+                      {outboundOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="ml-1 h-5 min-w-5 text-xs">
+                          {outboundOpenExceptionCount}
+                        </Badge>
+                      )}
                     </TabsTrigger>
                   </TabsList>
 
@@ -2756,7 +2850,14 @@ export default function ShipmentDetail() {
                         </div>
                       </div>
                     </div>
-                    <ShipmentExceptionsChips shipmentId={shipment.id} showHistory={true} />
+                    <ShipmentExceptionsChips
+                      shipmentId={shipment.id}
+                      showHistory={true}
+                      missingNoteCodes={missingExceptionNoteCodes}
+                      onMissingNoteCodeFilled={(code) =>
+                        setMissingExceptionNoteCodes((prev) => prev.filter((c) => c !== code))
+                      }
+                    />
                   </TabsContent>
                 </Tabs>
               </div>
@@ -2879,26 +2980,35 @@ export default function ShipmentDetail() {
                   <span className="sm:hidden">Add</span>
                 </Button>
               )}
-              <Select
-                value={activeItemViewId || defaultItemViewId || 'default'}
-                onValueChange={setActiveItemViewId}
-                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-              >
-                <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
-                  <div className="flex items-center gap-2">
-                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                    <SelectValue placeholder="View" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {itemDisplaySettings.views.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                      {v.is_default ? ' (default)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={activeItemViewId || defaultItemViewId || 'default'}
+                  onValueChange={setActiveItemViewId}
+                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                >
+                  <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
+                    <div className="flex items-center gap-2">
+                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                      <SelectValue placeholder="View" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {itemDisplaySettings.views.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                        {v.is_default ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <ItemColumnsPopover
+                  settings={itemDisplaySettings}
+                  viewId={activeItemViewId || defaultItemViewId || 'default'}
+                  disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                  onSave={saveItemDisplaySettings}
+                />
+              </div>
             {/* Create Task from selected items */}
             {selectedItemIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-2">
@@ -2967,6 +3077,7 @@ export default function ShipmentDetail() {
                 <TableHead className="w-24">Class</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-20"></TableHead>
+                <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

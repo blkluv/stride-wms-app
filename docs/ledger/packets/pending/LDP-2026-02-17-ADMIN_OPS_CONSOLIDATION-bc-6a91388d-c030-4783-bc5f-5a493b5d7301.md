@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `17`
+- Q&A items extracted: `22`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -41,6 +41,12 @@
 | DL-2026-02-17-019 | Platform default sender does not include a configurable “From name” (email only) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-015` | - | - |
 | DL-2026-02-17-020 | Platform default sender uses tenant-configured Reply-To email address for replies | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-016` | - | - |
 | DL-2026-02-17-021 | Reply-To fallback defaults to tenant owner/admin login email when Reply-To is unset | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-017` | - | - |
+| DL-2026-02-17-022 | Add a separate tenant “Reply-To / inbound email” field to receive incoming replies | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
+| DL-2026-02-17-023 | UI clearly explains platform-managed outbound From address when no custom sender domain is set up | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
+| DL-2026-02-17-024 | Platform-managed fallback From address is per-tenant (tenantid@subdomain.stridewms.com style) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-019` | - | - |
+| DL-2026-02-17-025 | Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020` | - | - |
+| DL-2026-02-17-026 | Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021` | - | - |
+| DL-2026-02-17-027 | Admin Email Ops config stores fallback sender as domain-only; app generates tenant-slug@domain | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-022` | - | - |
 
 ## Detailed Decision Entries
 
@@ -453,6 +459,125 @@ This avoids blocking email sending during onboarding while ensuring customer rep
 - Define a deterministic way to choose the tenant “owner/admin login email” for automated/system sends (e.g., primary admin user for the tenant).
 - For user-initiated sends, consider using the initiating admin user email when available.
 
+### DL-2026-02-17-022: Add a separate tenant “Reply-To / inbound email” field to receive incoming replies
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Tenant email settings will include a separate “Reply-To / inbound email” field so the tenant can control where incoming replies go.
+
+#### Why
+Outbound “From” identity (platform-managed or tenant-verified sender) is distinct from where replies should be delivered. A dedicated Reply-To field reduces confusion and ensures replies route correctly.
+
+#### Implementation impact
+- Add/confirm a tenant-stored Reply-To email field in the tenant settings UI.
+- Use this field to set the Reply-To header on outbound emails.
+- If unset, fall back per `DL-2026-02-17-021`.
+
+### DL-2026-02-17-023: UI clearly explains platform-managed outbound From address when no custom sender domain is set up
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant has not set up a verified custom sender domain, the tenant-facing email settings UI must clearly state that outbound emails will be sent from a platform-managed address (example: `"tenantid"@subdomain.stridewms.com`). The UI must also clearly explain that the tenant should set their Reply-To / inbound email address to receive incoming replies.
+
+#### Why
+Non-technical users need a clear mental model:
+- “From” = what customers see as the sender
+- “Reply-To” = where customer replies will go
+
+#### Implementation impact
+- Update tenant email sender setup copy to explicitly show the platform-managed sender address used when the tenant has not configured a verified domain (exact domain/address may be updated later).
+- Add prominent guidance that setting Reply-To is required to receive replies (with fallback behavior per `DL-2026-02-17-021`).
+
+### DL-2026-02-17-024: Platform-managed fallback From address is per-tenant (tenantid@subdomain.stridewms.com style)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-019`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant has not set up a verified custom sender domain, outbound emails should be sent from a platform-managed **per-tenant** sender address (example: `"tenantid"@subdomain.stridewms.com`) rather than a single global default sender shared by all tenants.
+
+#### Why
+Per-tenant platform-managed sender addresses reduce ambiguity for recipients and help operators/tenants recognize which tenant an outbound email is associated with.
+
+#### Implementation impact
+- Canonical identifier used in the local-part is the tenant code/slug (human-friendly) per `DL-2026-02-17-025`.
+- Admin-dev Email Ops should configure the base domain/subdomain used for these platform-managed tenant senders (so it can be updated without code changes).
+- Tenant UI should display the specific platform-managed From address that will be used for that tenant when they have not verified a custom domain.
+
+### DL-2026-02-17-025: Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+For the platform-managed per-tenant fallback sender email address, the local-part identifier (the `"tenantid"` portion in examples like `"tenantid"@subdomain.stridewms.com`) will be the tenant’s human-friendly tenant code/slug (not UUID and not company name).
+
+#### Why
+Tenant code/slug is readable and stable while avoiding exposing UUIDs or relying on messy company-name sanitization.
+
+#### Implementation impact
+- Define where the tenant code/slug is stored and how it is generated/validated (must be unique).
+- Ensure the code/slug is safe for email local-part usage (allowed characters, length, normalization).
+
+### DL-2026-02-17-026: Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The final app domain (and therefore the platform-managed fallback sender base domain/subdomain) has not been chosen yet because the product is still in development. We will not hardcode a final domain value into code; the base domain/subdomain used for platform-managed senders must remain admin-configurable and can be set/updated later in Email Ops.
+
+#### Why
+This avoids rework and prevents shipping assumptions about the final production domain while still letting development continue with configurable settings.
+
+#### Implementation impact
+- Add an admin-dev configurable setting for the platform-managed sender base domain/subdomain (used to build per-tenant From addresses).
+- Tenant-facing UI should display whatever is currently configured, and if it is unset, show a clear “not configured yet” status rather than implying a fixed production domain.
+
+### DL-2026-02-17-027: Admin Email Ops config stores fallback sender as domain-only; app generates tenant-slug@domain
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-022`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+In `/admin/saas-ops` → Email Ops, the platform-managed fallback sender configuration will store the base domain/subdomain value only (example: `mail.yourapp.com`). The app will generate the full fallback From email automatically as `{tenant_slug}@<configured_domain>`.
+
+#### Why
+This keeps the operator-facing configuration simple and avoids exposing or maintaining a templating/pattern system for the From address format.
+
+#### Implementation impact
+- Admin Email Ops should store/validate a single domain/subdomain string (no pattern).
+- App code should generate the fallback From email as `{tenant_slug}@<configured_domain>`.
+- If the configured domain is unset, tenant-facing UI should show “not configured yet” and sending should use a safe fallback policy until configured.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -475,3 +600,9 @@ This avoids blocking email sending during onboarding while ensuring customer rep
 | DLE-2026-02-17-018 | 2026-02-17 | DL-2026-02-17-019 | planned | - | builder | Keep platform default sender configuration to a single From email field (no separate configurable From name). |
 | DLE-2026-02-17-019 | 2026-02-17 | DL-2026-02-17-020 | planned | - | builder | Set Reply-To to the tenant-configured Reply-To email even when using the platform default sender (so replies route to the tenant). |
 | DLE-2026-02-17-020 | 2026-02-17 | DL-2026-02-17-021 | planned | - | builder | Implement Reply-To fallback to tenant owner/admin login email when tenant Reply-To is not configured. |
+| DLE-2026-02-17-021 | 2026-02-17 | DL-2026-02-17-022 | planned | - | builder | Add a dedicated tenant Reply-To / inbound email field in tenant settings and use it for Reply-To headers. |
+| DLE-2026-02-17-022 | 2026-02-17 | DL-2026-02-17-023 | planned | - | builder | Update tenant email setup copy to clearly explain platform-managed From address when no custom sender is configured and that Reply-To controls incoming replies. |
+| DLE-2026-02-17-023 | 2026-02-17 | DL-2026-02-17-024 | planned | - | builder | Implement per-tenant platform-managed fallback From address and admin-dev configuration for the base domain/subdomain. |
+| DLE-2026-02-17-024 | 2026-02-17 | DL-2026-02-17-025 | planned | - | builder | Use tenant code/slug as the local-part identifier for platform-managed per-tenant fallback sender addresses. |
+| DLE-2026-02-17-025 | 2026-02-17 | DL-2026-02-17-026 | planned | - | builder | Keep fallback sender base domain/subdomain admin-configurable (do not hardcode final production domain while app domain is TBD). |
+| DLE-2026-02-17-026 | 2026-02-17 | DL-2026-02-17-027 | planned | - | builder | Store fallback sender config as domain-only in Email Ops; app generates `{tenant_slug}@domain` automatically. |

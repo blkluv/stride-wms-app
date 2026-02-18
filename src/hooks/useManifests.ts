@@ -69,9 +69,16 @@ export interface ManifestItem {
     id: string;
     item_code: string;
     sku?: string | null;
+    quantity?: number | null;
+    size?: number | null;
+    size_unit?: string | null;
     description: string | null;
     status: string;
     vendor?: string | null;
+    sidemark?: string | null;
+    room?: string | null;
+    primary_photo_url?: string | null;
+    metadata?: Record<string, unknown> | null;
   };
   expected_location?: {
     id: string;
@@ -459,7 +466,7 @@ export function useManifestScan(manifestId: string) {
         .from('stocktake_manifest_items')
         .select(`
           *,
-          item:items(id, item_code, sku, description, status, vendor),
+          item:items(id, item_code, sku, quantity, size, size_unit, description, status, vendor, sidemark, room, primary_photo_url, metadata),
           expected_location:locations!stocktake_manifest_items_expected_location_id_fkey(id, code, name),
           scanned_location:locations!stocktake_manifest_items_scanned_location_id_fkey(id, code, name),
           account:accounts(id, account_name)

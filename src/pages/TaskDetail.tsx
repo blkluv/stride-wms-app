@@ -37,9 +37,11 @@ import {
   getVisibleColumnsForView,
   parseCustomFieldColumnKey,
 } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -58,11 +60,13 @@ import { DocumentUploadButton } from '@/components/scanner/DocumentUploadButton'
 import { DocumentList } from '@/components/scanner/DocumentList';
 import { TaskHistoryTab } from '@/components/tasks/TaskHistoryTab';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { TaskCompletionBlockedDialog } from '@/components/tasks/TaskCompletionBlockedDialog';
 import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
 import { validateTaskCompletion, TaskCompletionValidationResult } from '@/lib/billing/taskCompletionValidation';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { logActivity } from '@/lib/activity/logActivity';
 import { queueRepairUnableToCompleteAlert } from '@/lib/alertQueue';
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { updateBillingEventFields } from '@/services/billing';
@@ -110,6 +114,8 @@ interface TaskItemRow {
     id: string;
     item_code: string;
     sku: string | null;
+    size: number | null;
+    size_unit: string | null;
     description: string | null;
     vendor: string | null;
     inspection_status: string | null;
@@ -137,7 +143,13 @@ export default function TaskDetailPage() {
   const { toast } = useToast();
 
   // Tenant-managed item list views (systemwide)
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -275,7 +287,7 @@ export default function TaskDetailPage() {
       const { data: items, error: itemsError } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
+          id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
           current_location_id,
           location:locations!items_current_location_id_fkey(code),
           account:accounts!items_account_id_fkey(account_name)
@@ -518,6 +530,29 @@ export default function TaskDetailPage() {
         })
         .eq('id', id);
       if (error) throw error;
+
+      // Activity logs (task + linked items)
+      void logActivity({
+        entityType: 'task',
+        tenantId: profile.tenant_id,
+        entityId: id,
+        actorUserId: profile.id,
+        eventType: 'task_unable',
+        eventLabel: 'Task marked unable to complete',
+        details: { note },
+      });
+
+      for (const ti of taskItems) {
+        if (!ti.item_id) continue;
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: ti.item_id,
+          actorUserId: profile.id,
+          eventType: 'task_unable',
+          eventLabel: `Task marked unable to complete: ${task?.task_type || 'Task'}`,
+          details: { task_id: id, task_type: task?.task_type || null, note },
+        });
+      }
 
       // For Repair tasks: send unrepairable item alert (damage/quarantine remain)
       if (task?.task_type === 'Repair') {
@@ -1168,13 +1203,13 @@ export default function TaskDetailPage() {
                       <MaterialIcon name="assignment" size="sm" />
                       Items ({taskItems.length})
                     </CardTitle>
-                    <div className="w-full sm:w-56">
+                    <div className="w-full sm:w-56 flex items-center gap-2">
                       <Select
                         value={activeItemViewId || defaultItemViewId || 'default'}
                         onValueChange={setActiveItemViewId}
                         disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
                       >
-                        <SelectTrigger className="h-8">
+                        <SelectTrigger className="h-10 flex-1">
                           <SelectValue placeholder="View" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1186,6 +1221,13 @@ export default function TaskDetailPage() {
                           ))}
                         </SelectContent>
                       </Select>
+
+                      <ItemColumnsPopover
+                        settings={itemDisplaySettings}
+                        viewId={activeItemViewId || defaultItemViewId || 'default'}
+                        disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                        onSave={saveItemDisplaySettings}
+                      />
                     </div>
                   </div>
                 </CardHeader>
@@ -1202,6 +1244,7 @@ export default function TaskDetailPage() {
                             <TableHead className="text-center">Fail</TableHead>
                           </>
                         )}
+                        <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1257,6 +1300,8 @@ export default function TaskDetailPage() {
                                 return <TableCell key={col}>{item?.sku || '-'}</TableCell>;
                               case 'quantity':
                                 return <TableCell key={col}>{ti.quantity || 1}</TableCell>;
+                              case 'size':
+                                return <TableCell key={col} className="text-right tabular-nums">{formatItemSize(item?.size, item?.size_unit)}</TableCell>;
                               case 'vendor':
                                 return <TableCell key={col}>{item?.vendor || '-'}</TableCell>;
                               case 'description':
@@ -1308,6 +1353,7 @@ export default function TaskDetailPage() {
                               </TableCell>
                             </>
                           )}
+                          <TableCell />
                         </TableRow>
                       ))}
                     </TableBody>

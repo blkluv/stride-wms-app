@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { logItemActivity } from '@/lib/activity/logItemActivity';
 
 // Type-safe supabase client cast for tables/functions not in generated types
 const db = supabase as any;
@@ -414,6 +415,27 @@ export function useStocktakeScan(stocktakeId: string) {
     if (error) throw error;
 
     const result = data?.[0];
+
+    // Activity log on the item (best-effort)
+    if (profile?.tenant_id) {
+      const stNumber = stocktake?.stocktake_number || null;
+      logItemActivity({
+        tenantId: profile.tenant_id,
+        itemId,
+        actorUserId: profile.id,
+        eventType: 'inventory_count_recorded',
+        eventLabel: `Count recorded${stNumber ? ` (${stNumber})` : ''}`,
+        details: {
+          stocktake_id: stocktakeId,
+          stocktake_number: stNumber,
+          scanned_location_id: locationId,
+          item_code: itemCode,
+          scan_result: result?.result ?? null,
+          was_expected: result?.was_expected ?? null,
+          auto_fixed: result?.auto_fixed ?? null,
+        },
+      });
+    }
 
     // Refresh data
     await Promise.all([fetchScans(), fetchStats()]);

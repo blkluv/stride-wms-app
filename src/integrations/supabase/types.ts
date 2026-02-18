@@ -7226,6 +7226,54 @@ export type Database = {
           },
         ]
       }
+      platform_inbound_email_settings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: number
+          is_active: boolean
+          provider: string
+          reply_domain: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          is_active?: boolean
+          provider?: string
+          reply_domain?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          is_active?: boolean
+          provider?: string
+          reply_domain?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_inbound_email_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_inbound_email_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_fallback_log: {
         Row: {
           context: string | null
@@ -12829,6 +12877,98 @@ export type Database = {
           },
         ]
       }
+      tenant_inbound_email_events: {
+        Row: {
+          error_message: string | null
+          forward_status: string
+          forwarded_to: string | null
+          from_address: string | null
+          id: string
+          metadata: Json
+          provider: string
+          received_at: string
+          subject: string | null
+          tenant_id: string | null
+          to_address: string | null
+        }
+        Insert: {
+          error_message?: string | null
+          forward_status?: string
+          forwarded_to?: string | null
+          from_address?: string | null
+          id?: string
+          metadata?: Json
+          provider?: string
+          received_at?: string
+          subject?: string | null
+          tenant_id?: string | null
+          to_address?: string | null
+        }
+        Update: {
+          error_message?: string | null
+          forward_status?: string
+          forwarded_to?: string | null
+          from_address?: string | null
+          id?: string
+          metadata?: Json
+          provider?: string
+          received_at?: string
+          subject?: string | null
+          tenant_id?: string | null
+          to_address?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_inbound_email_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_inbound_email_settings: {
+        Row: {
+          created_at: string
+          forward_to_email: string | null
+          is_enabled: boolean
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          forward_to_email?: string | null
+          is_enabled?: boolean
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          forward_to_email?: string | null
+          is_enabled?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_inbound_email_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_inbound_email_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_legal_pages: {
         Row: {
           content: string
@@ -14096,6 +14236,7 @@ export type Database = {
           code: string
           country: string | null
           created_at: string
+          default_outbound_location_id: string | null
           default_receiving_location_id: string | null
           deleted_at: string | null
           id: string
@@ -14116,6 +14257,7 @@ export type Database = {
           code: string
           country?: string | null
           created_at?: string
+          default_outbound_location_id?: string | null
           default_receiving_location_id?: string | null
           deleted_at?: string | null
           id?: string
@@ -14136,6 +14278,7 @@ export type Database = {
           code?: string
           country?: string | null
           created_at?: string
+          default_outbound_location_id?: string | null
           default_receiving_location_id?: string | null
           deleted_at?: string | null
           id?: string
@@ -14149,6 +14292,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "warehouses_default_outbound_location_id_fkey"
+            columns: ["default_outbound_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "warehouses_default_receiving_location_id_fkey"
             columns: ["default_receiving_location_id"]
@@ -15504,6 +15654,15 @@ export type Database = {
           updated_at: string
         }[]
       }
+      rpc_admin_get_platform_inbound_email_settings: {
+        Args: never
+        Returns: {
+          is_active: boolean
+          provider: string
+          reply_domain: string
+          updated_at: string
+        }[]
+      }
       rpc_admin_get_sms_sender_profile_log: {
         Args: { p_limit?: number; p_tenant_id: string }
         Returns: {
@@ -15595,6 +15754,19 @@ export type Database = {
           updated_at: string
         }[]
       }
+      rpc_admin_set_platform_inbound_email_settings: {
+        Args: {
+          p_is_active?: boolean
+          p_provider?: string
+          p_reply_domain?: string
+        }
+        Returns: {
+          is_active: boolean
+          provider: string
+          reply_domain: string
+          updated_at: string
+        }[]
+      }
       rpc_admin_set_tenant_billing_override: {
         Args: {
           p_expires_at?: string
@@ -15667,8 +15839,18 @@ export type Database = {
         }[]
       }
       rpc_get_my_billing_override: { Args: never; Returns: Json }
+      rpc_get_my_inbound_email_settings: { Args: never; Returns: Json }
       rpc_get_my_sms_addon_activation: { Args: never; Returns: Json }
       rpc_get_my_subscription_gate: { Args: never; Returns: Json }
+      rpc_get_platform_inbound_email_public: {
+        Args: never
+        Returns: {
+          is_active: boolean
+          provider: string
+          reply_domain: string
+          updated_at: string
+        }[]
+      }
       rpc_get_tenant_billable_seat_count: {
         Args: { p_tenant_id: string }
         Returns: number
@@ -15711,6 +15893,10 @@ export type Database = {
       }
       rpc_resolve_receiving_location: {
         Args: { p_account_id?: string; p_warehouse_id: string }
+        Returns: Json
+      }
+      rpc_set_my_inbound_email_settings: {
+        Args: { p_forward_to_email: string; p_is_enabled?: boolean }
         Returns: Json
       }
       rpc_upsert_subscription_invoice_from_stripe: {
