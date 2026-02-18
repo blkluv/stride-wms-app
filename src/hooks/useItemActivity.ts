@@ -23,8 +23,10 @@ export type ActivityFilterCategory =
   | 'movements'
   | 'billing'
   | 'tasks'
-  | 'notes_photos'
-  | 'status_account_class';
+  | 'shipments'
+  | 'notes'
+  | 'photos_docs'
+  | 'status_account';
 
 const CATEGORY_PREFIX_MAP: Record<Exclude<ActivityFilterCategory, 'all'>, string[]> = {
   movements: ['item_moved', 'item_location_changed'],
@@ -41,19 +43,34 @@ const CATEGORY_PREFIX_MAP: Record<Exclude<ActivityFilterCategory, 'all'>, string
     'flag_alert_sent',
   ],
   tasks: ['task_assigned', 'task_completed', 'task_started', 'task_unable'],
-  notes_photos: [
+  shipments: [
+    'item_shipment_linked',
+    'item_shipment_received',
+    'item_shipment_released',
+    'item_manifest_linked',
+  ],
+  notes: [
     'item_note_added',
     'item_note_edited',
     'item_note_deleted',
+  ],
+  photos_docs: [
     'item_photo_added',
     'item_photo_removed',
+    'item_document_added',
+    'item_document_removed',
   ],
-  status_account_class: [
+  status_account: [
     'item_status_changed',
     'item_account_changed',
     'item_class_changed',
     'item_field_updated',
+    'item_custom_field_updated',
+    'item_coverage_changed',
     'inventory_count_recorded',
+    'repair_quote_created',
+    'repair_quote_approved',
+    'repair_quote_rejected',
   ],
 };
 
