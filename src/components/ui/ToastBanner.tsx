@@ -106,7 +106,7 @@ export function ToastBanner() {
       <div
         className={cn(
           'backdrop-blur-xl backdrop-saturate-[180%]',
-          'rounded-2xl border border-border/50 bg-background/85 shadow-lg',
+          'rounded-2xl border border-border/50 bg-card/90 shadow-lg',
           'px-4 py-3',
           'flex items-start gap-3',
         )}
