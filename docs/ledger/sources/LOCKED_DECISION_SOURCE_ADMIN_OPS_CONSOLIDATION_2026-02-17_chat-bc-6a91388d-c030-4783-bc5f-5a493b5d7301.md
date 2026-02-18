@@ -110,3 +110,7 @@ User decision (Reply-To field + onboarding clarity):
 User decision (fallback From address is per-tenant):
 - If a tenant has not set up a verified custom sender domain, the platform-managed “From” email should be per-tenant (e.g. `"tenantid"@subdomain.stridewms.com`) rather than one global default sender shared by all tenants.
 
+### QA-2026-02-17-ADMINOPS-020
+User decision (fallback sender local-part identifier):
+- The `"tenantid"` portion of the platform-managed fallback sender email should use a human-friendly tenant code/slug (not UUID, not company name).
+

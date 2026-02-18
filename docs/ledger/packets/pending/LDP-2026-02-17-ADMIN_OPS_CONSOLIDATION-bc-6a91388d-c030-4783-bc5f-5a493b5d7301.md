@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `19`
+- Q&A items extracted: `20`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -44,6 +44,7 @@
 | DL-2026-02-17-022 | Add a separate tenant “Reply-To / inbound email” field to receive incoming replies | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
 | DL-2026-02-17-023 | UI clearly explains platform-managed outbound From address when no custom sender domain is set up | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
 | DL-2026-02-17-024 | Platform-managed fallback From address is per-tenant (tenantid@subdomain.stridewms.com style) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-019` | - | - |
+| DL-2026-02-17-025 | Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020` | - | - |
 
 ## Detailed Decision Entries
 
@@ -513,9 +514,28 @@ If a tenant has not set up a verified custom sender domain, outbound emails shou
 Per-tenant platform-managed sender addresses reduce ambiguity for recipients and help operators/tenants recognize which tenant an outbound email is associated with.
 
 #### Implementation impact
-- Define the canonical identifier used in the local-part (e.g., tenant slug/code vs UUID) via a follow-up decision.
+- Canonical identifier used in the local-part is the tenant code/slug (human-friendly) per `DL-2026-02-17-025`.
 - Admin-dev Email Ops should configure the base domain/subdomain used for these platform-managed tenant senders (so it can be updated without code changes).
 - Tenant UI should display the specific platform-managed From address that will be used for that tenant when they have not verified a custom domain.
+
+### DL-2026-02-17-025: Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+For the platform-managed per-tenant fallback sender email address, the local-part identifier (the `"tenantid"` portion in examples like `"tenantid"@subdomain.stridewms.com`) will be the tenant’s human-friendly tenant code/slug (not UUID and not company name).
+
+#### Why
+Tenant code/slug is readable and stable while avoiding exposing UUIDs or relying on messy company-name sanitization.
+
+#### Implementation impact
+- Define where the tenant code/slug is stored and how it is generated/validated (must be unique).
+- Ensure the code/slug is safe for email local-part usage (allowed characters, length, normalization).
 
 ## Implementation Log Rows
 
@@ -542,3 +562,4 @@ Per-tenant platform-managed sender addresses reduce ambiguity for recipients and
 | DLE-2026-02-17-021 | 2026-02-17 | DL-2026-02-17-022 | planned | - | builder | Add a dedicated tenant Reply-To / inbound email field in tenant settings and use it for Reply-To headers. |
 | DLE-2026-02-17-022 | 2026-02-17 | DL-2026-02-17-023 | planned | - | builder | Update tenant email setup copy to clearly explain platform-managed From address when no custom sender is configured and that Reply-To controls incoming replies. |
 | DLE-2026-02-17-023 | 2026-02-17 | DL-2026-02-17-024 | planned | - | builder | Implement per-tenant platform-managed fallback From address and admin-dev configuration for the base domain/subdomain. |
+| DLE-2026-02-17-024 | 2026-02-17 | DL-2026-02-17-025 | planned | - | builder | Use tenant code/slug as the local-part identifier for platform-managed per-tenant fallback sender addresses. |
