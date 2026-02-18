@@ -281,70 +281,91 @@ export function TaggablePhotoGrid({
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative flex flex-col min-h-0">
-              <img
-                src={lightboxPhoto.url}
-                alt="Photo"
-                className="w-full flex-1 min-h-0 object-contain rounded-lg"
-              />
-              <div className="flex gap-2 mt-4 justify-end flex-wrap">
+            <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0 flex items-center justify-center">
+                <img
+                  src={lightboxPhoto.url}
+                  alt="Photo"
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                />
+              </div>
+              <div className="flex gap-2 mt-2 justify-center sm:justify-end shrink-0">
                 <Button
                   variant="outline"
+                  className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                   onClick={() => {
                     const index = normalizedPhotos.findIndex(p => p.url === lightboxPhoto.url);
                     handleDownload(lightboxPhoto.url, index >= 0 ? index : 0);
                   }}
+                  title="Download"
                 >
-                  <MaterialIcon name="download" size="sm" className="mr-2" />
-                  Download
+                  <MaterialIcon name="download" size="sm" />
+                  <span className="hidden sm:inline sm:ml-2">Download</span>
                 </Button>
                 {enableTagging && !readonly && onPhotosChange && (
                   <>
                     {!lightboxPhoto.isPrimary && (
                       <Button
                         variant="outline"
+                        className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                         onClick={() => {
                           handleSetPrimary(lightboxPhoto.url);
                           setLightboxPhoto(null);
                         }}
+                        title="Set as Primary"
                       >
-                        <MaterialIcon name="star" size="sm" className="mr-2" />
-                        Set as Primary
+                        <MaterialIcon name="star" size="sm" />
+                        <span className="hidden sm:inline sm:ml-2">Set as Primary</span>
                       </Button>
                     )}
                     <Button
                       variant={lightboxPhoto.needsAttention ? 'secondary' : 'outline'}
+                      className={cn(
+                        "h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md",
+                        lightboxPhoto.needsAttention && "sm:w-auto"
+                      )}
                       onClick={() => {
                         handleToggleAttention(lightboxPhoto.url);
                         setLightboxPhoto(null);
                       }}
+                      title={lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
                     >
-                      <MaterialIcon name="warning" size="sm" className="mr-2" />
-                      {lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
+                      <MaterialIcon name="warning" size="sm" />
+                      <span className="hidden sm:inline sm:ml-2">
+                        {lightboxPhoto.needsAttention ? 'Remove Flag' : 'Attention'}
+                      </span>
                     </Button>
                     <Button
                       variant={lightboxPhoto.isRepair ? 'secondary' : 'outline'}
-                      className={lightboxPhoto.isRepair ? 'bg-green-100 hover:bg-green-200 text-green-700' : ''}
+                      className={cn(
+                        "h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md",
+                        lightboxPhoto.isRepair && 'sm:bg-green-100 sm:hover:bg-green-200 sm:text-green-700'
+                      )}
                       onClick={() => {
                         handleToggleRepair(lightboxPhoto.url);
                         setLightboxPhoto(null);
                       }}
+                      title={lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
                     >
-                      <MaterialIcon name="build" size="sm" className="mr-2" />
-                      {lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
+                      <MaterialIcon name="build" size="sm" />
+                      <span className="hidden sm:inline sm:ml-2">
+                        {lightboxPhoto.isRepair ? 'Remove Repair' : 'Repair'}
+                      </span>
                     </Button>
                   </>
                 )}
                 {!readonly && onPhotosChange && (
                   <Button
                     variant="destructive"
+                    className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                     onClick={() => {
                       handleDelete(lightboxPhoto.url);
                       setLightboxPhoto(null);
                     }}
+                    title="Delete"
                   >
-                    <MaterialIcon name="close" size="sm" className="mr-2" />
-                    Delete
+                    <MaterialIcon name="delete" size="sm" />
+                    <span className="hidden sm:inline sm:ml-2">Delete</span>
                   </Button>
                 )}
               </div>

@@ -457,10 +457,10 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative flex flex-col min-h-0">
+            <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
               {/* Task info banner for task photos */}
               {isTaskPhoto(lightboxPhoto) && lightboxPhoto.source_task_title && (
-                <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm flex items-center gap-2">
+                <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm flex items-center gap-2 shrink-0">
                   <MaterialIcon name="assignment" size="sm" className="text-blue-600" />
                   <span className="text-muted-foreground">From task:</span>
                   <a
@@ -472,18 +472,22 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                   </a>
                 </div>
               )}
-              <img
-                src={lightboxPhoto.storage_url || ''}
-                alt={lightboxPhoto.file_name}
-                className="w-full flex-1 min-h-0 object-contain rounded-lg"
-              />
-              <div className="flex gap-2 mt-4 justify-end flex-wrap">
+              <div className="flex-1 min-h-0 flex items-center justify-center">
+                <img
+                  src={lightboxPhoto.storage_url || ''}
+                  alt={lightboxPhoto.file_name}
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                />
+              </div>
+              <div className="flex gap-2 mt-2 justify-center sm:justify-end shrink-0">
                 <Button
                   variant="outline"
+                  className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                   onClick={() => handleDownload(lightboxPhoto)}
+                  title="Download"
                 >
-                  <MaterialIcon name="download" size="sm" className="mr-2" />
-                  Download
+                  <MaterialIcon name="download" size="sm" />
+                  <span className="hidden sm:inline sm:ml-2">Download</span>
                 </Button>
                 {/* Only show editing actions for non-task photos */}
                 {!isClientUser && !isTaskPhoto(lightboxPhoto) && (
@@ -491,49 +495,57 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                     {!lightboxPhoto.is_primary && (
                       <Button
                         variant="outline"
+                        className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                         onClick={() => {
                           handleSetPrimary(lightboxPhoto.id);
                           setLightboxPhoto(null);
                         }}
+                        title="Set as Primary"
                       >
-                        <MaterialIcon name="star" size="sm" className="mr-2" />
-                        Set as Primary
+                        <MaterialIcon name="star" size="sm" />
+                        <span className="hidden sm:inline sm:ml-2">Set as Primary</span>
                       </Button>
                     )}
                     {/* Add flag buttons only shown when flags are NOT set */}
                     {!lightboxPhoto.needs_attention && (
                       <Button
                         variant="outline"
+                        className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                         onClick={() => {
                           handleToggleAttention(lightboxPhoto.id, false);
                           setLightboxPhoto(null);
                         }}
+                        title="Needs Attention"
                       >
-                        <MaterialIcon name="warning" size="sm" className="mr-2" />
-                        attention
+                        <MaterialIcon name="warning" size="sm" />
+                        <span className="hidden sm:inline sm:ml-2">Attention</span>
                       </Button>
                     )}
                     {!lightboxPhoto.is_repair && (
                       <Button
                         variant="outline"
+                        className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                         onClick={() => {
                           handleToggleRepair(lightboxPhoto.id, false);
                           setLightboxPhoto(null);
                         }}
+                        title="Repair"
                       >
-                        <MaterialIcon name="build" size="sm" className="mr-2" />
-                        repair
+                        <MaterialIcon name="build" size="sm" />
+                        <span className="hidden sm:inline sm:ml-2">Repair</span>
                       </Button>
                     )}
                     <Button
                       variant="destructive"
+                      className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
                       onClick={() => {
                         handleDelete(lightboxPhoto.id);
                         setLightboxPhoto(null);
                       }}
+                      title="Delete"
                     >
-                      <MaterialIcon name="close" size="sm" className="mr-2" />
-                      Delete
+                      <MaterialIcon name="delete" size="sm" />
+                      <span className="hidden sm:inline sm:ml-2">Delete</span>
                     </Button>
                   </>
                 )}
