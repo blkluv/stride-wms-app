@@ -24,7 +24,7 @@ const TabsList = React.forwardRef<
     className={cn(
       "inline-flex h-10 items-center justify-center rounded-xl bg-muted p-1 text-muted-foreground",
       scrollable &&
-        "flex w-full max-w-full overflow-x-auto overflow-y-hidden whitespace-nowrap justify-start scrollbar-none scroll-momentum",
+        "flex w-full max-w-full overflow-x-auto overflow-y-hidden whitespace-nowrap justify-start scrollbar-hide scroll-momentum",
       className,
     )}
     {...props}
