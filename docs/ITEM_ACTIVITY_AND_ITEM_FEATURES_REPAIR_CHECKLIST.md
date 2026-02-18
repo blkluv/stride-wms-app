@@ -16,7 +16,7 @@ Last updated: 2026-02-18
 | 1 | Remove **History** tab from Item Details (merge unique history into Activity) | ✅ | `51d70be` |
 | 2 | Redesign Item **Activity** tab filter UI (single filter icon + multi-select) | ✅ | `51d70be` |
 | 3 | Ensure Item Activity logs **all activity** (expand logging + derived legacy events) | ✅ | `51d70be` (+ follow-up logging commits on branch) |
-| 4 | Add Activity log to major entity pages (Manifest/Expected/Outbound/Tasks/Claims/RepairQuotes/Quotes/Invoices/Stocktakes) and rebrand Manifest “Audit History” → “Activity” | ⬜ | Not complete (Manifest still shows “Audit History”) |
+| 4 | Add Activity log to major entity pages (Manifest/Expected/Outbound/Tasks/Claims/RepairQuotes/Quotes/Invoices/Stocktakes) and rebrand Manifest “Audit History” → “Activity” | 🟨 | Rebranded Manifest “Audit History” → “Activity” and added shipment activity feeds to Expected/Inbound Manifest/Outbound Create (`1431893`). Still pending Claims/Repair Quotes/Quotes/Invoices/Stocktakes + standardized filter UI on entity feeds. |
 | 5 | Remove **Advanced** tab from Item Details; keep custom field values editable inline | ✅ | `51d70be` |
 | 6 | Fix mobile tabs row formatting (horizontal scroll pill bar) | ✅ | `06ec41f` |
 | 7 | Fix flag pill/badge formatting consistency | ✅ | `b99a8e8` |
