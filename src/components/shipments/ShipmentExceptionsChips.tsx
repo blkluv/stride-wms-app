@@ -18,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ExceptionsTab } from '@/components/receiving/ExceptionsTab';
 
 type ExceptionChip = ShipmentExceptionCode;
@@ -38,6 +37,10 @@ const EXCEPTION_OPTIONS: { value: ExceptionChip; label: string; icon: string }[]
 
 interface ShipmentExceptionsChipsProps {
   shipmentId: string;
+  /** Codes missing required notes (e.g. when completion is blocked) */
+  missingNoteCodes?: ShipmentExceptionCode[];
+  /** Called when a previously-missing note becomes non-empty */
+  onMissingNoteCodeFilled?: (code: ShipmentExceptionCode) => void;
   /**
    * If true, show the intake-style ExceptionsTab (view/resolve/reopen) below the chips UI.
    * The chips UI manages only OPEN exceptions (add/remove + note editing).
@@ -51,7 +54,12 @@ interface ShipmentExceptionsChipsProps {
  * - Provide a note per selected exception (saved on blur)
  * - "OTHER" requires a note before insert (DB rule)
  */
-export function ShipmentExceptionsChips({ shipmentId, showHistory = false }: ShipmentExceptionsChipsProps) {
+export function ShipmentExceptionsChips({
+  shipmentId,
+  missingNoteCodes,
+  onMissingNoteCodeFilled,
+  showHistory = false,
+}: ShipmentExceptionsChipsProps) {
   const { toast } = useToast();
   const { openExceptions, loading, upsertOpenException, removeOpenException } = useShipmentExceptions(shipmentId);
 
@@ -159,8 +167,8 @@ export function ShipmentExceptionsChips({ shipmentId, showHistory = false }: Shi
             <MaterialIcon name="report_problem" size="sm" />
             Exceptions (optional)
             <HelpTip
-              tooltip="Select any exceptions observed. If you select an exception, add a note for each selected chip."
-              pageKey="shipments"
+              tooltip="Select any exceptions observed at the dock. If you select an exception, add a note for each selected chip. Shortage/Overage auto-syncs when Carrier and Dock counts differ."
+              pageKey="receiving.stage1"
               fieldKey="exceptions"
             />
           </CardTitle>
@@ -192,30 +200,33 @@ export function ShipmentExceptionsChips({ shipmentId, showHistory = false }: Shi
                 Note for {labelByCode.get(ex) || ex}
                 <span className="text-red-500"> *</span>
               </Label>
+              {missingNoteCodes?.includes(ex) && !exceptionNotes[ex]?.trim() ? (
+                <p className="text-xs text-destructive">Note required.</p>
+              ) : null}
               <Textarea
                 placeholder="Required: describe the exception..."
                 rows={2}
                 value={exceptionNotes[ex] || ''}
-                onChange={(e) => setExceptionNotes((prev) => ({ ...prev, [ex]: e.target.value }))}
+                onChange={(e) => {
+                  const nextVal = e.target.value;
+                  setExceptionNotes((prev) => ({ ...prev, [ex]: nextVal }));
+                  if (onMissingNoteCodeFilled && nextVal.trim() && missingNoteCodes?.includes(ex)) {
+                    onMissingNoteCodeFilled(ex);
+                  }
+                }}
                 onBlur={() => void handleExceptionNoteBlur(ex)}
+                className={
+                  missingNoteCodes?.includes(ex) && !exceptionNotes[ex]?.trim()
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : undefined
+                }
               />
             </div>
           ))}
         </CardContent>
       </Card>
 
-      {showHistory ? (
-        <Accordion type="single" collapsible className="w-full">
-          <AccordionItem value="history">
-            <AccordionTrigger className="text-sm">
-              Exception History (resolve / reopen)
-            </AccordionTrigger>
-            <AccordionContent>
-              <ExceptionsTab shipmentId={shipmentId} />
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      ) : null}
+      {showHistory ? <ExceptionsTab shipmentId={shipmentId} /> : null}
 
       {/* Required Exception Note Dialog */}
       <Dialog open={!!pendingRequiredNoteCode} onOpenChange={(open) => !open && setPendingRequiredNoteCode(null)}>

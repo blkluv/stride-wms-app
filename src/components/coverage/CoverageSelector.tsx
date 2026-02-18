@@ -27,6 +27,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createEventRaw } from '@/services/billing';
 import { useCurrentUserRole } from '@/hooks/useRoles';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { logItemActivity } from '@/lib/activity/logItemActivity';
 
 // Canonical coverage types (matching database constraint)
 export type CoverageType = 'standard' | 'full_replacement_no_deductible' | 'full_replacement_deductible' | 'pending';
@@ -299,6 +300,27 @@ export function CoverageSelector({
         .eq('id', itemId);
 
       if (itemError) throw itemError;
+
+      // Activity log (best-effort)
+      if (profile?.tenant_id) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'item_coverage_changed',
+          eventLabel: `Coverage updated: ${COVERAGE_LABELS[coverageType]}`,
+          details: {
+            from_coverage_type: currentCoverage || null,
+            to_coverage_type: coverageType,
+            from_declared_value: currentDeclaredValue ?? null,
+            to_declared_value: dv,
+            from_weight_lbs: currentWeight ?? null,
+            to_weight_lbs: weight,
+            rate,
+            deductible,
+          },
+        });
+      }
 
       // Create billing event if applicable
       if (coverageType !== 'standard' && coverageType !== 'pending' && dv && profile?.tenant_id) {

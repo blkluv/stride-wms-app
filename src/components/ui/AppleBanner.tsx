@@ -50,17 +50,12 @@ const typeConfig = {
 export function AppleBanner() {
   const { banner, hideBanner } = useAppleBanner();
   const navigate = useNavigate();
-  const [isDismissing, setIsDismissing] = useState(false);
   const touchStartY = useRef<number | null>(null);
   const [touchDeltaY, setTouchDeltaY] = useState(0);
   const bannerRef = useRef<HTMLDivElement>(null);
 
   const handleDismiss = useCallback(() => {
-    setIsDismissing(true);
-    setTimeout(() => {
-      hideBanner();
-      setIsDismissing(false);
-    }, 250);
+    hideBanner();
   }, [hideBanner]);
 
   const handleBannerClick = useCallback(() => {
@@ -113,9 +108,10 @@ export function AppleBanner() {
         aria-live="polite"
         className={cn(
           'group absolute top-full left-1/2 -translate-x-1/2 z-[35] max-w-md w-[calc(100%-2rem)] mt-2',
+          'origin-top',
           'backdrop-blur-xl backdrop-saturate-[180%] rounded-2xl border border-white/20',
           config.borderClass,
-          isDismissing ? 'animate-banner-roll-up' : 'animate-banner-roll-down',
+          banner.closing ? 'animate-banner-roll-up' : 'animate-banner-roll-down',
           'animate-banner-glow',
           banner.navigateTo && 'cursor-pointer'
         )}
@@ -199,9 +195,10 @@ export function AppleBanner() {
       aria-live="polite"
       className={cn(
         'group absolute top-full left-1/2 -translate-x-1/2 z-[35] max-w-md w-[calc(100%-2rem)] mt-2',
+        'origin-top',
         'backdrop-blur-xl backdrop-saturate-[180%] rounded-2xl border border-white/20',
         config.borderClass,
-        isDismissing ? 'animate-banner-roll-up' : 'animate-banner-roll-down',
+        banner.closing ? 'animate-banner-roll-up' : 'animate-banner-roll-down',
         isPersistent && 'animate-banner-glow',
         banner.navigateTo && 'cursor-pointer'
       )}

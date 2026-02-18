@@ -32,7 +32,9 @@ export const DEFAULT_ALERT_TEMPLATES: Record<string, DefaultAlertTemplate> = {
 **Status:** [[shipment_status]]
 **Items:** [[items_count]]
 
-[[items_table_html]]`,
+[[items_table_html]]
+
+[[exceptions_section_html]]`,
     ctaLabel: 'View Shipment',
     ctaLink: '[[shipment_link]]',
     smsBody: '[[tenant_name]]: Shipment [[shipment_number]] received at our facility. [[items_count]] items. View: [[shipment_link]]',
@@ -49,7 +51,9 @@ export const DEFAULT_ALERT_TEMPLATES: Record<string, DefaultAlertTemplate> = {
 **Status:** [[shipment_status]]
 **Items:** [[items_count]]
 
-[[items_table_html]]`,
+[[items_table_html]]
+
+[[exceptions_section_html]]`,
     ctaLabel: 'View Shipment',
     ctaLink: '[[shipment_link]]',
     smsBody: '[[tenant_name]]: Shipment [[shipment_number]] received. [[items_count]] items. View: [[shipment_link]]',
@@ -83,6 +87,39 @@ export const DEFAULT_ALERT_TEMPLATES: Record<string, DefaultAlertTemplate> = {
     smsBody: '[[tenant_name]]: Shipment [[shipment_number]] status changed to [[shipment_status]]. View: [[shipment_link]]',
     inAppBody: 'Shipment [[shipment_number]] status changed to [[shipment_status]].',
     inAppRecipients: '[[manager_role]], [[client_user_role]]',
+  },
+  // ==================== RECEIVING ====================
+  'receiving.discrepancy_created': {
+    heading: 'Receiving Discrepancy Created',
+    subject: '[[tenant_name]]: Receiving Discrepancy — [[shipment_number]]',
+    body: `A receiving discrepancy was recorded during intake/receiving.
+
+**Shipment:** [[shipment_number]]
+**Account:** [[account_name]]
+**Open Exceptions:** [[exceptions_count]]
+
+[[exceptions_section_html]]`,
+    ctaLabel: 'View Shipment',
+    ctaLink: '[[shipment_link]]',
+    smsBody: '[[tenant_name]]: Receiving discrepancy on [[shipment_number]]. Open exceptions: [[exceptions_count]]. View: [[shipment_link]]',
+    inAppBody: 'Receiving discrepancy on [[shipment_number]]. Open exceptions: [[exceptions_count]].',
+    inAppRecipients: '[[manager_role]], [[warehouse_role]]',
+  },
+  'receiving.exception_noted': {
+    heading: 'Receiving Exception Noted',
+    subject: '[[tenant_name]]: Receiving Exception — [[shipment_number]]',
+    body: `A receiving exception was noted.
+
+**Shipment:** [[shipment_number]]
+**Account:** [[account_name]]
+**Open Exceptions:** [[exceptions_count]]
+
+[[exceptions_section_html]]`,
+    ctaLabel: 'View Shipment',
+    ctaLink: '[[shipment_link]]',
+    smsBody: '[[tenant_name]]: Exception noted on [[shipment_number]]. Open exceptions: [[exceptions_count]]. View: [[shipment_link]]',
+    inAppBody: 'Exception noted on [[shipment_number]]. Open exceptions: [[exceptions_count]].',
+    inAppRecipients: '[[manager_role]], [[warehouse_role]]',
   },
   'shipment_status_changed': {
     heading: 'Shipment Status Updated',
@@ -246,11 +283,14 @@ export const DEFAULT_ALERT_TEMPLATES: Record<string, DefaultAlertTemplate> = {
     body: `A flag has been added to an item.
 
 **Item:** [[item_code]]
-**Description:** [[item_description]]`,
+**Description:** [[item_description]]
+**Flag:** [[flag_service_name]] ([[flag_service_code]])
+**Applied by:** [[flag_added_by_name]]
+**Applied at:** [[flag_added_at]]`,
     ctaLabel: 'View Item',
     ctaLink: '[[item_photos_link]]',
-    smsBody: '[[tenant_name]]: Flag added to item [[item_code]]. View: [[item_photos_link]]',
-    inAppBody: 'Flag added to item [[item_code]].',
+    smsBody: '[[tenant_name]]: [[flag_service_name]] flag added to item [[item_code]]. View: [[item_photos_link]]',
+    inAppBody: '[[flag_service_name]] flag added to item [[item_code]].',
     inAppRecipients: '[[manager_role]], [[warehouse_role]]',
   },
 

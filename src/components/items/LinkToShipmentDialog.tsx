@@ -156,7 +156,7 @@ export function LinkToShipmentDialog({
           tenantId: profile.tenant_id,
           entityId: selectedShipmentId,
           actorUserId: profile.id,
-          eventType: 'shipment_item_linked',
+          eventType: 'item_added',
           eventLabel: `Item ${itemCode} linked`,
           details: {
             item_id: itemId,

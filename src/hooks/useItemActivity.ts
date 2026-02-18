@@ -1,13 +1,19 @@
 /**
  * useItemActivity - Unified activity timeline for an item.
  *
- * Primary source of truth is `item_activity`, but we also derive "missing"
- * event types from related tables so the Activity tab remains complete as we
- * migrate away from the legacy History tab.
+ * Primary source of truth is `item_activity` (newest-first). Filtering is done
+ * client-side in the UI so we can support multi-select filters and avoid
+ * accidentally hiding new/unmapped event types.
+ *
+ * For historical completeness (and to replace the legacy History tab), we also
+ * derive a few activity rows from related tables (shipments, repair quotes,
+ * and documents). These are best-effort and are suppressed when equivalent
+ * logged activity already exists to avoid duplicates.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ItemActivity {
   id: string;
@@ -366,20 +372,27 @@ async function fetchDerivedDocumentActivity(itemId: string): Promise<ActivityRow
   return rows;
 }
 
-export function useItemActivity(itemId: string | undefined) {
+export function useItemActivity(
+  itemId: string | undefined,
+  options?: { limit?: number }
+) {
+  const { profile } = useAuth();
   const [activities, setActivities] = useState<ItemActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const limit = options?.limit ?? 300;
 
   const fetchActivities = useCallback(async () => {
     if (!itemId) return;
 
     setLoading(true);
     try {
-      const { data, error } = await (supabase.from('item_activity') as any)
+      const query = (supabase.from('item_activity') as any)
         .select('*')
         .eq('item_id', itemId)
         .order('created_at', { ascending: false })
-        .limit(250);
+        .limit(limit);
+
+      const { data, error } = await query;
 
       if (error) {
         if (error.code !== '42P01') {
@@ -389,16 +402,69 @@ export function useItemActivity(itemId: string | undefined) {
         return;
       }
 
-      const tenantId = (data && data.length > 0) ? String((data[0] as any).tenant_id || '') : '';
+      const base: ItemActivity[] = (data || []) as ItemActivity[];
 
-      const [shipments, repairs, docs] = await Promise.all([
+      const tenantId =
+        profile?.tenant_id ||
+        (base.length > 0 ? String((base[0] as any).tenant_id || '') : '');
+
+      // Suppress derived rows when the same entity/event was already logged.
+      // This avoids duplicates when we have newer, actor-attributed activity.
+      const baseShipmentEventKeys = new Set<string>();
+      const baseRepairEventKeys = new Set<string>();
+      const baseDocumentIds = new Set<string>();
+
+      for (const a of base) {
+        const details = (a.details || {}) as any;
+
+        const shipmentId = details?.shipment_id;
+        if (typeof shipmentId === 'string' && shipmentId) {
+          baseShipmentEventKeys.add(`${shipmentId}|${a.event_type}`);
+        }
+
+        const rqId = details?.repair_quote_id;
+        if (typeof rqId === 'string' && rqId) {
+          const normalizedType = a.event_type.startsWith('item_repair_quote_')
+            ? a.event_type.replace(/^item_/, '')
+            : a.event_type;
+          baseRepairEventKeys.add(`${rqId}|${normalizedType}`);
+        }
+
+        const docId = details?.document_id;
+        if (typeof docId === 'string' && docId) {
+          baseDocumentIds.add(docId);
+        }
+      }
+
+      const [shipmentsRaw, repairsRaw, docsRaw] = await Promise.all([
         fetchDerivedShipmentActivity(itemId),
         fetchDerivedRepairQuoteActivity(itemId),
         fetchDerivedDocumentActivity(itemId),
       ]);
 
+      const shipments = shipmentsRaw.filter((r) => {
+        const shipmentId = (r.details as any)?.shipment_id;
+        if (typeof shipmentId !== 'string' || !shipmentId) return true;
+        return !baseShipmentEventKeys.has(`${shipmentId}|${r.event_type}`);
+      });
+
+      const repairs = repairsRaw.filter((r) => {
+        const rqId = (r.details as any)?.repair_quote_id;
+        if (typeof rqId !== 'string' || !rqId) return true;
+        const normalizedType = r.event_type.startsWith('item_repair_quote_')
+          ? r.event_type.replace(/^item_/, '')
+          : r.event_type;
+        return !baseRepairEventKeys.has(`${rqId}|${normalizedType}`);
+      });
+
+      const docs = docsRaw.filter((r) => {
+        const docId = (r.details as any)?.document_id;
+        if (typeof docId !== 'string' || !docId) return true;
+        return !baseDocumentIds.has(docId);
+      });
+
       const unified = [
-        ...(data || []),
+        ...base,
         ...toItemActivityRows(itemId, shipments, tenantId),
         ...toItemActivityRows(itemId, repairs, tenantId),
         ...toItemActivityRows(itemId, docs, tenantId),
@@ -421,7 +487,7 @@ export function useItemActivity(itemId: string | undefined) {
     } finally {
       setLoading(false);
     }
-  }, [itemId]);
+  }, [itemId, limit, profile?.tenant_id]);
 
   useEffect(() => {
     fetchActivities();

@@ -5,13 +5,13 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity, type ActivityEntityType } from '@/lib/activity/logActivity';
-import type { 
-  DocumentContext, 
+import type {
+  DocumentContext,
   DocumentContextType,
-  ScanOutput, 
-  OcrResult, 
+  ScanOutput,
+  OcrResult,
   UploadProgress,
-  Document 
+  Document,
 } from './types';
 
 export interface UploadOptions {
@@ -247,27 +247,55 @@ export async function uploadDocument(
   
   onProgress?.({ stage: 'complete', percentage: 100 });
 
-  // Activity logging for supported entity types (best-effort; never blocks upload).
+  // Activity log (best-effort). This is intentionally non-blocking and should
+  // never break uploads if activity tables / RLS aren't configured.
   try {
-    const entityType = toActivityEntityType(contextType);
-    if (entityType && contextId) {
+    const docId = createData.document.id as string;
+    if (contextType === 'item' && contextId) {
       void logActivity({
-        entityType,
+        entityType: 'item',
         tenantId,
         entityId: contextId,
         actorUserId: user.id,
-        eventType: 'document_uploaded',
-        eventLabel: `Document uploaded: ${fileName}`,
+        eventType: 'item_document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
         details: {
-          document_id: createData.document.id,
-          file_name: fileName,
-          label,
-          document: { storage_key: storageKey, file_name: fileName, label },
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    } else if (contextType === 'shipment' && contextId) {
+      void logActivity({
+        entityType: 'shipment',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    } else if (contextType === 'task' && contextId) {
+      void logActivity({
+        entityType: 'task',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
         },
       });
     }
   } catch {
-    // Ignore activity logging errors
+    // ignore
   }
   
   return {

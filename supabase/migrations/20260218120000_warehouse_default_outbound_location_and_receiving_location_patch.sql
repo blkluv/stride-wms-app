@@ -1,26 +1,104 @@
--- Migration: Configurable default receiving location per warehouse
--- Adds warehouses.default_receiving_location_id column and a safe RPC for
--- atomic location assignment + movement creation during receiving.
+-- =============================================================================
+-- Warehouse Default Outbound Location + Receiving Location Resolution Patch
+-- =============================================================================
+-- Goals:
+-- 1) Add per-warehouse default outbound location (to match Settings → Locations UI).
+-- 2) Make receiving-location resolution more robust by treating BOTH:
+--    - locations.type = 'receiving' (legacy)
+--    - locations.location_type = 'receiving' (newer/alternate usage)
+-- 3) Backfill warehouses.default_receiving_location_id when only location_type is set.
+--
+-- This migration is designed to be idempotent.
 
--- 1) Add default_receiving_location_id to warehouses
+-- -----------------------------------------------------------------------------
+-- 1) Schema: warehouses.default_outbound_location_id
+-- -----------------------------------------------------------------------------
+
 ALTER TABLE public.warehouses
-  ADD COLUMN IF NOT EXISTS default_receiving_location_id uuid
+  ADD COLUMN IF NOT EXISTS default_outbound_location_id uuid
   REFERENCES public.locations(id) ON DELETE SET NULL;
 
--- 2) Backfill: set existing RECV-DOCK locations as warehouse defaults where applicable
+-- -----------------------------------------------------------------------------
+-- 2) Backfill: default receiving location (location_type-aware)
+-- -----------------------------------------------------------------------------
+
 UPDATE public.warehouses w
 SET default_receiving_location_id = l.id
 FROM public.locations l
 WHERE l.warehouse_id = w.id
+  AND l.deleted_at IS NULL
+  AND w.default_receiving_location_id IS NULL
+  AND w.deleted_at IS NULL
   AND (
     lower(coalesce(l.type, '')) = 'receiving'
     OR lower(coalesce(l.location_type, '')) = 'receiving'
-  )
-  AND l.deleted_at IS NULL
-  AND w.default_receiving_location_id IS NULL
-  AND w.deleted_at IS NULL;
+  );
 
--- 3) Create the atomic RPC for assigning receiving locations to shipment items
+-- -----------------------------------------------------------------------------
+-- 3) Patch RPC: rpc_resolve_receiving_location (used by Stage 2 completion)
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.rpc_resolve_receiving_location(
+  p_warehouse_id uuid,
+  p_account_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_location_id uuid;
+  v_location_code text;
+BEGIN
+  -- Precedence 1: warehouse default
+  SELECT l.id, l.code
+  INTO v_location_id, v_location_code
+  FROM warehouses w
+  JOIN locations l ON l.id = w.default_receiving_location_id AND l.deleted_at IS NULL
+  WHERE w.id = p_warehouse_id
+    AND w.deleted_at IS NULL;
+
+  -- Precedence 2: account default
+  IF v_location_id IS NULL AND p_account_id IS NOT NULL THEN
+    SELECT l.id, l.code
+    INTO v_location_id, v_location_code
+    FROM accounts a
+    JOIN locations l ON l.id = a.default_receiving_location_id AND l.deleted_at IS NULL
+    WHERE a.id = p_account_id;
+  END IF;
+
+  -- Precedence 3: any receiving-type location for this warehouse
+  IF v_location_id IS NULL THEN
+    SELECT l.id, l.code
+    INTO v_location_id, v_location_code
+    FROM locations l
+    WHERE l.warehouse_id = p_warehouse_id
+      AND l.deleted_at IS NULL
+      AND (
+        lower(coalesce(l.type, '')) = 'receiving'
+        OR lower(coalesce(l.location_type, '')) = 'receiving'
+      )
+    ORDER BY l.code
+    LIMIT 1;
+  END IF;
+
+  IF v_location_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error_code', 'NO_DEFAULT_LOCATION');
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'location_id', v_location_id,
+    'location_code', v_location_code
+  );
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- 4) Patch RPC: rpc_assign_receiving_location_for_shipment (safety-net used elsewhere)
+-- -----------------------------------------------------------------------------
+
 CREATE OR REPLACE FUNCTION public.rpc_assign_receiving_location_for_shipment(
   p_shipment_id uuid,
   p_location_id uuid DEFAULT NULL,
@@ -156,61 +234,3 @@ BEGIN
 END;
 $$;
 
--- 4) Create a lightweight RPC to resolve the default receiving location for a warehouse
--- (used for UI prefill without actually assigning)
-CREATE OR REPLACE FUNCTION public.rpc_resolve_receiving_location(
-  p_warehouse_id uuid,
-  p_account_id uuid DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_location_id uuid;
-  v_location_code text;
-BEGIN
-  -- Precedence 1: warehouse default
-  SELECT l.id, l.code
-  INTO v_location_id, v_location_code
-  FROM warehouses w
-  JOIN locations l ON l.id = w.default_receiving_location_id AND l.deleted_at IS NULL
-  WHERE w.id = p_warehouse_id
-    AND w.deleted_at IS NULL;
-
-  -- Precedence 2: account default
-  IF v_location_id IS NULL AND p_account_id IS NOT NULL THEN
-    SELECT l.id, l.code
-    INTO v_location_id, v_location_code
-    FROM accounts a
-    JOIN locations l ON l.id = a.default_receiving_location_id AND l.deleted_at IS NULL
-    WHERE a.id = p_account_id;
-  END IF;
-
-  -- Precedence 3: any receiving-type location
-  IF v_location_id IS NULL THEN
-    SELECT l.id, l.code
-    INTO v_location_id, v_location_code
-    FROM locations l
-    WHERE l.warehouse_id = p_warehouse_id
-      AND l.deleted_at IS NULL
-      AND (
-        lower(coalesce(l.type, '')) = 'receiving'
-        OR lower(coalesce(l.location_type, '')) = 'receiving'
-      )
-    ORDER BY l.code
-    LIMIT 1;
-  END IF;
-
-  IF v_location_id IS NULL THEN
-    RETURN jsonb_build_object('ok', false, 'error_code', 'NO_DEFAULT_LOCATION');
-  END IF;
-
-  RETURN jsonb_build_object(
-    'ok', true,
-    'location_id', v_location_id,
-    'location_code', v_location_code
-  );
-END;
-$$;
