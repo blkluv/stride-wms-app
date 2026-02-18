@@ -5,10 +5,12 @@ import { useToast } from '@/hooks/use-toast';
 import { queueTaskCreatedAlert, queueTaskAssignedAlert, queueTaskCompletedAlert, queueInspectionCompletedAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
 import { createCharges, type CreateChargeParams } from '@/services/billing';
-import { getRateFromPriceList } from '@/lib/billing/billingCalculation';
+import { calculateTaskBillingPreview, getRateFromPriceList } from '@/lib/billing/billingCalculation';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { fetchTaskServiceLinesStatic, isServiceLineRow } from '@/hooks/useTaskServiceLines';
 import type { CompletionLineValues } from '@/components/tasks/TaskCompletionPanel';
+import { estimateServiceMinutes } from '@/lib/time/serviceTimeEstimate';
+import { mergeServiceTimeSnapshot, type ServiceTimeSnapshotV1 } from '@/lib/time/serviceTimeSnapshot';
 
 export interface Task {
   id: string;
@@ -764,6 +766,200 @@ export function useTasks(filters?: {
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Estimated Service Time snapshot (for historical reporting)
+  // -------------------------------------------------------------------------
+  const computeTaskServiceTimeSnapshot = async (params: {
+    taskId: string;
+    taskType: string;
+    taskTypeId: string | null;
+    completionValues?: CompletionLineValues[];
+    snapshotAt: string;
+  }): Promise<ServiceTimeSnapshotV1 | null> => {
+    if (!profile?.tenant_id) return null;
+
+    try {
+      // Prefer explicit completionValues (most accurate); otherwise use stored service lines.
+      const hasCompletionValues = (params.completionValues?.length || 0) > 0;
+      const storedLines = hasCompletionValues
+        ? []
+        : await fetchTaskServiceLinesStatic(params.taskId, profile.tenant_id);
+
+      const lines: Array<{
+        charge_code: string;
+        input_mode: string;
+        qty: number;
+        minutes: number;
+      }> = hasCompletionValues
+        ? (params.completionValues || []).map(v => ({
+            charge_code: v.charge_code,
+            input_mode: v.input_mode,
+            qty: v.qty || 0,
+            minutes: v.minutes || 0,
+          }))
+        : storedLines.map(l => ({
+            charge_code: l.charge_code,
+            input_mode: l.input_mode,
+            qty: l.qty || 0,
+            minutes: l.minutes || 0,
+          }));
+
+      // Source A: service lines (small count; safe to store breakdown)
+      if (lines.length > 0) {
+        // Match existing billing behavior: pick first task item's class for class-based services.
+        let classCode: string | null = null;
+        try {
+          const { data: firstTaskItem } = await (supabase
+            .from('task_items') as any)
+            .select('item_id, items:item_id(class_id)')
+            .eq('task_id', params.taskId)
+            .limit(1)
+            .maybeSingle();
+
+          const classId = firstTaskItem?.items?.class_id || null;
+          if (classId) {
+            const { data: cls } = await supabase
+              .from('classes')
+              .select('code')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('id', classId)
+              .maybeSingle();
+            classCode = cls?.code || null;
+          }
+        } catch {
+          // Best-effort
+        }
+
+        const cache = new Map<string, { unit: string; service_time_minutes: number }>();
+        let totalMinutes = 0;
+        const breakdown: ServiceTimeSnapshotV1['estimated_breakdown'] = [];
+
+        for (const line of lines) {
+          const quantity = line.input_mode === 'time'
+            ? (line.minutes / 60) // matches billing quantity conversion (minutes -> hours)
+            : line.qty;
+          if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+          const cacheKey = `${line.charge_code}::${classCode || ''}`;
+          let unit = 'each';
+          let serviceTimeMinutes = 0;
+
+          const cached = cache.get(cacheKey);
+          if (cached) {
+            unit = cached.unit;
+            serviceTimeMinutes = cached.service_time_minutes;
+          } else {
+            try {
+              const rate = await getEffectiveRate({
+                tenantId: profile.tenant_id,
+                chargeCode: line.charge_code,
+                // Estimate snapshots should not be blocked by account-level billing disable/adjustments.
+                classCode: classCode || undefined,
+              });
+              unit = rate.unit || 'each';
+              serviceTimeMinutes = rate.service_time_minutes || 0;
+              cache.set(cacheKey, { unit, service_time_minutes: serviceTimeMinutes });
+            } catch (err) {
+              // Best-effort: if this service isn't configured, treat as 0 minutes and continue.
+              console.warn('[useTasks] Estimate rate lookup failed:', { charge_code: line.charge_code, err });
+              unit = 'each';
+              serviceTimeMinutes = 0;
+              cache.set(cacheKey, { unit, service_time_minutes: serviceTimeMinutes });
+            }
+          }
+
+          const estimatedMinutes = estimateServiceMinutes({
+            serviceTimeMinutes,
+            unit,
+            quantity,
+          });
+          totalMinutes += estimatedMinutes;
+
+          if (breakdown && breakdown.length < 25) {
+            breakdown.push({
+              charge_code: line.charge_code,
+              unit,
+              service_time_minutes: serviceTimeMinutes,
+              quantity,
+              estimated_minutes: estimatedMinutes,
+            });
+          }
+        }
+
+        return {
+          estimated_minutes: Math.round(totalMinutes),
+          estimated_snapshot_at: params.snapshotAt,
+          estimated_source: 'service_lines',
+          estimated_version: 1,
+          ...(breakdown && breakdown.length > 0 ? { estimated_breakdown: breakdown } : {}),
+        };
+      }
+
+      // Source B: billing preview (primary service / category-based; no breakdown stored)
+      if (!params.taskTypeId) {
+        return {
+          estimated_minutes: 0,
+          estimated_snapshot_at: params.snapshotAt,
+          estimated_source: 'unknown',
+          estimated_version: 1,
+        };
+      }
+
+      const { data: taskTypeData } = await (supabase
+        .from('task_types') as any)
+        .select('category_id, primary_service_code, default_service_code, requires_manual_rate')
+        .eq('id', params.taskTypeId)
+        .maybeSingle();
+
+      if (taskTypeData?.requires_manual_rate === true) {
+        return {
+          estimated_minutes: 0,
+          estimated_snapshot_at: params.snapshotAt,
+          estimated_source: 'unknown',
+          estimated_version: 1,
+        };
+      }
+
+      const categoryId: string | null = taskTypeData?.category_id || null;
+      const effectiveServiceCode: string | null =
+        taskTypeData?.primary_service_code || taskTypeData?.default_service_code || null;
+
+      if (!categoryId && !effectiveServiceCode) {
+        return {
+          estimated_minutes: 0,
+          estimated_snapshot_at: params.snapshotAt,
+          estimated_source: 'unknown',
+          estimated_version: 1,
+        };
+      }
+
+      const preview = await calculateTaskBillingPreview(
+        profile.tenant_id,
+        params.taskId,
+        params.taskType,
+        effectiveServiceCode,
+        null,
+        null,
+        categoryId,
+      );
+
+      const totalMinutes = (preview?.lineItems || []).reduce(
+        (sum, li) => sum + (li.estimatedMinutes || 0),
+        0,
+      );
+
+      return {
+        estimated_minutes: Math.round(totalMinutes),
+        estimated_snapshot_at: params.snapshotAt,
+        estimated_source: 'billing_preview',
+        estimated_version: 1,
+      };
+    } catch (error) {
+      console.warn('[useTasks] computeTaskServiceTimeSnapshot error:', error);
+      return null;
+    }
+  };
+
   const completeTask = async (taskId: string, pickupName?: string) => {
     if (!profile?.id) return false;
 
@@ -771,12 +967,31 @@ export function useTasks(filters?: {
       // Get task info first
       const { data: taskData } = await (supabase
         .from('tasks') as any)
-        .select('task_type')
+        .select('task_type, task_type_id, metadata')
         .eq('id', taskId)
         .single();
 
       if (!taskData) {
         throw new Error('Task not found');
+      }
+
+      const completedAt = new Date().toISOString();
+
+      // Snapshot estimated service time on completion (best-effort; must not block completion)
+      let completedMetadata: any | undefined = undefined;
+      try {
+        const snapshot = await computeTaskServiceTimeSnapshot({
+          taskId,
+          taskType: taskData.task_type,
+          taskTypeId: taskData.task_type_id || null,
+          completionValues: undefined,
+          snapshotAt: completedAt,
+        });
+        if (snapshot) {
+          completedMetadata = mergeServiceTimeSnapshot(taskData.metadata ?? null, snapshot);
+        }
+      } catch (err) {
+        console.warn('[useTasks] Failed to snapshot estimated service time (completeTask):', err);
       }
 
       // Handle Will Call completion - requires pickup name
@@ -791,16 +1006,21 @@ export function useTasks(filters?: {
         }
 
         // Update task with pickup info
+        const willCallUpdates: any = {
+            status: 'completed',
+            completed_at: completedAt,
+            completed_by: profile.id,
+            billing_charge_date: completedAt,
+            pickup_name: pickupName,
+            pickup_completed_at: completedAt,
+          };
+        if (completedMetadata !== undefined) {
+          willCallUpdates.metadata = completedMetadata;
+        }
+
         const { error: taskError } = await (supabase
           .from('tasks') as any)
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            completed_by: profile.id,
-            billing_charge_date: new Date().toISOString(),
-            pickup_name: pickupName,
-            pickup_completed_at: new Date().toISOString(),
-          })
+          .update(willCallUpdates)
           .eq('id', taskId);
 
         if (taskError) throw taskError;
@@ -848,14 +1068,19 @@ export function useTasks(filters?: {
       // Handle Disposal completion
       if (taskData.task_type === SPECIAL_TASK_TYPES.DISPOSAL) {
         // Update task
+        const disposalUpdates: any = {
+            status: 'completed',
+            completed_at: completedAt,
+            completed_by: profile.id,
+            billing_charge_date: completedAt,
+          };
+        if (completedMetadata !== undefined) {
+          disposalUpdates.metadata = completedMetadata;
+        }
+
         const { error: taskError } = await (supabase
           .from('tasks') as any)
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            completed_by: profile.id,
-            billing_charge_date: new Date().toISOString(),
-          })
+          .update(disposalUpdates)
           .eq('id', taskId);
 
         if (taskError) throw taskError;
@@ -904,14 +1129,19 @@ export function useTasks(filters?: {
       }
 
       // Normal task completion for other task types
+      const normalUpdates: any = {
+          status: 'completed',
+          completed_at: completedAt,
+          completed_by: profile.id,
+          billing_charge_date: completedAt,
+        };
+      if (completedMetadata !== undefined) {
+        normalUpdates.metadata = completedMetadata;
+      }
+
       const { error } = await (supabase
         .from('tasks') as any)
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          completed_by: profile.id,
-          billing_charge_date: new Date().toISOString(),
-        })
+        .update(normalUpdates)
         .eq('id', taskId);
 
       if (error) throw error;
@@ -1396,7 +1626,7 @@ export function useTasks(filters?: {
       // Get task info
       const { data: taskData } = await (supabase
         .from('tasks') as any)
-        .select('task_type, account_id')
+        .select('task_type, account_id, task_type_id, metadata')
         .eq('id', taskId)
         .single();
 
@@ -1406,6 +1636,24 @@ export function useTasks(filters?: {
 
       const taskType = taskData.task_type;
       const accountId = taskData.account_id;
+      const completedAt = new Date().toISOString();
+
+      // Snapshot estimated service time on completion (best-effort; must not block completion)
+      let completedMetadata: any | undefined = undefined;
+      try {
+        const snapshot = await computeTaskServiceTimeSnapshot({
+          taskId,
+          taskType,
+          taskTypeId: taskData.task_type_id || null,
+          completionValues,
+          snapshotAt: completedAt,
+        });
+        if (snapshot) {
+          completedMetadata = mergeServiceTimeSnapshot(taskData.metadata ?? null, snapshot);
+        }
+      } catch (err) {
+        console.warn('[useTasks] Failed to snapshot estimated service time (completeTaskWithServices):', err);
+      }
 
       // Handle Will Call special completion
       if (taskType === SPECIAL_TASK_TYPES.WILL_CALL) {
@@ -1415,14 +1663,19 @@ export function useTasks(filters?: {
 
       // Handle Disposal special completion
       if (taskType === SPECIAL_TASK_TYPES.DISPOSAL) {
+        const disposalUpdates: any = {
+            status: 'completed',
+            completed_at: completedAt,
+            completed_by: profile.id,
+            billing_charge_date: completedAt,
+          };
+        if (completedMetadata !== undefined) {
+          disposalUpdates.metadata = completedMetadata;
+        }
+
         const { error: taskError } = await (supabase
           .from('tasks') as any)
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            completed_by: profile.id,
-            billing_charge_date: new Date().toISOString(),
-          })
+          .update(disposalUpdates)
           .eq('id', taskId);
 
         if (taskError) throw taskError;
@@ -1460,14 +1713,19 @@ export function useTasks(filters?: {
       }
 
       // Normal task completion
+      const completionUpdates: any = {
+          status: 'completed',
+          completed_at: completedAt,
+          completed_by: profile.id,
+          billing_charge_date: completedAt,
+        };
+      if (completedMetadata !== undefined) {
+        completionUpdates.metadata = completedMetadata;
+      }
+
       const { error } = await (supabase
         .from('tasks') as any)
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          completed_by: profile.id,
-          billing_charge_date: new Date().toISOString(),
-        })
+        .update(completionUpdates)
         .eq('id', taskId);
 
       if (error) throw error;

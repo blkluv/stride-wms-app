@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
 import { BillingCalculator } from '@/components/billing/BillingCalculator';
+import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
 import { ShipmentCoverageDialog } from '@/components/shipments/ShipmentCoverageDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,6 +48,7 @@ import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
 
 // ============================================
 // TYPES
@@ -1173,18 +1175,44 @@ export default function ShipmentDetail() {
     setCompletingOutbound(true);
     try {
       const now = new Date().toISOString();
+
+      // Snapshot estimated service time at completion (best-effort; must not block shipping)
+      let completedMetadata: any | undefined = undefined;
+      try {
+        if (profile?.tenant_id) {
+          const preview = await calculateShipmentBillingPreview(profile.tenant_id, shipment.id, 'outbound');
+          const estimatedMinutes = (preview?.lineItems || []).reduce(
+            (sum, li) => sum + (li.estimatedMinutes || 0),
+            0,
+          );
+          completedMetadata = mergeServiceTimeSnapshot((shipment as any).metadata ?? null, {
+            estimated_minutes: Math.round(estimatedMinutes),
+            estimated_snapshot_at: now,
+            estimated_source: 'billing_preview',
+            estimated_version: 1,
+          });
+        }
+      } catch (err) {
+        console.warn('[ShipmentDetail] Failed to snapshot estimated service time:', err);
+      }
+
       // Update shipment with signature and completion data
+      const shipmentUpdate: any = {
+        status: 'shipped',
+        shipped_at: now,
+        completed_at: now,
+        completed_by: profile?.id || null,
+        signature_data: signatureInfo.signatureData,
+        signature_name: signatureInfo.signatureName,
+        signature_timestamp: now,
+      };
+      if (completedMetadata !== undefined) {
+        shipmentUpdate.metadata = completedMetadata;
+      }
+
       const { error: shipmentError } = await supabase
         .from('shipments')
-        .update({
-          status: 'shipped',
-          shipped_at: now,
-          completed_at: now,
-          completed_by: profile?.id || null,
-          signature_data: signatureInfo.signatureData,
-          signature_name: signatureInfo.signatureName,
-          signature_timestamp: now,
-        })
+        .update(shipmentUpdate)
         .eq('id', shipment.id);
 
       if (shipmentError) throw shipmentError;

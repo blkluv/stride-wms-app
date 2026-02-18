@@ -13,3 +13,7 @@ It is intended to be append-only so we can later convert decisions into a TODO l
 
 **A58:** Yes.
 
+**Q59:** Should Estimated Service Time be snapshotted onto the job at completion (so later Price List changes don’t alter history)?
+
+**A59:** Yes.
+
