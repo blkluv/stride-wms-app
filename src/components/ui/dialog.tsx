@@ -52,7 +52,7 @@ const DialogContent = React.forwardRef<
       {children}
       <DialogPrimitive.Close asChild>
         <div className="absolute left-4 top-4 z-10">
-          <StoplightControls onClose={() => {}} showMinimize={false} showMaximize={false} size="sm" />
+          <StoplightControls onClose={() => {}} showMinimize={false} showMaximize={false} size="md" />
         </div>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
@@ -79,7 +79,10 @@ const DialogHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}
+    className={cn(
+      "flex flex-col space-y-1.5 text-center sm:text-left sm:pl-10",
+      className
+    )}
     {...props}
   />
 ));

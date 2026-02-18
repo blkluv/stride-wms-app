@@ -59,7 +59,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         {children}
         <SheetPrimitive.Close asChild>
           <div className="absolute left-4 top-4 z-10">
-            <StoplightControls onClose={() => {}} showMinimize={false} showMaximize={false} size="sm" />
+            <StoplightControls onClose={() => {}} showMinimize={false} showMaximize={false} size="md" />
           </div>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
@@ -69,7 +69,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col space-y-2 text-center sm:text-left", className)} {...props} />
+  <div className={cn("flex flex-col space-y-2 text-center sm:text-left sm:pl-10", className)} {...props} />
 );
 SheetHeader.displayName = "SheetHeader";
 
