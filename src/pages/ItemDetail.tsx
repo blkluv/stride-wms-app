@@ -829,26 +829,28 @@ export default function ItemDetail() {
               <MaterialIcon name="arrow_back" size="md" />
             </Button>
             <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-3xl font-bold tracking-tight">{item.item_code}</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{item.item_code}</h1>
                 {getStatusBadge(item.status)}
-                {/* Repair Status - bold colored text */}
+              </div>
+
+              {/* Secondary status chips (keep tidy: horizontal scroll instead of wrapping into a tall block) */}
+              <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+                {/* Repair Status */}
                 {item.repair_status === 'completed' && (
-                  <span className="font-bold text-green-600 dark:text-green-400">REPAIRED</span>
+                  <Badge variant="success">Repaired</Badge>
                 )}
                 {item.repair_status === 'in_progress' && (
-                  <span className="font-bold text-orange-500 dark:text-orange-400">REPAIR IN PROGRESS</span>
+                  <Badge variant="warning">Repair In Progress</Badge>
                 )}
-                {item.needs_repair && !item.repair_status && (
-                  <span className="font-bold text-red-600 dark:text-red-400">NEEDS REPAIR</span>
-                )}
-                {item.repair_status === 'pending' && (
-                  <span className="font-bold text-red-600 dark:text-red-400">NEEDS REPAIR</span>
-                )}
+                {(item.needs_repair && !item.repair_status) || item.repair_status === 'pending' ? (
+                  <Badge variant="destructive">Needs Repair</Badge>
+                ) : null}
+
                 {/* Coverage Badge */}
                 {item.coverage_type && item.coverage_type !== 'standard' && item.coverage_type !== 'pending' && (
-                  <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                    <MaterialIcon name="verified_user" size="sm" className="mr-1" />
+                  <Badge variant="info">
+                    <MaterialIcon name="verified_user" size="sm" />
                     {item.coverage_type === 'full_replacement_no_deductible' || item.coverage_type === 'full_no_deductible'
                       ? 'Full Coverage'
                       : item.coverage_type === 'full_replacement_deductible' || item.coverage_type === 'full_deductible'
@@ -857,135 +859,166 @@ export default function ItemDetail() {
                   </Badge>
                 )}
                 {item.coverage_type === 'pending' && (
-                  <Badge variant="outline" className="bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800">
-                    <MaterialIcon name="schedule" size="sm" className="mr-1" />
+                  <Badge variant="warning">
+                    <MaterialIcon name="schedule" size="sm" />
                     Coverage Pending
                   </Badge>
                 )}
+
                 {/* Active Indicator Flags — one label per indicator, dynamic service name */}
                 {activeIndicatorFlags.map((flag) => (
-                  <Badge
-                    key={flag.code}
-                    variant="outline"
-                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-semibold"
-                  >
+                  <Badge key={flag.code} variant="warning">
                     {'\u26A0\uFE0F'} {flag.name}
                   </Badge>
                 ))}
               </div>
+
               <p className="text-muted-foreground">
                 {item.description || 'No description'}
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            {/* Task Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <span className="mr-2">📝</span>
-                  Tasks
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
-                  🔍 Inspection
-                  {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTaskMenu('Assembly')}>
-                  🔧 Assembly
-                  {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTaskMenu('Repair')}>
-                  🔨 Repair
-                  {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/shipments/outbound/new', { state: { itemIds: [item.id], accountId: item.account_id } })}>
-                  🚚 Create Outbound
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTaskMenu('Disposal')}>
-                  🗑️ Disposal
-                  {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => {
-                  setSelectedTaskType('');
-                  setTaskDialogOpen(true);
-                }}>
-                  ➕ Other Task Type
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Release Button - Only show for active items */}
-            {!isClientUser && item.status === 'active' && (
-              <Button variant="default" onClick={() => setReleaseDialogOpen(true)}>
-                <span className="mr-2">📤</span>
-                Release
-              </Button>
-            )}
-
-            {/* Actions Menu */}
-            {!isClientUser && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    ⋯
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
-                    🖨️ Print 4x6 Label
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
-                    💰 Add Charge
-                  </DropdownMenuItem>
-                  {canAddCredit && (
-                    <DropdownMenuItem onClick={() => setAddCreditDialogOpen(true)}>
-                      💸 Add Credit
+          <div className="w-full sm:w-auto">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-2 w-full sm:flex sm:items-center sm:justify-end sm:w-auto",
+                (!isClientUser && item.status === 'active') ? "" : "grid-cols-1",
+              )}
+            >
+              {/* Consolidated Actions Menu (Tasks + Item actions) */}
+              {!isClientUser && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-auto justify-center">
+                      <MaterialIcon name="more_horiz" size="sm" className="mr-2" />
+                      Actions
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Create Task</div>
+                    <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
+                      🔍 Inspection
+                      {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length > 0 && (
+                        <Badge variant="secondary" className="ml-auto">
+                          {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length}
+                        </Badge>
+                      )}
                     </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
-                    <MaterialIcon name="swap_horiz" size="sm" className="mr-2" />
-                    Reassign Account
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setClaimDialogOpen(true)}>
-                    ⚠️ File Claim
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
-                    ✏️ Edit Item
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                    <DropdownMenuItem onClick={() => openTaskMenu('Assembly')}>
+                      🔧 Assembly
+                      {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length > 0 && (
+                        <Badge variant="secondary" className="ml-auto">
+                          {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length}
+                        </Badge>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openTaskMenu('Repair')}>
+                      🔨 Repair
+                      {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length > 0 && (
+                        <Badge variant="secondary" className="ml-auto">
+                          {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length}
+                        </Badge>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openTaskMenu('Disposal')}>
+                      🗑️ Disposal
+                      {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
+                        <Badge variant="secondary" className="ml-auto">
+                          {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
+                        </Badge>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {
+                      setSelectedTaskType('');
+                      setTaskDialogOpen(true);
+                    }}>
+                      ➕ Other Task Type
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Shipments</div>
+                    <DropdownMenuItem onClick={() => navigate('/shipments/outbound/new', { state: { itemIds: [item.id], accountId: item.account_id } })}>
+                      🚚 Create Outbound
+                    </DropdownMenuItem>
+
+                    {/* Release (also available as a primary button on the page when applicable) */}
+                    {item.status === 'active' && (
+                      <DropdownMenuItem onClick={() => setReleaseDialogOpen(true)}>
+                        📤 Release
+                      </DropdownMenuItem>
+                    )}
+
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Item</div>
+                    <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
+                      🖨️ Print 4x6 Label
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
+                      💰 Add Charge
+                    </DropdownMenuItem>
+                    {canAddCredit && (
+                      <DropdownMenuItem onClick={() => setAddCreditDialogOpen(true)}>
+                        💸 Add Credit
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
+                      <MaterialIcon name="swap_horiz" size="sm" className="mr-2" />
+                      Reassign Account
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setClaimDialogOpen(true)}>
+                      ⚠️ File Claim
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                      ✏️ Edit Item
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {/* Release Button - Only show for active items */}
+              {!isClientUser && item.status === 'active' && (
+                <Button
+                  variant="default"
+                  onClick={() => setReleaseDialogOpen(true)}
+                  className="w-full sm:w-auto justify-center"
+                >
+                  <span className="mr-2">📤</span>
+                  Release
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Status Badges Row - Removed per UI update */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList>
-            <TabsTrigger value="details">📋 Details</TabsTrigger>
-            <TabsTrigger value="photos" className="relative">
+          {/* Mobile: use a single section dropdown instead of an overflowing tab row */}
+          <div className="sm:hidden">
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="details">📋 Details</SelectItem>
+                <SelectItem value="photos">📷 Photos{photoCount > 0 ? ` (${photoCount})` : ''}</SelectItem>
+                <SelectItem value="documents">📄 Docs{docsCount > 0 ? ` (${docsCount})` : ''}</SelectItem>
+                <SelectItem value="notes">💬 Notes{notesCount > 0 ? ` (${notesCount})` : ''}</SelectItem>
+                {!isClientUser && <SelectItem value="coverage">🛡️ Coverage</SelectItem>}
+                {!isClientUser && <SelectItem value="activity">📊 Activity</SelectItem>}
+                {!isClientUser && <SelectItem value="history">📜 History</SelectItem>}
+                {!isClientUser && <SelectItem value="advanced">⚙️ Advanced</SelectItem>}
+                {item.needs_repair && <SelectItem value="repair">🔧 Repair</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Desktop/tablet: keep tabs but ensure they never overflow the viewport */}
+          <TabsList className="hidden sm:inline-flex w-full max-w-full overflow-x-auto scrollbar-thin justify-start">
+            <TabsTrigger value="details" className="shrink-0">📋 Details</TabsTrigger>
+            <TabsTrigger value="photos" className="relative shrink-0">
               📷 Photos
               {photoCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
@@ -993,7 +1026,7 @@ export default function ItemDetail() {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="documents" className="relative">
+            <TabsTrigger value="documents" className="relative shrink-0">
               📄 Docs
               {docsCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
@@ -1001,7 +1034,7 @@ export default function ItemDetail() {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="notes" className="relative">
+            <TabsTrigger value="notes" className="relative shrink-0">
               💬 Notes
               {notesCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
@@ -1010,14 +1043,14 @@ export default function ItemDetail() {
               )}
             </TabsTrigger>
             {!isClientUser && (
-              <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>
+              <TabsTrigger value="coverage" className="shrink-0">🛡️ Coverage</TabsTrigger>
             )}
-            {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
-            {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
+            {!isClientUser && <TabsTrigger value="activity" className="shrink-0">📊 Activity</TabsTrigger>}
+            {!isClientUser && <TabsTrigger value="history" className="shrink-0">📜 History</TabsTrigger>}
             {!isClientUser && (
-              <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>
+              <TabsTrigger value="advanced" className="shrink-0">⚙️ Advanced</TabsTrigger>
             )}
-            {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
+            {item.needs_repair && <TabsTrigger value="repair" className="shrink-0">🔧 Repair</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="details" className="space-y-6 mt-6">
