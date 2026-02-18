@@ -106,3 +106,7 @@ User decision (Reply-To field + onboarding clarity):
 - If a tenant has not set up a verified custom sender domain, the UI should clearly state outbound emails will be sent from a platform-managed address like: `"tenantid"@subdomain.stridewms.com` (exact address/domain may be updated later).
 - The UI should clearly explain that the tenant must set their Reply-To / inbound email address to receive incoming replies.
 
+### QA-2026-02-17-ADMINOPS-019
+User decision (fallback From address is per-tenant):
+- If a tenant has not set up a verified custom sender domain, the platform-managed “From” email should be per-tenant (e.g. `"tenantid"@subdomain.stridewms.com`) rather than one global default sender shared by all tenants.
+
