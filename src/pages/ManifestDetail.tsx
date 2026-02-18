@@ -50,7 +50,7 @@ import {
 } from '@/components/ui/popover';
 import { useManifestScan, useManifestItems, ManifestStatus } from '@/hooks/useManifests';
 import { useManifests } from '@/hooks/useManifests';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -107,11 +107,12 @@ export default function ManifestDetail() {
   // Item table view (tenant-managed) — reused across item list pages
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -472,6 +473,7 @@ export default function ManifestDetail() {
 
                     <ItemColumnsPopover
                       settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
                       viewId={activeItemViewId || defaultItemViewId || 'default'}
                       disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                       onSave={saveItemDisplaySettings}

@@ -38,7 +38,7 @@ import { isValidUuid } from '@/lib/utils';
 import { useExpectedShipmentDetail } from '@/hooks/useExpectedShipmentDetail';
 import { useExternalRefs, type RefType } from '@/hooks/useExternalRefs';
 import { useClasses } from '@/hooks/useClasses';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { logActivity } from '@/lib/activity/logActivity';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,11 +78,12 @@ export default function ExpectedShipmentDetail() {
   // Item table view (tenant-managed)
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -592,6 +593,7 @@ export default function ExpectedShipmentDetail() {
 
                     <ItemColumnsPopover
                       settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
                       viewId={activeItemViewId || defaultItemViewId || 'default'}
                       disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                       onSave={saveItemDisplaySettings}

@@ -38,7 +38,7 @@ import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
 import { logActivity } from '@/lib/activity/logActivity';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { formatItemSize } from '@/lib/items/formatItemSize';
@@ -93,11 +93,12 @@ export default function OutboundCreate() {
   // Item table view (tenant-managed)
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -1231,6 +1232,7 @@ export default function OutboundCreate() {
 
                       <ItemColumnsPopover
                         settings={itemDisplaySettings}
+                        baseSettings={tenantItemDisplaySettings}
                         viewId={activeItemViewId || defaultItemViewId || 'default'}
                         disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                         onSave={saveItemDisplaySettings}
