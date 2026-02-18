@@ -401,7 +401,7 @@ export default function ShipmentDetail() {
       if (itemIds.length > 0) {
         const { data: itemsRows, error: itemsFetchError } = await supabase
           .from('items')
-          .select('id, item_code, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
+          .select('id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
           .in('id', itemIds);
 
         if (itemsFetchError) {

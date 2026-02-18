@@ -37,6 +37,7 @@ import {
   getVisibleColumnsForView,
   parseCustomFieldColumnKey,
 } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
@@ -111,6 +112,8 @@ interface TaskItemRow {
     id: string;
     item_code: string;
     sku: string | null;
+    size: number | null;
+    size_unit: string | null;
     description: string | null;
     vendor: string | null;
     inspection_status: string | null;
@@ -276,7 +279,7 @@ export default function TaskDetailPage() {
       const { data: items, error: itemsError } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
+          id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
           current_location_id,
           location:locations!items_current_location_id_fkey(code),
           account:accounts!items_account_id_fkey(account_name)
@@ -1280,6 +1283,8 @@ export default function TaskDetailPage() {
                                 return <TableCell key={col}>{item?.sku || '-'}</TableCell>;
                               case 'quantity':
                                 return <TableCell key={col}>{ti.quantity || 1}</TableCell>;
+                              case 'size':
+                                return <TableCell key={col} className="text-right tabular-nums">{formatItemSize(item?.size, item?.size_unit)}</TableCell>;
                               case 'vendor':
                                 return <TableCell key={col}>{item?.vendor || '-'}</TableCell>;
                               case 'description':
