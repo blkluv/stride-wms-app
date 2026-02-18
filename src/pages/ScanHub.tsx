@@ -717,6 +717,20 @@ export default function ScanHub() {
         const currentPhase = phaseRef.current;
 
         if (currentMode === 'lookup') {
+          // Auto-differentiate: if it's a location barcode, tell the user instead of "item not found".
+          const likelyLoc = isLikelyLocationCode(input);
+          if (likelyLoc) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticMedium();
+              toast({
+                title: `Location: ${loc.code}`,
+                description: loc.name || loc.type || 'Location found',
+              });
+              return;
+            }
+          }
+
           const item = await lookupItem(input);
           if (item) {
             hapticMedium();
@@ -732,19 +746,48 @@ export default function ScanHub() {
             }
 
             navigate(`/inventory/${item.id}`);
-          } else {
-            hapticError();
-            toast({
-              variant: 'destructive',
-              title: 'Item Not Found',
-              description: 'No item found with that code.',
-            });
+            return;
           }
+
+          // If not quickly detected as location, try full async location lookup too.
+          if (!likelyLoc) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticMedium();
+              toast({
+                title: `Location: ${loc.code}`,
+                description: loc.name || loc.type || 'Location found',
+              });
+              return;
+            }
+          }
+
+          hapticError();
+          toast({
+            variant: 'destructive',
+            title: 'Not Found',
+            description: 'No item or location found with that code.',
+          });
           return;
         }
 
         if (currentMode === 'move') {
           if (currentPhase === 'scanning-item') {
+            // Fast-path: if this is clearly a location code, don't burn an item lookup.
+            const likelyLocation = isLikelyLocationCode(input);
+            if (likelyLocation) {
+              const loc = await lookupLocation(input);
+              if (loc) {
+                hapticError();
+                toast({
+                  variant: 'destructive',
+                  title: 'Location Scanned',
+                  description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
+                });
+                return;
+              }
+            }
+
             const item = await lookupItem(input);
             if (item) {
               hapticMedium();
@@ -775,23 +818,26 @@ export default function ScanHub() {
               return;
             }
 
-            // Not found as item - also try as location in case user scanned a location first
-            const loc = await lookupLocation(input);
-            if (loc) {
-              hapticError();
-              toast({
-                variant: 'destructive',
-                title: 'Location Scanned',
-                description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
-              });
-            } else {
-              hapticError();
-              toast({
-                variant: 'destructive',
-                title: 'Not Found',
-                description: 'No item or location found with that code.',
-              });
+            // Not found as item - also try as location as a fallback (covers codes not in in-memory list)
+            if (!likelyLocation) {
+              const loc = await lookupLocation(input);
+              if (loc) {
+                hapticError();
+                toast({
+                  variant: 'destructive',
+                  title: 'Location Scanned',
+                  description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
+                });
+                return;
+              }
             }
+
+            hapticError();
+            toast({
+              variant: 'destructive',
+              title: 'Not Found',
+              description: 'No item or location found with that code.',
+            });
             return;
           }
 
