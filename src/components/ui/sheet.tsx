@@ -1,6 +1,5 @@
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { StoplightControls } from './StoplightControls';
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -57,10 +56,26 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
       <SheetOverlay />
       <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), 'overflow-y-auto', className)} {...props}>
         {children}
-        <SheetPrimitive.Close asChild>
-          <div className="absolute left-2 top-2 z-10">
-            <StoplightControls onClose={() => {}} showMinimize={false} showMaximize={false} size="sm" />
-          </div>
+        <SheetPrimitive.Close
+          aria-label="Close"
+          className={cn(
+            "absolute left-2 top-2 z-10 group stoplight-dot stoplight-close stoplight-md",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          )}
+        >
+          <svg
+            className="absolute inset-0 m-auto opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-150"
+            width={8}
+            height={8}
+            viewBox="0 0 8 8"
+            fill="none"
+            stroke="#4D0000"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          >
+            <line x1="1" y1="1" x2="7" y2="7" />
+            <line x1="7" y1="1" x2="1" y2="7" />
+          </svg>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>
