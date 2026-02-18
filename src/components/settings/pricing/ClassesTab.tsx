@@ -225,6 +225,11 @@ export function ClassesTab() {
                   <span className={cn('font-medium text-sm', !cls.is_active && 'opacity-50')}>
                     {cls.name}
                   </span>
+                  {(cls.min_cubic_feet !== null || cls.max_cubic_feet !== null) && (
+                    <span className="text-xs text-muted-foreground">
+                      {cls.min_cubic_feet ?? 0} – {cls.max_cubic_feet ?? '∞'} cu ft
+                    </span>
+                  )}
                   <div className="ml-auto mr-2">
                     <ActiveBadge active={cls.is_active ?? true} />
                   </div>
@@ -288,7 +293,7 @@ export function ClassesTab() {
 interface ClassEditFormProps {
   itemClass: ItemClass;
   saving: boolean;
-  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null }) => Promise<void>;
+  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null; min_cubic_feet?: number | null; max_cubic_feet?: number | null }) => Promise<void>;
   onCancel: () => void;
   onDelete: () => void;
 }
@@ -298,12 +303,16 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
   const [code, setCode] = useState(itemClass.code);
   const [notes, setNotes] = useState(itemClass.notes ?? '');
   const [isActive, setIsActive] = useState(itemClass.is_active ?? true);
+  const [minCubicFeet, setMinCubicFeet] = useState(itemClass.min_cubic_feet?.toString() ?? '');
+  const [maxCubicFeet, setMaxCubicFeet] = useState(itemClass.max_cubic_feet?.toString() ?? '');
 
   useEffect(() => {
     setName(itemClass.name);
     setCode(itemClass.code);
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
+    setMinCubicFeet(itemClass.min_cubic_feet?.toString() ?? '');
+    setMaxCubicFeet(itemClass.max_cubic_feet?.toString() ?? '');
   }, [itemClass]);
 
   const handleCancel = () => {
@@ -311,16 +320,25 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     setCode(itemClass.code);
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
+    setMinCubicFeet(itemClass.min_cubic_feet?.toString() ?? '');
+    setMaxCubicFeet(itemClass.max_cubic_feet?.toString() ?? '');
     onCancel();
   };
 
   const handleSave = async () => {
     if (!name.trim() || !code.trim()) return;
+    const min = minCubicFeet.trim() ? Number(minCubicFeet) : null;
+    const max = maxCubicFeet.trim() ? Number(maxCubicFeet) : null;
+    if (min !== null && max !== null && max <= min) {
+      return;
+    }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
       is_active: isActive,
       notes: notes.trim() || null,
+      min_cubic_feet: min,
+      max_cubic_feet: max,
     });
   };
 
@@ -359,6 +377,33 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
         />
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={`cls-min-${itemClass.id}`} className="text-sm font-medium">Min Cubic Feet</Label>
+          <Input
+            id={`cls-min-${itemClass.id}`}
+            type="number"
+            min="0"
+            step="0.1"
+            value={minCubicFeet}
+            onChange={(e) => setMinCubicFeet(e.target.value)}
+            placeholder="0"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`cls-max-${itemClass.id}`} className="text-sm font-medium">Max Cubic Feet</Label>
+          <Input
+            id={`cls-max-${itemClass.id}`}
+            type="number"
+            min="0"
+            step="0.1"
+            value={maxCubicFeet}
+            onChange={(e) => setMaxCubicFeet(e.target.value)}
+            placeholder="No limit"
+          />
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium">Active</Label>
         <Switch checked={isActive} onCheckedChange={setIsActive} />
@@ -389,7 +434,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
 
 interface AddClassFormProps {
   saving: boolean;
-  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null }) => Promise<void>;
+  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null; min_cubic_feet?: number | null; max_cubic_feet?: number | null }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -399,6 +444,8 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
   const [codeManual, setCodeManual] = useState(false);
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [minCubicFeet, setMinCubicFeet] = useState('');
+  const [maxCubicFeet, setMaxCubicFeet] = useState('');
 
   useEffect(() => {
     if (!codeManual && name) {
@@ -408,11 +455,18 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
 
   const handleSave = async () => {
     if (!name.trim() || !code.trim()) return;
+    const min = minCubicFeet.trim() ? Number(minCubicFeet) : null;
+    const max = maxCubicFeet.trim() ? Number(maxCubicFeet) : null;
+    if (min !== null && max !== null && max <= min) {
+      return;
+    }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
       is_active: isActive,
       notes: notes.trim() || null,
+      min_cubic_feet: min,
+      max_cubic_feet: max,
     });
   };
 
@@ -464,6 +518,33 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional description"
           />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="new-cls-min" className="text-sm font-medium">Min Cubic Feet</Label>
+            <Input
+              id="new-cls-min"
+              type="number"
+              min="0"
+              step="0.1"
+              value={minCubicFeet}
+              onChange={(e) => setMinCubicFeet(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-cls-max" className="text-sm font-medium">Max Cubic Feet</Label>
+            <Input
+              id="new-cls-max"
+              type="number"
+              min="0"
+              step="0.1"
+              value={maxCubicFeet}
+              onChange={(e) => setMaxCubicFeet(e.target.value)}
+              placeholder="No limit"
+            />
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
