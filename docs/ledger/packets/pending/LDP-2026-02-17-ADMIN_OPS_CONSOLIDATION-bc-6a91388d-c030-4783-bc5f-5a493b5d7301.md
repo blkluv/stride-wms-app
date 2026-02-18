@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `17`
+- Q&A items extracted: `18`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -41,6 +41,8 @@
 | DL-2026-02-17-019 | Platform default sender does not include a configurable “From name” (email only) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-015` | - | - |
 | DL-2026-02-17-020 | Platform default sender uses tenant-configured Reply-To email address for replies | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-016` | - | - |
 | DL-2026-02-17-021 | Reply-To fallback defaults to tenant owner/admin login email when Reply-To is unset | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-017` | - | - |
+| DL-2026-02-17-022 | Add a separate tenant “Reply-To / inbound email” field to receive incoming replies | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
+| DL-2026-02-17-023 | UI clearly explains platform-managed outbound From address when no custom sender domain is set up | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
 
 ## Detailed Decision Entries
 
@@ -453,6 +455,47 @@ This avoids blocking email sending during onboarding while ensuring customer rep
 - Define a deterministic way to choose the tenant “owner/admin login email” for automated/system sends (e.g., primary admin user for the tenant).
 - For user-initiated sends, consider using the initiating admin user email when available.
 
+### DL-2026-02-17-022: Add a separate tenant “Reply-To / inbound email” field to receive incoming replies
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Tenant email settings will include a separate “Reply-To / inbound email” field so the tenant can control where incoming replies go.
+
+#### Why
+Outbound “From” identity (platform-managed or tenant-verified sender) is distinct from where replies should be delivered. A dedicated Reply-To field reduces confusion and ensures replies route correctly.
+
+#### Implementation impact
+- Add/confirm a tenant-stored Reply-To email field in the tenant settings UI.
+- Use this field to set the Reply-To header on outbound emails.
+- If unset, fall back per `DL-2026-02-17-021`.
+
+### DL-2026-02-17-023: UI clearly explains platform-managed outbound From address when no custom sender domain is set up
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant has not set up a verified custom sender domain, the tenant-facing email settings UI must clearly state that outbound emails will be sent from a platform-managed address (example: `"tenantid"@subdomain.stridewms.com`). The UI must also clearly explain that the tenant should set their Reply-To / inbound email address to receive incoming replies.
+
+#### Why
+Non-technical users need a clear mental model:
+- “From” = what customers see as the sender
+- “Reply-To” = where customer replies will go
+
+#### Implementation impact
+- Update tenant email sender setup copy to explicitly show the platform-managed sender address used when the tenant has not configured a verified domain (exact domain/address may be updated later).
+- Add prominent guidance that setting Reply-To is required to receive replies (with fallback behavior per `DL-2026-02-17-021`).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -475,3 +518,5 @@ This avoids blocking email sending during onboarding while ensuring customer rep
 | DLE-2026-02-17-018 | 2026-02-17 | DL-2026-02-17-019 | planned | - | builder | Keep platform default sender configuration to a single From email field (no separate configurable From name). |
 | DLE-2026-02-17-019 | 2026-02-17 | DL-2026-02-17-020 | planned | - | builder | Set Reply-To to the tenant-configured Reply-To email even when using the platform default sender (so replies route to the tenant). |
 | DLE-2026-02-17-020 | 2026-02-17 | DL-2026-02-17-021 | planned | - | builder | Implement Reply-To fallback to tenant owner/admin login email when tenant Reply-To is not configured. |
+| DLE-2026-02-17-021 | 2026-02-17 | DL-2026-02-17-022 | planned | - | builder | Add a dedicated tenant Reply-To / inbound email field in tenant settings and use it for Reply-To headers. |
+| DLE-2026-02-17-022 | 2026-02-17 | DL-2026-02-17-023 | planned | - | builder | Update tenant email setup copy to clearly explain platform-managed From address when no custom sender is configured and that Reply-To controls incoming replies. |

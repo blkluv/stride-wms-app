@@ -100,3 +100,9 @@ User decision (Reply-To behavior when using platform default sender):
 User decision (Reply-To fallback):
 - If a tenant has not configured a Reply-To email yet, default Reply-To to the tenant owner/admin login email (not a platform inbox and not blocked).
 
+### QA-2026-02-17-ADMINOPS-018
+User decision (Reply-To field + onboarding clarity):
+- Tenant email settings should include a separate “Reply-To / inbound email” field so tenants can receive and control where incoming replies go.
+- If a tenant has not set up a verified custom sender domain, the UI should clearly state outbound emails will be sent from a platform-managed address like: `"tenantid"@subdomain.stridewms.com` (exact address/domain may be updated later).
+- The UI should clearly explain that the tenant must set their Reply-To / inbound email address to receive incoming replies.
+
