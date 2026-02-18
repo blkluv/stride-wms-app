@@ -672,6 +672,17 @@ export function Stage1DockIntake({
 
       if (error) throw error;
 
+      // Stop Stage 1 timer interval (best-effort)
+      try {
+        await supabase.rpc('rpc_timer_end_job', {
+          p_job_type: 'shipment',
+          p_job_id: shipmentId,
+          p_reason: 'stage1_complete',
+        });
+      } catch (timerErr) {
+        console.warn('[Stage1] Failed to end timer interval:', timerErr);
+      }
+
       toast({ title: 'Stage 1 Complete', description: 'Dock intake has been recorded.' });
       onComplete();
     } catch (err: any) {

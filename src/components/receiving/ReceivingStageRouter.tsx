@@ -10,6 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useSearchParams } from 'react-router-dom';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Stage1DockIntake } from './Stage1DockIntake';
 import type { MatchingParamsUpdate } from './Stage1DockIntake';
 import { Stage2DetailedReceiving } from './Stage2DetailedReceiving';
@@ -76,6 +86,11 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   const stage2ExpandedKey = `receiving.stage2.expanded.${shipmentId}`;
   const [stage2Expanded, setStage2Expanded] = useState<boolean>(false);
   const [startingStage2, setStartingStage2] = useState(false);
+
+  // Stage 2 timer: pause existing job confirmation
+  const [stage2ConfirmOpen, setStage2ConfirmOpen] = useState(false);
+  const [stage2ConfirmLoading, setStage2ConfirmLoading] = useState(false);
+  const [stage2ActiveJobLabel, setStage2ActiveJobLabel] = useState<string | null>(null);
 
   const fetchShipment = useCallback(async () => {
     if (!shipmentId) return;
@@ -173,6 +188,48 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     if (startingStage2) return;
     setStartingStage2(true);
     try {
+      // Start Stage 2 timer interval first (prevents "inbound_status=receiving" with no timer)
+      const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
+        p_job_type: 'shipment',
+        p_job_id: shipmentId,
+        p_pause_existing: false,
+      });
+      if (timerErr) throw timerErr;
+
+      const timerResult = (timerRes || {}) as any;
+      if (timerResult?.ok === false) {
+        if (timerResult.error_code === 'ACTIVE_TIMER_EXISTS') {
+          // Best-effort label
+          let label = 'another job';
+          try {
+            if (timerResult.active_job_type === 'task' && timerResult.active_job_id) {
+              const { data: t } = await (supabase.from('tasks') as any)
+                .select('title, task_type')
+                .eq('tenant_id', profile?.tenant_id || '')
+                .eq('id', timerResult.active_job_id)
+                .maybeSingle();
+              label = t?.title || (t?.task_type ? `${t.task_type} task` : 'another task');
+            } else if (timerResult.active_job_type === 'shipment' && timerResult.active_job_id) {
+              const { data: s } = await (supabase.from('shipments') as any)
+                .select('shipment_number')
+                .eq('tenant_id', profile?.tenant_id || '')
+                .eq('id', timerResult.active_job_id)
+                .maybeSingle();
+              label = s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
+            } else if (timerResult.active_job_type) {
+              label = `${timerResult.active_job_type} job`;
+            }
+          } catch {
+            // Best-effort
+          }
+
+          setStage2ActiveJobLabel(label);
+          setStage2ConfirmOpen(true);
+          return;
+        }
+        throw new Error(timerResult.error_message || 'Failed to start timer');
+      }
+
       const { error } = await supabase
         .from('shipments')
         .update({ inbound_status: 'receiving' } as any)
@@ -636,6 +693,82 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
         <ExceptionsTab shipmentId={shipmentId} />
       </TabsContent>
     </Tabs>
+
+    {/* Pause existing job confirmation (Start Stage 2) */}
+    <AlertDialog open={stage2ConfirmOpen} onOpenChange={setStage2ConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+          <AlertDialogDescription>
+            It looks like you already have a job in progress{stage2ActiveJobLabel ? ` (${stage2ActiveJobLabel})` : ''}.
+            Do you want to pause it and start Stage 2?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            onClick={() => setStage2ActiveJobLabel(null)}
+            disabled={stage2ConfirmLoading}
+          >
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={async (e) => {
+              e.preventDefault();
+              setStage2ConfirmLoading(true);
+              try {
+                const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
+                  p_job_type: 'shipment',
+                  p_job_id: shipmentId,
+                  p_pause_existing: true,
+                });
+                if (timerErr) throw timerErr;
+                const timerResult = (timerRes || {}) as any;
+                if (timerResult?.ok === false) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Unable to start Stage 2',
+                    description: timerResult.error_message || 'Failed to start timer',
+                  });
+                  return;
+                }
+
+                const { error } = await supabase
+                  .from('shipments')
+                  .update({ inbound_status: 'receiving' } as any)
+                  .eq('id', shipmentId);
+
+                if (error) throw error;
+
+                try {
+                  localStorage.setItem(stage2ExpandedKey, 'true');
+                } catch {
+                  // Non-blocking
+                }
+
+                setStage2Expanded(true);
+                toast({ title: 'Stage 2 started', description: 'Detailed receiving is now available.' });
+                handleStageChange();
+
+                setStage2ConfirmOpen(false);
+                setStage2ActiveJobLabel(null);
+              } catch (err: any) {
+                console.error('[ReceivingStageRouter] start stage2 confirm error:', err);
+                toast({
+                  variant: 'destructive',
+                  title: 'Error',
+                  description: err?.message || 'Failed to start Stage 2',
+                });
+              } finally {
+                setStage2ConfirmLoading(false);
+              }
+            }}
+            disabled={stage2ConfirmLoading}
+          >
+            Pause & Start
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </div>
   );
 }

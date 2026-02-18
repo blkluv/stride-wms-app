@@ -42,6 +42,8 @@ import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hook
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
+import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
+import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 
@@ -453,6 +455,7 @@ export function Stage2DetailedReceiving({
     setCompleting(true);
 
     try {
+      const completedAt = new Date().toISOString();
       let autoApplyArrivalNoIdFlag = true;
       let unidentifiedAccountId: string | null = null;
 
@@ -756,11 +759,79 @@ export function Stage2DetailedReceiving({
         .from('shipments')
         .update({
           inbound_status: 'closed',
-          received_at: new Date().toISOString(),
+          received_at: completedAt,
         } as any)
         .eq('id', shipmentId);
 
       if (closeErr) throw closeErr;
+
+      // Stop Stage 2 timer interval (best-effort)
+      try {
+        await supabase.rpc('rpc_timer_end_job', {
+          p_job_type: 'shipment',
+          p_job_id: shipmentId,
+          p_reason: 'complete',
+        });
+      } catch (timerErr) {
+        console.warn('[Stage2] Failed to end timer interval:', timerErr);
+      }
+
+      // Snapshot estimated + actual minutes for reporting/display (best-effort)
+      try {
+        // Actual labor minutes: sum intervals for this shipment
+        const { data: rows } = await (supabase
+          .from('job_time_intervals') as any)
+          .select('started_at, ended_at')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('job_type', 'shipment')
+          .eq('job_id', shipmentId);
+
+        const minutesBetweenIso = (startIso: string, endIso: string) => {
+          const start = new Date(startIso).getTime();
+          const end = new Date(endIso).getTime();
+          if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+          return (end - start) / 60000;
+        };
+
+        const laborMinutes = Math.round(
+          (rows || []).reduce((sum: number, r: any) => {
+            const start = r.started_at as string;
+            const end = (r.ended_at as string | null) || completedAt;
+            return sum + minutesBetweenIso(start, end);
+          }, 0)
+        );
+
+        // Estimated minutes from billing preview (uses pricing_rules.service_time_minutes)
+        const preview = await calculateShipmentBillingPreview(profile.tenant_id, shipmentId, 'inbound');
+        const estimatedMinutes = (preview?.lineItems || []).reduce((sum, li) => sum + (li.estimatedMinutes || 0), 0);
+
+        const { data: shipmentRow } = await supabase
+          .from('shipments')
+          .select('metadata')
+          .eq('id', shipmentId)
+          .maybeSingle();
+
+        let merged: any = shipmentRow?.metadata ?? null;
+        merged = mergeServiceTimeSnapshot(merged, {
+          estimated_minutes: Math.round(estimatedMinutes),
+          estimated_snapshot_at: completedAt,
+          estimated_source: 'billing_preview',
+          estimated_version: 1,
+        });
+        merged = mergeServiceTimeActualSnapshot(merged, {
+          actual_cycle_minutes: laborMinutes,
+          actual_labor_minutes: laborMinutes,
+          actual_snapshot_at: completedAt,
+          actual_version: 1,
+        });
+
+        await supabase
+          .from('shipments')
+          .update({ metadata: merged })
+          .eq('id', shipmentId);
+      } catch (snapshotErr) {
+        console.warn('[Stage2] Failed to snapshot service time:', snapshotErr);
+      }
 
       // Assign receiving location as safety net
       try {
