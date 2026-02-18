@@ -72,8 +72,6 @@ function getEventColor(eventType: string): string {
     return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
   if (eventType.includes('flag_removed') || eventType.includes('voided'))
     return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-  if (eventType.includes('moved') || eventType.includes('location'))
-    return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
   if (eventType.startsWith('task_'))
     return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
   if (eventType.includes('note'))
@@ -82,6 +80,8 @@ function getEventColor(eventType: string): string {
     return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
   if (eventType.includes('document'))
     return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200';
+  if (eventType.includes('moved') || eventType.includes('location'))
+    return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
   if (eventType.includes('shipment') || eventType.includes('received_in_shipment') || eventType.includes('released_in_shipment'))
     return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
   if (eventType.startsWith('repair_quote_') || eventType.startsWith('item_repair_'))
