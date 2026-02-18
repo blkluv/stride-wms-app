@@ -61,15 +61,15 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [ ] 52. Receiving PDF: save on Stage 2 completion; overwrite visible version; keep older versions archived (not deleted).
 - [ ] 53. Archived receiving PDFs revisited via interactive Activity feed (open/download).
 - [ ] 54. Activity entity links render inline within sentence (not chips).
-- [ ] 55. Redesigned Documents field reused on Quote detail page too.
-- [ ] 56. Quote detail page = Quote Builder (`/quotes/:id`).
-- [ ] 57. Quote Builder: replace legacy Attachments with redesigned Documents field.
-- [ ] 58. No migration needed for legacy quote attachments (none exist).
-- [ ] 59. Quote Builder is staff-only (admin + manager); clients cannot access Quotes or Quote Builder pages.
+- [x] 55. Redesigned Documents field reused on Quote detail page too.
+- [x] 56. Quote detail page = Quote Builder (`/quotes/:id`).
+- [x] 57. Quote Builder: replace legacy Attachments with redesigned Documents field.
+- [x] 58. No migration needed for legacy quote attachments (none exist).
+- [x] 59. Quote Builder is staff-only (admin + manager); clients cannot access Quotes or Quote Builder pages.
 - [ ] 60. "Closed" = `shipments.inbound_status = 'closed'` after Stage 2 completion; `received_at` set; intake workflow finished.
 - [x] 61. Stage 2 completion sets `shipments.status = 'received'`; Received Today uses `received_at` today.
-- [ ] 62. Quote Builder documents: upload-only; UI + preview match Intake.
-- [ ] 63. Quote Builder documents header: single full-width Upload button.
+- [x] 62. Quote Builder documents: upload-only; UI + preview match Intake.
+- [x] 63. Quote Builder documents header: single full-width Upload button.
 - [x] 64. User-facing status label after Stage 2 completion: "Received".
 - [x] 65. Hub expanded card row clicks originally specified Shipment Details for all rows (superseded by #79).
 - [x] 66. "Intakes In Progress" excludes `inbound_status = closed`; include only draft/stage1_complete/receiving.

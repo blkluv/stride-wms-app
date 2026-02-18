@@ -27,6 +27,7 @@ export interface OcrPage {
 // Document context types for polymorphic linking
 export type DocumentContextType =
   | 'shipment'
+  | 'quote'
   | 'employee'
   | 'delivery'
   | 'invoice'
@@ -37,6 +38,7 @@ export type DocumentContextType =
 // Context with specific metadata for each type
 export type DocumentContext =
   | { type: 'shipment'; shipmentId: string; vendor?: string }
+  | { type: 'quote'; quoteId: string; quoteNumber?: string }
   | { type: 'employee'; employeeId: string; employeeName?: string }
   | { type: 'delivery'; deliveryId: string; routeStopId?: string }
   | { type: 'invoice'; invoiceNumber?: string; vendorId?: string }
