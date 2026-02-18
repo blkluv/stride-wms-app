@@ -194,21 +194,13 @@ export default function ShipmentDetail() {
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
   } = useItemDisplaySettingsForUser();
-  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
-
-  useEffect(() => {
-    if (!activeItemViewId && defaultItemViewId) {
-      setActiveItemViewId(defaultItemViewId);
-    }
-  }, [defaultItemViewId, activeItemViewId]);
 
   const activeItemView = useMemo(() => {
     return (
-      getViewById(itemDisplaySettings, activeItemViewId) ||
       getViewById(itemDisplaySettings, defaultItemViewId) ||
       itemDisplaySettings.views[0]
     );
-  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+  }, [itemDisplaySettings, defaultItemViewId]);
 
   const shipmentItemVisibleColumns: ItemColumnKey[] = useMemo(
     () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
@@ -2986,28 +2978,6 @@ export default function ShipmentDetail() {
                   <span className="sm:hidden">Add</span>
                 </Button>
               )}
-              <div className="flex items-center gap-2">
-                <Select
-                  value={activeItemViewId || defaultItemViewId || 'default'}
-                  onValueChange={setActiveItemViewId}
-                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-                >
-                  <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
-                    <div className="flex items-center gap-2">
-                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                      <SelectValue placeholder="View" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {itemDisplaySettings.views.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.name}
-                        {v.is_default ? ' (default)' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             {/* Create Task from selected items */}
             {selectedItemIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-2">
@@ -3081,7 +3051,7 @@ export default function ShipmentDetail() {
                     <ItemColumnsPopover
                       settings={itemDisplaySettings}
                       baseSettings={tenantItemDisplaySettings}
-                      viewId={activeItemViewId || defaultItemViewId || 'default'}
+                      viewId={defaultItemViewId || itemDisplaySettings.views[0]?.id || 'default'}
                       disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                       onSave={saveItemDisplaySettings}
                       compact
