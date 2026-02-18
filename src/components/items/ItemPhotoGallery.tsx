@@ -479,7 +479,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                   className="max-w-full max-h-full object-contain rounded-lg"
                 />
               </div>
-              <div className="flex gap-2 mt-2 justify-center sm:justify-end shrink-0">
+              <div className="flex flex-wrap gap-2 mt-2 justify-center sm:justify-end shrink-0">
                 <Button
                   variant="outline"
                   className="h-10 w-10 p-0 sm:w-auto sm:px-4 sm:py-2 rounded-full sm:rounded-md"
