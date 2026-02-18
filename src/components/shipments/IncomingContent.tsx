@@ -32,6 +32,234 @@ import { DraftQueueList } from '@/components/receiving/DraftQueueList';
 
 type TabValue = 'manifests' | 'expected' | 'dock_intakes';
 
+type SortDirection = 'asc' | 'desc';
+type SortState<K extends string> = { key: K; direction: SortDirection };
+
+type ManifestSortKey =
+  | 'shipment_number'
+  | 'account_name'
+  | 'vendor_name'
+  | 'eta'
+  | 'expected_pieces'
+  | 'open_items_count'
+  | 'inbound_status'
+  | 'created_at';
+
+type ExpectedSortKey =
+  | 'shipment_number'
+  | 'account_name'
+  | 'vendor_name'
+  | 'eta'
+  | 'expected_pieces'
+  | 'open_items_count'
+  | 'inbound_status'
+  | 'created_at';
+
+type DockIntakeSortKey =
+  | 'shipment_number'
+  | 'account_name'
+  | 'vendor_name'
+  | 'signed_pieces'
+  | 'inbound_status'
+  | 'created_at';
+
+function defaultSortDirectionForKey(key: string): SortDirection {
+  switch (key) {
+    case 'created_at':
+    case 'expected_pieces':
+    case 'open_items_count':
+    case 'signed_pieces':
+      return 'desc';
+    default:
+      return 'asc';
+  }
+}
+
+function nextSortState<K extends string>(current: SortState<K>, key: K): SortState<K> {
+  if (current.key === key) {
+    return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+  }
+  return { key, direction: defaultSortDirectionForKey(key) };
+}
+
+function toTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+}
+
+function compareNumber(a: number, b: number): number {
+  return a - b;
+}
+
+function compareNullable<T>(
+  a: T | null | undefined,
+  b: T | null | undefined,
+  compareNonNull: (a: T, b: T) => number,
+  direction: SortDirection
+): number {
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull && bNull) return 0;
+  if (aNull) return 1; // nulls always last
+  if (bNull) return -1;
+  const res = compareNonNull(a as T, b as T);
+  return direction === 'asc' ? res : -res;
+}
+
+function sortManifestShipments(shipments: IncomingShipment[], sort: SortState<ManifestSortKey>) {
+  const dir = sort.direction;
+  return shipments.slice().sort((a, b) => {
+    let res = 0;
+    switch (sort.key) {
+      case 'shipment_number':
+        res = compareNullable(a.shipment_number, b.shipment_number, compareText, dir);
+        break;
+      case 'account_name':
+        res = compareNullable(a.account_name, b.account_name, compareText, dir);
+        break;
+      case 'vendor_name':
+        res = compareNullable(a.vendor_name, b.vendor_name, compareText, dir);
+        break;
+      case 'eta': {
+        const aEta = toTime(a.eta_start) ?? toTime(a.eta_end);
+        const bEta = toTime(b.eta_start) ?? toTime(b.eta_end);
+        res = compareNullable(aEta, bEta, compareNumber, dir);
+        break;
+      }
+      case 'expected_pieces':
+        res = compareNullable(a.expected_pieces, b.expected_pieces, compareNumber, dir);
+        break;
+      case 'open_items_count':
+        res = compareNullable(a.open_items_count, b.open_items_count, compareNumber, dir);
+        break;
+      case 'inbound_status':
+        res = compareNullable(a.inbound_status, b.inbound_status, compareText, dir);
+        break;
+      case 'created_at':
+        res = compareNullable(toTime(a.created_at), toTime(b.created_at), compareNumber, dir);
+        break;
+    }
+    if (res !== 0) return res;
+    // Stable tie-breaker: shipment number ascending
+    return compareNullable(a.shipment_number, b.shipment_number, compareText, 'asc');
+  });
+}
+
+function sortExpectedShipments(shipments: IncomingShipment[], sort: SortState<ExpectedSortKey>) {
+  const dir = sort.direction;
+  return shipments.slice().sort((a, b) => {
+    let res = 0;
+    switch (sort.key) {
+      case 'shipment_number':
+        res = compareNullable(a.shipment_number, b.shipment_number, compareText, dir);
+        break;
+      case 'account_name':
+        res = compareNullable(a.account_name, b.account_name, compareText, dir);
+        break;
+      case 'vendor_name':
+        res = compareNullable(a.vendor_name, b.vendor_name, compareText, dir);
+        break;
+      case 'eta': {
+        const aStart = toTime(a.eta_start);
+        const bStart = toTime(b.eta_start);
+        res = compareNullable(aStart ?? toTime(a.eta_end), bStart ?? toTime(b.eta_end), compareNumber, dir);
+        if (res !== 0) break;
+        // Secondary: end of window
+        res = compareNullable(toTime(a.eta_end), toTime(b.eta_end), compareNumber, dir);
+        break;
+      }
+      case 'expected_pieces':
+        res = compareNullable(a.expected_pieces, b.expected_pieces, compareNumber, dir);
+        break;
+      case 'open_items_count':
+        res = compareNullable(a.open_items_count, b.open_items_count, compareNumber, dir);
+        break;
+      case 'inbound_status':
+        res = compareNullable(a.inbound_status, b.inbound_status, compareText, dir);
+        break;
+      case 'created_at':
+        res = compareNullable(toTime(a.created_at), toTime(b.created_at), compareNumber, dir);
+        break;
+    }
+    if (res !== 0) return res;
+    return compareNullable(a.shipment_number, b.shipment_number, compareText, 'asc');
+  });
+}
+
+function sortDockIntakeShipments(shipments: IncomingShipment[], sort: SortState<DockIntakeSortKey>) {
+  const dir = sort.direction;
+  return shipments.slice().sort((a, b) => {
+    let res = 0;
+    switch (sort.key) {
+      case 'shipment_number':
+        res = compareNullable(a.shipment_number, b.shipment_number, compareText, dir);
+        break;
+      case 'account_name':
+        res = compareNullable(a.account_name, b.account_name, compareText, dir);
+        break;
+      case 'vendor_name':
+        res = compareNullable(a.vendor_name, b.vendor_name, compareText, dir);
+        break;
+      case 'signed_pieces':
+        res = compareNullable(a.signed_pieces, b.signed_pieces, compareNumber, dir);
+        break;
+      case 'inbound_status':
+        res = compareNullable(a.inbound_status, b.inbound_status, compareText, dir);
+        break;
+      case 'created_at':
+        res = compareNullable(toTime(a.created_at), toTime(b.created_at), compareNumber, dir);
+        break;
+    }
+    if (res !== 0) return res;
+    return compareNullable(a.shipment_number, b.shipment_number, compareText, 'asc');
+  });
+}
+
+function SortHeaderButton<K extends string>({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  sortKey: K;
+  sort: SortState<K>;
+  onSort: (key: K) => void;
+  align?: 'left' | 'right';
+}) {
+  const isActive = sort.key === sortKey;
+  const icon = !isActive
+    ? 'unfold_more'
+    : sort.direction === 'asc'
+      ? 'arrow_upward'
+      : 'arrow_downward';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={[
+        'inline-flex w-full items-center gap-1 select-none',
+        align === 'right' ? 'justify-end' : 'justify-start',
+        'hover:text-foreground',
+      ].join(' ')}
+    >
+      <span>{label}</span>
+      <MaterialIcon
+        name={icon}
+        size="sm"
+        className={!isActive ? 'opacity-40' : 'opacity-80'}
+      />
+    </button>
+  );
+}
+
 const TAB_TO_KIND: Record<TabValue, InboundKind> = {
   manifests: 'manifest',
   expected: 'expected',
@@ -78,10 +306,14 @@ function ManifestList({
   shipments,
   loading,
   onRowClick,
+  sort,
+  onSortChange,
 }: {
   shipments: IncomingShipment[];
   loading: boolean;
   onRowClick: (id: string) => void;
+  sort: SortState<ManifestSortKey>;
+  onSortChange: (key: ManifestSortKey) => void;
 }) {
   if (loading) {
     return (
@@ -129,14 +361,30 @@ function ManifestList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Manifest #</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>ETA</TableHead>
-              <TableHead className="text-right">Pieces</TableHead>
-              <TableHead className="text-right">Items</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead aria-sort={sort.key === 'shipment_number' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Manifest #" sortKey="shipment_number" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'account_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Account" sortKey="account_name" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'vendor_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Vendor" sortKey="vendor_name" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'eta' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="ETA" sortKey="eta" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead className="text-right" aria-sort={sort.key === 'expected_pieces' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Pieces" sortKey="expected_pieces" sort={sort} onSort={onSortChange} align="right" />
+              </TableHead>
+              <TableHead className="text-right" aria-sort={sort.key === 'open_items_count' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Items" sortKey="open_items_count" sort={sort} onSort={onSortChange} align="right" />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'inbound_status' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Status" sortKey="inbound_status" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'created_at' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Created" sortKey="created_at" sort={sort} onSort={onSortChange} />
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -181,10 +429,14 @@ function ExpectedList({
   shipments,
   loading,
   onRowClick,
+  sort,
+  onSortChange,
 }: {
   shipments: IncomingShipment[];
   loading: boolean;
   onRowClick: (id: string) => void;
+  sort: SortState<ExpectedSortKey>;
+  onSortChange: (key: ExpectedSortKey) => void;
 }) {
   if (loading) {
     return (
@@ -232,14 +484,30 @@ function ExpectedList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Expected #</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>ETA Window</TableHead>
-              <TableHead className="text-right">Expected Pieces</TableHead>
-              <TableHead className="text-right">Items</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
+              <TableHead aria-sort={sort.key === 'shipment_number' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Expected #" sortKey="shipment_number" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'account_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Account" sortKey="account_name" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'vendor_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Vendor" sortKey="vendor_name" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'eta' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="ETA Window" sortKey="eta" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead className="text-right" aria-sort={sort.key === 'expected_pieces' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Expected Pieces" sortKey="expected_pieces" sort={sort} onSort={onSortChange} align="right" />
+              </TableHead>
+              <TableHead className="text-right" aria-sort={sort.key === 'open_items_count' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Items" sortKey="open_items_count" sort={sort} onSort={onSortChange} align="right" />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'inbound_status' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Status" sortKey="inbound_status" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'created_at' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Created" sortKey="created_at" sort={sort} onSort={onSortChange} />
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -293,10 +561,14 @@ function DockIntakeList({
   shipments,
   loading,
   onRowClick,
+  sort,
+  onSortChange,
 }: {
   shipments: IncomingShipment[];
   loading: boolean;
   onRowClick: (id: string) => void;
+  sort: SortState<DockIntakeSortKey>;
+  onSortChange: (key: DockIntakeSortKey) => void;
 }) {
   if (loading) {
     return (
@@ -344,12 +616,24 @@ function DockIntakeList({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Intake #</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead className="text-right">Signed Pieces</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Arrived</TableHead>
+              <TableHead aria-sort={sort.key === 'shipment_number' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Intake #" sortKey="shipment_number" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'account_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Account" sortKey="account_name" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'vendor_name' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Vendor" sortKey="vendor_name" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead className="text-right" aria-sort={sort.key === 'signed_pieces' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Signed Pieces" sortKey="signed_pieces" sort={sort} onSort={onSortChange} align="right" />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'inbound_status' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Status" sortKey="inbound_status" sort={sort} onSort={onSortChange} />
+              </TableHead>
+              <TableHead aria-sort={sort.key === 'created_at' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
+                <SortHeaderButton label="Arrived" sortKey="created_at" sort={sort} onSort={onSortChange} />
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -408,6 +692,15 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [creating, setCreating] = useState(false);
+  const [sortByTab, setSortByTab] = useState<{
+    manifests: SortState<ManifestSortKey>;
+    expected: SortState<ExpectedSortKey>;
+    dock_intakes: SortState<DockIntakeSortKey>;
+  }>({
+    manifests: { key: 'created_at', direction: 'desc' },
+    expected: { key: 'created_at', direction: 'desc' },
+    dock_intakes: { key: 'created_at', direction: 'desc' },
+  });
 
   // Keep active tab aligned with parent-provided sub-tab.
   useEffect(() => {
@@ -436,6 +729,29 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
     search: debouncedSearch || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
+
+  const sortedShipments = useMemo(() => {
+    switch (activeTab) {
+      case 'manifests':
+        return sortManifestShipments(shipments, sortByTab.manifests);
+      case 'expected':
+        return sortExpectedShipments(shipments, sortByTab.expected);
+      case 'dock_intakes':
+        return sortDockIntakeShipments(shipments, sortByTab.dock_intakes);
+      default:
+        return shipments;
+    }
+  }, [shipments, activeTab, sortByTab]);
+
+  const handleManifestSort = (key: ManifestSortKey) => {
+    setSortByTab((prev) => ({ ...prev, manifests: nextSortState(prev.manifests, key) }));
+  };
+  const handleExpectedSort = (key: ExpectedSortKey) => {
+    setSortByTab((prev) => ({ ...prev, expected: nextSortState(prev.expected, key) }));
+  };
+  const handleDockIntakeSort = (key: DockIntakeSortKey) => {
+    setSortByTab((prev) => ({ ...prev, dock_intakes: nextSortState(prev.dock_intakes, key) }));
+  };
 
   const statusOptions = useMemo(() => {
     switch (activeTab) {
@@ -590,17 +906,21 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
 
         <TabsContent value="manifests" className="mt-4">
           <ManifestList
-            shipments={shipments}
+            shipments={activeTab === 'manifests' ? sortedShipments : []}
             loading={loading}
             onRowClick={handleRowClick}
+            sort={sortByTab.manifests}
+            onSortChange={handleManifestSort}
           />
         </TabsContent>
 
         <TabsContent value="expected" className="mt-4">
           <ExpectedList
-            shipments={shipments}
+            shipments={activeTab === 'expected' ? sortedShipments : []}
             loading={loading}
             onRowClick={handleRowClick}
+            sort={sortByTab.expected}
+            onSortChange={handleExpectedSort}
           />
         </TabsContent>
 
@@ -614,9 +934,11 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
           <div>
             <h3 className="font-medium text-sm text-muted-foreground mb-3">All Dock Intakes</h3>
             <DockIntakeList
-              shipments={shipments}
+              shipments={activeTab === 'dock_intakes' ? sortedShipments : []}
               loading={loading}
               onRowClick={handleRowClick}
+              sort={sortByTab.dock_intakes}
+              onSortChange={handleDockIntakeSort}
             />
           </div>
         </TabsContent>
