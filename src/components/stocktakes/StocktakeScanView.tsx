@@ -33,7 +33,7 @@ import {
 } from '@/lib/haptics';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
-import { isUuid, parseScanPayload } from '@/lib/scanPayload';
+import { extractIdCandidate, parseScanPayload } from '@/lib/scanPayload';
 
 const scanResultConfig: Record<ScanResult, {
   color: string;
@@ -328,10 +328,7 @@ export default function StocktakeScanView() {
       .from('items')
       .select('id, item_code, description, status, current_location_id');
 
-    const idCandidate =
-      (payload.type === 'item' && payload.id && isUuid(payload.id))
-        ? payload.id
-        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+    const idCandidate = extractIdCandidate(payload, 'item');
     if (idCandidate) {
       query = query.eq('id', idCandidate);
     } else {

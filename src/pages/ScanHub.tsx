@@ -32,7 +32,7 @@ import { SuggestionPanel } from '@/components/scanhub/SuggestionPanel';
 import { CrossWarehouseBanner } from '@/components/scanhub/CrossWarehouseBanner';
 import { OverrideConfirmModal, type OverrideReason } from '@/components/scanhub/OverrideConfirmModal';
 import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
-import { isUuid, parseScanPayload } from '@/lib/scanPayload';
+import { extractIdCandidate, parseScanPayload } from '@/lib/scanPayload';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -447,10 +447,7 @@ export default function ScanHub() {
       .select('id, item_code, description, location_code, warehouse_name');
 
     // Prefer explicit item IDs; also support raw UUID scans.
-    const idCandidate =
-      (payload.type === 'item' && payload.id && isUuid(payload.id))
-        ? payload.id
-        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+    const idCandidate = extractIdCandidate(payload, 'item');
 
     if (idCandidate) {
       query = query.eq('id', idCandidate);
@@ -490,10 +487,7 @@ export default function ScanHub() {
         warehouse:warehouses(name)
       `);
 
-    const idCandidate =
-      (payload.type === 'item' && payload.id && isUuid(payload.id))
-        ? payload.id
-        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+    const idCandidate = extractIdCandidate(payload, 'item');
 
     if (idCandidate) {
       query = query.eq('id', idCandidate);
@@ -522,10 +516,7 @@ export default function ScanHub() {
     const payload = parseScanPayload(input);
 
     // Check if it's a location QR with explicit type
-    const idCandidate =
-      (payload.type === 'location' && payload.id && isUuid(payload.id))
-        ? payload.id
-        : (payload.type === 'unknown' && isUuid(payload.code) ? payload.code : null);
+    const idCandidate = extractIdCandidate(payload, 'location');
 
     if (idCandidate) {
       const loc = locations.find(l => l.id === idCandidate);

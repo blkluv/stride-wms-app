@@ -135,3 +135,15 @@ export function parseScanPayload(input: string): ScanPayload {
   return { type: 'unknown', raw, code: raw };
 }
 
+/**
+ * Returns a UUID candidate for DB ID lookups when the scan payload contains an explicit ID of
+ * the expected type, or when the scan was a raw UUID (payload.type === 'unknown').
+ */
+export function extractIdCandidate(payload: ScanPayload, expectedType: 'item' | 'location'): string | null {
+  return payload.type === expectedType && payload.id && isUuid(payload.id)
+    ? payload.id
+    : payload.type === 'unknown' && isUuid(payload.code)
+      ? payload.code
+      : null;
+}
+
