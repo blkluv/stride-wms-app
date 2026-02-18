@@ -33,7 +33,7 @@ import {
 } from '@/lib/haptics';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
-import { extractIdCandidate, parseScanPayload } from '@/lib/scanPayload';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 
 const scanResultConfig: Record<ScanResult, {
   color: string;
@@ -323,16 +323,18 @@ export default function StocktakeScanView() {
 
   const lookupItem = async (input: string) => {
     const payload = parseScanPayload(input);
+    if (!payload) return null;
 
     let query = supabase
       .from('items')
       .select('id, item_code, description, status, current_location_id');
 
-    const idCandidate = extractIdCandidate(payload, 'item');
-    if (idCandidate) {
-      query = query.eq('id', idCandidate);
-    } else {
+    if (payload.type === 'item' && payload.id) {
+      query = query.eq('id', payload.id);
+    } else if (payload.code) {
       query = query.eq('item_code', payload.code);
+    } else {
+      return null;
     }
 
     const { data, error } = await query.maybeSingle();
