@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `12`
+- Q&A items extracted: `13`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -36,6 +36,7 @@
 | DL-2026-02-17-014 | Add copy/paste ChatGPT prompt help tool to tailor DNS instructions for non-technical users | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-010` | - | - |
 | DL-2026-02-17-015 | Help prompt is generic but instructs ChatGPT to ask provider questions and produce tailored DNS steps | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-011` | - | - |
 | DL-2026-02-17-016 | Simplify tenant email sender setup UI to single-page guided steps with help tips on every field | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-012` | - | - |
+| DL-2026-02-17-017 | Tenant enters full “From email address” (not just domain) for Resend sender setup | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-013` | - | - |
 
 ## Detailed Decision Entries
 
@@ -350,6 +351,25 @@ Email domain verification is a common onboarding blocker for non-technical users
   - Step 4: verify + show status
 - Use consistent help-tip patterns (e.g., `HelpTip` / tooltips) on each input and section.
 
+### DL-2026-02-17-017: Tenant enters full “From email address” (not just domain) for Resend sender setup
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-013`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+When a tenant chooses to send from their own company email, the setup form will collect the full “From email address” (example: `alerts@yourcompany.com`) rather than only the domain.
+
+#### Why
+Non-technical users think in terms of the exact email address they want customers to see. Collecting the full address reduces ambiguity and aligns the setup with the final “From” identity.
+
+#### Implementation impact
+- Tenant UI should ask for the full From email and derive the domain from it for Resend domain verification.
+- Sending logic should use this configured From email only when the associated domain is verified (safe fallback otherwise).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -367,3 +387,4 @@ Email domain verification is a common onboarding blocker for non-technical users
 | DLE-2026-02-17-013 | 2026-02-17 | DL-2026-02-17-014 | planned | - | builder | Add help tool that shows a copy/paste ChatGPT prompt tailored to the tenant’s domain + DNS records (no in-app LLM integration). |
 | DLE-2026-02-17-014 | 2026-02-17 | DL-2026-02-17-015 | planned | - | builder | Write a generic-but-detailed ChatGPT prompt that instructs the AI to ask about registrar/DNS provider and produce provider-specific DNS verification steps in layman terms. |
 | DLE-2026-02-17-015 | 2026-02-17 | DL-2026-02-17-016 | planned | `src/components/settings/preferences/EmailDomainSection.tsx` | builder | Refactor Email Sender Configuration to a single-page guided flow with help tips on every field and layman copy. |
+| DLE-2026-02-17-016 | 2026-02-17 | DL-2026-02-17-017 | completed | - | builder | Confirmed: tenant will enter full From email address; domain will be derived for Resend verification. |
