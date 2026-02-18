@@ -209,3 +209,7 @@ User requirement/clarification (switching back to platform sender):
 User decision (clearing custom setup on toggle off):
 - If the tenant unchecks the toggle (switches back to platform sender), clear the custom-domain setup fields they had entered (rather than keeping them hidden).
 
+### QA-2026-02-17-ADMINOPS-038
+User decision (confirmation prompt on toggle off):
+- When the tenant toggles off “Send emails from my company domain”, show a confirmation prompt explaining that custom-domain setup fields will be cleared.
+

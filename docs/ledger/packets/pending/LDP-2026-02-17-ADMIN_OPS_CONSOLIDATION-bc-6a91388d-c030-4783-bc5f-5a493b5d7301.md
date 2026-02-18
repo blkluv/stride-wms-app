@@ -12,10 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `37`
+- Q&A items extracted: `38`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041, DL-2026-02-17-042`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041, DL-2026-02-17-042, DL-2026-02-17-043`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -63,6 +62,7 @@
 | DL-2026-02-17-040 | Tenant email settings toggle label is “Send emails from my company domain” | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-035` | - | - |
 | DL-2026-02-17-041 | Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036` | - | - |
 | DL-2026-02-17-042 | Toggling back to platform sender clears previously entered custom-domain setup fields | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-037` | - | - |
+| DL-2026-02-17-043 | Confirm before clearing custom-domain setup when toggling off | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-038` | - | - |
 
 ## Detailed Decision Entries
 
@@ -915,7 +915,26 @@ This reduces confusion for non-technical users who may assume the app is “half
 
 #### Implementation impact
 - On toggle-off, reset custom sender inputs/state and clear persisted custom-domain configuration fields that represent an in-progress setup (so a future attempt starts fresh).
-- Consider adding a small confirmation prompt (“This will clear your custom sender setup fields”) if accidental toggles are a concern (follow-up decision).
+- Add a confirmation prompt before clearing (per `DL-2026-02-17-043`).
+
+### DL-2026-02-17-043: Confirm before clearing custom-domain setup when toggling off
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-038`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+When the tenant toggles off “Send emails from my company domain” (switching back to platform sender), show a confirmation prompt warning that their custom-domain setup fields will be cleared.
+
+#### Why
+Prevents accidental data loss and reduces confusion for non-technical users.
+
+#### Implementation impact
+- Use a confirmation dialog with clear copy (example: “Switching back to platform sender will clear your custom domain setup fields. Continue?”).
+- Only clear the custom-domain fields after the tenant confirms.
 
 ## Implementation Log Rows
 
@@ -960,3 +979,4 @@ This reduces confusion for non-technical users who may assume the app is “half
 | DLE-2026-02-17-039 | 2026-02-17 | DL-2026-02-17-040 | planned | - | builder | Implement tenant toggle label copy: “Send emails from my company domain”. |
 | DLE-2026-02-17-040 | 2026-02-17 | DL-2026-02-17-041 | planned | - | builder | Ensure toggling back to platform sender auto-applies platform sending and Reply-To routes to the tenant’s saved Reply-To/inbound address. |
 | DLE-2026-02-17-041 | 2026-02-17 | DL-2026-02-17-042 | planned | - | builder | When tenant toggles off custom sender, clear/reset custom-domain setup fields (and persisted in-progress config) to avoid confusion. |
+| DLE-2026-02-17-042 | 2026-02-17 | DL-2026-02-17-043 | planned | - | builder | Add confirmation prompt before clearing custom sender setup when tenant toggles off custom-domain mode. |
