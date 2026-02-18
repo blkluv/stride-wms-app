@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
@@ -31,6 +31,14 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 function SortableColumnRow({
   columnKey,
@@ -94,16 +102,24 @@ function SortableColumnRow({
 
 export function ItemColumnsPopover({
   settings,
+  baseSettings,
   viewId,
   disabled,
   onSave,
+  compact,
 }: {
   settings: ItemDisplaySettingsV1;
+  /** Optional baseline (tenant) settings for "Reset" behavior */
+  baseSettings?: ItemDisplaySettingsV1;
   viewId: string;
   disabled?: boolean;
   onSave: (next: ItemDisplaySettingsV1) => Promise<boolean>;
+  /** Use a smaller, header-friendly trigger button */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const openSnapshotRef = useRef<{ order: ItemColumnKey[]; hidden: ItemColumnKey[] } | null>(null);
 
   const view = useMemo(() => {
     return getViewById(settings, viewId) || settings.views[0];
@@ -117,6 +133,7 @@ export function ItemColumnsPopover({
     if (!open) return;
     setDraftOrder(view.order);
     setDraftHidden(view.hidden);
+    openSnapshotRef.current = { order: view.order, hidden: view.hidden };
   }, [open, view.id]);
 
   const sensors = useSensors(
@@ -144,6 +161,13 @@ export function ItemColumnsPopover({
   };
 
   const handleResetToDefault = () => {
+    const baseView = baseSettings ? (getViewById(baseSettings, view.id) || baseSettings.views[0]) : null;
+    if (baseView) {
+      setDraftOrder(baseView.order);
+      setDraftHidden(baseView.hidden);
+      return;
+    }
+
     const builtinOrder = BUILTIN_ITEM_COLUMNS.map((c) => c.key);
     const customCols = settings.custom_fields
       .filter((f) => f.enabled && f.show_in_lists)
@@ -159,27 +183,55 @@ export function ItemColumnsPopover({
     setDraftHidden(nextHidden);
   };
 
-  const handleApply = async () => {
-    const next: ItemDisplaySettingsV1 = {
-      ...settings,
-      views: settings.views.map((v) =>
-        v.id === view.id ? { ...v, order: draftOrder, hidden: draftHidden } : v
-      ),
-    };
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (saving) return;
 
-    const ok = await onSave(next);
-    if (ok) setOpen(false);
+    // Opening: just open
+    if (nextOpen) {
+      setOpen(true);
+      return;
+    }
+
+    // Closing: auto-save on exit (blur/click-away/esc)
+    void (async () => {
+      const snap = openSnapshotRef.current;
+      const dirty =
+        !!snap &&
+        (!arraysEqual(draftOrder, snap.order) || !arraysEqual(draftHidden, snap.hidden));
+
+      if (!dirty) {
+        setOpen(false);
+        return;
+      }
+
+      setSaving(true);
+      try {
+        const next: ItemDisplaySettingsV1 = {
+          ...settings,
+          views: settings.views.map((v) =>
+            v.id === view.id ? { ...v, order: draftOrder, hidden: draftHidden } : v
+          ),
+        };
+
+        const ok = await onSave(next);
+        if (ok) {
+          setOpen(false);
+        }
+      } finally {
+        setSaving(false);
+      }
+    })();
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="outline"
-          size="icon"
-          className="h-10 w-10"
-          disabled={disabled}
+          variant={compact ? "ghost" : "outline"}
+          size={compact ? "sm" : "icon"}
+          className={compact ? "h-7 w-7 p-0" : "h-10 w-10"}
+          disabled={disabled || saving}
           aria-label="Edit visible columns"
           title="Columns"
         >
@@ -194,7 +246,7 @@ export function ItemColumnsPopover({
               View: {view.name}
             </div>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={handleResetToDefault}>
+          <Button type="button" variant="ghost" size="sm" onClick={handleResetToDefault} disabled={saving}>
             <MaterialIcon name="restart_alt" size="sm" className="mr-1" />
             Reset
           </Button>
@@ -223,13 +275,12 @@ export function ItemColumnsPopover({
 
         <Separator className="my-2" />
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={handleApply}>
-            <MaterialIcon name="save" size="sm" className="mr-1" />
-            Apply
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-muted-foreground">
+            {saving ? 'Saving…' : 'Changes save automatically when you close.'}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => handleOpenChange(false)} disabled={saving}>
+            Done
           </Button>
         </div>
       </PopoverContent>

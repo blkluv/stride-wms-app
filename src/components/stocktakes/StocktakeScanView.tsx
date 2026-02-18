@@ -24,7 +24,7 @@ import {
 import { QRScanner } from '@/components/scan/QRScanner';
 import { useStocktakeScan, ScanResult } from '@/hooks/useStocktakes';
 import { useLocations } from '@/hooks/useLocations';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { supabase } from '@/integrations/supabase/client';
 import {
   hapticLight,
@@ -169,11 +169,12 @@ export default function StocktakeScanView() {
   // Item list view (tenant-managed)
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -765,6 +766,7 @@ export default function StocktakeScanView() {
 
                     <ItemColumnsPopover
                       settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
                       viewId={activeItemViewId || defaultItemViewId || 'default'}
                       disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                       onSave={saveItemDisplaySettings}

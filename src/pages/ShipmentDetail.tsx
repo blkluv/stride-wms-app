@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useReceivingSession } from '@/hooks/useReceivingSession';
 import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type ItemColumnKey,
   getColumnLabel,
@@ -47,7 +47,6 @@ import { ShipmentItemRow } from '@/components/shipments/ShipmentItemRow';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
-import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { SignatureDialog } from '@/components/shipments/SignatureDialog';
 import { generateReleasePdf, ReleasePdfData, ReleasePdfItem } from '@/lib/releasePdf';
@@ -186,14 +185,15 @@ export default function ShipmentDetail() {
   const { toast } = useToast();
   const { hasPermission, hasRole } = usePermissions();
 
-  // Tenant-managed item list views (systemwide)
+  // Tenant-managed defaults + per-user overrides for item list views
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -3007,13 +3007,6 @@ export default function ShipmentDetail() {
                     ))}
                   </SelectContent>
                 </Select>
-
-                <ItemColumnsPopover
-                  settings={itemDisplaySettings}
-                  viewId={activeItemViewId || defaultItemViewId || 'default'}
-                  disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
-                  onSave={saveItemDisplaySettings}
-                />
               </div>
             {/* Create Task from selected items */}
             {selectedItemIds.size > 0 && (
@@ -3083,7 +3076,18 @@ export default function ShipmentDetail() {
                 <TableHead className="w-24">Class</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-20"></TableHead>
-                <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
+                <TableHead className="w-8">
+                  <div className="flex justify-end">
+                    <ItemColumnsPopover
+                      settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
+                      viewId={activeItemViewId || defaultItemViewId || 'default'}
+                      disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                      onSave={saveItemDisplaySettings}
+                      compact
+                    />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

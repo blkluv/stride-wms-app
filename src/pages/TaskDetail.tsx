@@ -28,7 +28,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -60,7 +60,6 @@ import { DocumentUploadButton } from '@/components/scanner/DocumentUploadButton'
 import { DocumentList } from '@/components/scanner/DocumentList';
 import { TaskHistoryTab } from '@/components/tasks/TaskHistoryTab';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
-import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
 import { TaskCompletionBlockedDialog } from '@/components/tasks/TaskCompletionBlockedDialog';
 import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
@@ -145,11 +144,12 @@ export default function TaskDetailPage() {
   // Tenant-managed item list views (systemwide)
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -1221,13 +1221,6 @@ export default function TaskDetailPage() {
                           ))}
                         </SelectContent>
                       </Select>
-
-                      <ItemColumnsPopover
-                        settings={itemDisplaySettings}
-                        viewId={activeItemViewId || defaultItemViewId || 'default'}
-                        disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
-                        onSave={saveItemDisplaySettings}
-                      />
                     </div>
                   </div>
                 </CardHeader>
@@ -1244,7 +1237,18 @@ export default function TaskDetailPage() {
                             <TableHead className="text-center">Fail</TableHead>
                           </>
                         )}
-                        <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
+                        <TableHead className="w-8">
+                          <div className="flex justify-end">
+                            <ItemColumnsPopover
+                              settings={itemDisplaySettings}
+                              baseSettings={tenantItemDisplaySettings}
+                              viewId={activeItemViewId || defaultItemViewId || 'default'}
+                              disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                              onSave={saveItemDisplaySettings}
+                              compact
+                            />
+                          </div>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
