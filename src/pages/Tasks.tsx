@@ -446,8 +446,8 @@ export default function Tasks() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
+          <div className="relative col-span-2 sm:flex-1 sm:max-w-sm">
             <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search tasks..."
@@ -458,7 +458,7 @@ export default function Tasks() {
           </div>
 
           <Select value={filters.status} onValueChange={(value) => setFilters(f => ({ ...f, status: value }))}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full sm:w-[150px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -471,7 +471,7 @@ export default function Tasks() {
           </Select>
 
           <Select value={filters.taskType} onValueChange={(value) => setFilters(f => ({ ...f, taskType: value }))}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full sm:w-[150px]">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -483,7 +483,7 @@ export default function Tasks() {
           </Select>
 
           <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Warehouse" />
             </SelectTrigger>
             <SelectContent>
@@ -494,7 +494,7 @@ export default function Tasks() {
             </SelectContent>
           </Select>
 
-          <Button variant="ghost" size="icon" onClick={refetch} disabled={isRefetching}>
+          <Button variant="ghost" size="icon" className="col-span-2 sm:col-span-auto justify-self-start" onClick={refetch} disabled={isRefetching}>
             <span className={isRefetching ? 'animate-spin inline-block' : ''}>🔄</span>
           </Button>
         </div>
