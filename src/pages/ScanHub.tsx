@@ -100,6 +100,11 @@ export default function ScanHub() {
   // Batch move state
   const [batchItems, setBatchItems] = useState<ScannedItem[]>([]);
 
+  // Quarantine warning state
+  const [quarantineWarningOpen, setQuarantineWarningOpen] = useState(false);
+  const [quarantineItem, setQuarantineItem] = useState<ScannedItem | null>(null);
+  const [quarantinePendingAction, setQuarantinePendingAction] = useState<(() => void) | null>(null);
+
   /**
    * Scan pipeline refs
    *
@@ -154,6 +159,11 @@ export default function ScanHub() {
     });
   };
 
+  const setQuarantineWarningOpenSafe = (next: boolean) => {
+    quarantineWarningOpenRef.current = next;
+    setQuarantineWarningOpen(next);
+  };
+
   // Service event scan state
   const [serviceItems, setServiceItems] = useState<ServiceScannedItem[]>([]);
   const [selectedServices, setSelectedServices] = useState<ServiceEventForScan[]>([]);
@@ -166,11 +176,6 @@ export default function ScanHub() {
   // SOP Validation state
   const [sopValidationOpen, setSopValidationOpen] = useState(false);
   const [sopBlockers, setSopBlockers] = useState<SOPBlocker[]>([]);
-
-  // Quarantine warning state
-  const [quarantineWarningOpen, setQuarantineWarningOpen] = useState(false);
-  const [quarantineItem, setQuarantineItem] = useState<ScannedItem | null>(null);
-  const [quarantinePendingAction, setQuarantinePendingAction] = useState<(() => void) | null>(null);
 
   // Location suggestions state
   const [suggestionsWarehouseId, setSuggestionsWarehouseId] = useState<string | undefined>();
@@ -711,14 +716,14 @@ export default function ScanHub() {
       quarantinePendingAction();
     }
 
-    setQuarantineWarningOpen(false);
+    setQuarantineWarningOpenSafe(false);
     setQuarantineItem(null);
     setQuarantinePendingAction(null);
   };
 
   // Dismiss quarantine warning (go back)
   const handleQuarantineDismiss = () => {
-    setQuarantineWarningOpen(false);
+    setQuarantineWarningOpenSafe(false);
     setQuarantineItem(null);
     setQuarantinePendingAction(null);
   };
@@ -791,7 +796,7 @@ export default function ScanHub() {
               void playScanAudioFeedback('error');
               setQuarantineItem(item);
               setQuarantinePendingAction(() => () => navigate(`/inventory/${item.id}`));
-              setQuarantineWarningOpen(true);
+              setQuarantineWarningOpenSafe(true);
               scanQueueRef.current = [];
               return;
             }
@@ -863,7 +868,7 @@ export default function ScanHub() {
                     description: 'Now scan the destination bay.',
                   });
                 });
-                setQuarantineWarningOpen(true);
+                setQuarantineWarningOpenSafe(true);
                 scanQueueRef.current = [];
                 return;
               }
