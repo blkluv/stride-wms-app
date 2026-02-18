@@ -1,0 +1,632 @@
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { SearchableSelect, type SelectOption } from '@/components/ui/searchable-select';
+import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
+import type { ItemLabelData } from '@/lib/labelGenerator';
+import { queueSplitCompletedAlert } from '@/lib/alertQueue';
+
+type OriginEntityType = 'shipment' | 'task';
+
+type SplitWorkflowMeta = {
+  origin_entity_type?: OriginEntityType;
+  origin_entity_id?: string;
+  origin_entity_number?: string | null;
+  parent_item_id?: string;
+  parent_item_code?: string;
+  grouped_qty?: number;
+  keep_qty?: number;
+  leftover_qty?: number;
+  requested_by_email?: string | null;
+  requested_by_name?: string | null;
+  request_notes?: string | null;
+  child_item_codes?: string[] | null;
+};
+
+interface SplitTaskPanelProps {
+  taskId: string;
+  task: {
+    id: string;
+    tenant_id: string;
+    task_type: string;
+    warehouse_id: string | null;
+    metadata: any | null;
+    warehouse?: { id: string; name: string } | null;
+    account?: { id: string; account_name: string } | null;
+  };
+  taskItems: Array<{
+    item_id: string;
+    item?: {
+      id: string;
+      item_code: string;
+      quantity?: number | null;
+      description?: string | null;
+      vendor?: string | null;
+      sidemark?: string | null;
+      room?: string | null;
+      location?: { code: string } | null;
+      account?: { account_name: string } | null;
+    } | null;
+  }>;
+  onRefetch?: () => void;
+}
+
+function normalizeScan(v: string): string {
+  return (v || '').trim().toLowerCase();
+}
+
+export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTaskPanelProps) {
+  const { profile } = useAuth();
+  const { toast } = useToast();
+
+  const splitMeta: SplitWorkflowMeta | null = useMemo(() => {
+    const meta = task.metadata && typeof task.metadata === 'object' ? task.metadata : null;
+    const sw = meta && typeof meta.split_workflow === 'object' ? meta.split_workflow : null;
+    return sw as SplitWorkflowMeta | null;
+  }, [task.metadata]);
+
+  const parentTaskItem = useMemo(() => {
+    const parentId = splitMeta?.parent_item_id;
+    if (parentId) {
+      return taskItems.find((ti) => ti.item_id === parentId) || taskItems[0] || null;
+    }
+    return taskItems[0] || null;
+  }, [splitMeta?.parent_item_id, taskItems]);
+
+  const parentItemCode = parentTaskItem?.item?.item_code || splitMeta?.parent_item_code || '';
+  const parentItemId = parentTaskItem?.item_id || splitMeta?.parent_item_id || '';
+  const groupedQty =
+    (typeof parentTaskItem?.item?.quantity === 'number' ? parentTaskItem?.item?.quantity : null) ??
+    (typeof splitMeta?.grouped_qty === 'number' ? splitMeta?.grouped_qty : null) ??
+    null;
+  const keepQty = typeof splitMeta?.keep_qty === 'number' ? splitMeta.keep_qty : null;
+  const leftoverQty = typeof splitMeta?.leftover_qty === 'number' ? splitMeta.leftover_qty : null;
+
+  // Parent scan gate
+  const [parentScanValue, setParentScanValue] = useState('');
+  const [parentScanned, setParentScanned] = useState(false);
+
+  // Target location selection (defaults to warehouse default receiving location)
+  const [locationsLoading, setLocationsLoading] = useState(false);
+  const [locationOptions, setLocationOptions] = useState<SelectOption[]>([]);
+  const [targetLocationId, setTargetLocationId] = useState<string>('');
+
+  const targetLocationCode = useMemo(() => {
+    return locationOptions.find((o) => o.value === targetLocationId)?.label || '';
+  }, [locationOptions, targetLocationId]);
+
+  // Preview/apply state
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewCodes, setPreviewCodes] = useState<string[]>([]);
+  const [expectedStartSuffix, setExpectedStartSuffix] = useState<number | null>(null);
+
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [childItemIds, setChildItemIds] = useState<string[]>([]);
+  const [childItemCodes, setChildItemCodes] = useState<string[]>([]);
+
+  // Print dialog
+  const [printOpen, setPrintOpen] = useState(false);
+  const [labelItems, setLabelItems] = useState<ItemLabelData[]>([]);
+
+  // Label application scan gate (must scan all child codes)
+  const [childScanValue, setChildScanValue] = useState('');
+  const [scannedChildCodes, setScannedChildCodes] = useState<Set<string>>(new Set());
+
+  const canPreview = !!profile?.tenant_id && !!parentItemId && typeof leftoverQty === 'number' && leftoverQty > 0;
+  const canApply = canPreview && parentScanned && !!targetLocationId && previewCodes.length === leftoverQty;
+  const allChildrenScanned = childItemCodes.length > 0 && scannedChildCodes.size === childItemCodes.length;
+
+  // Load locations + default receiving location
+  useEffect(() => {
+    const warehouseId = task.warehouse_id;
+    if (!profile?.tenant_id || !warehouseId) return;
+
+    const run = async () => {
+      setLocationsLoading(true);
+      try {
+        const [{ data: whRow, error: whErr }, { data: locRows, error: locErr }] = await Promise.all([
+          (supabase.from('warehouses') as any)
+            .select('id, default_receiving_location_id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('id', warehouseId)
+            .maybeSingle(),
+          (supabase.from('locations') as any)
+            .select('id, code, name')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('warehouse_id', warehouseId)
+            .is('deleted_at', null)
+            .eq('is_active', true)
+            .order('code')
+            .limit(500),
+        ]);
+
+        if (whErr) throw whErr;
+        if (locErr) throw locErr;
+
+        const opts: SelectOption[] = (locRows || []).map((l: any) => ({
+          value: l.id,
+          label: l.code,
+          subtitle: l.name || undefined,
+        }));
+        setLocationOptions(opts);
+
+        const defaultId = whRow?.default_receiving_location_id as string | null | undefined;
+        if (defaultId && opts.some((o) => o.value === defaultId)) {
+          setTargetLocationId(defaultId);
+        } else if (opts.length > 0 && !targetLocationId) {
+          setTargetLocationId(opts[0].value);
+        }
+      } catch (err: any) {
+        console.error('[SplitTaskPanel] load locations error:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Could not load locations',
+          description: err?.message || 'Please try again.',
+        });
+      } finally {
+        setLocationsLoading(false);
+      }
+    };
+
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.tenant_id, task.warehouse_id]);
+
+  const handleParentScan = () => {
+    const scanned = normalizeScan(parentScanValue);
+    const expected = normalizeScan(parentItemCode);
+    if (!expected) {
+      toast({ variant: 'destructive', title: 'Missing parent item code', description: 'Cannot validate scan.' });
+      return;
+    }
+
+    if (scanned !== expected) {
+      toast({
+        variant: 'destructive',
+        title: 'Wrong item',
+        description: `Scanned "${parentScanValue.trim()}" but expected "${parentItemCode}".`,
+      });
+      setParentScanValue('');
+      return;
+    }
+
+    setParentScanned(true);
+    setParentScanValue('');
+    toast({ title: 'Parent item confirmed', description: parentItemCode });
+  };
+
+  const handlePreview = async () => {
+    if (!canPreview) return;
+    setPreviewLoading(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)('rpc_preview_grouped_item_split_off_leftover', {
+        p_parent_item_id: parentItemId,
+        p_leftover_qty: leftoverQty,
+      });
+      if (error) throw error;
+
+      const codes = Array.isArray(data?.child_item_codes) ? data.child_item_codes.map(String) : [];
+      const start = typeof data?.start_suffix === 'number' ? data.start_suffix : null;
+      setPreviewCodes(codes);
+      setExpectedStartSuffix(start);
+    } catch (err: any) {
+      console.error('[SplitTaskPanel] preview error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Preview failed',
+        description: err?.message || 'Could not preview child codes.',
+      });
+      setPreviewCodes([]);
+      setExpectedStartSuffix(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleApplySplit = async () => {
+    if (!canApply || typeof leftoverQty !== 'number') return;
+    setApplyLoading(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)('rpc_apply_grouped_item_split_off_leftover', {
+        p_parent_item_id: parentItemId,
+        p_leftover_qty: leftoverQty,
+        p_target_location_id: targetLocationId || null,
+        p_expected_start_suffix: expectedStartSuffix,
+        p_split_task_id: taskId,
+      });
+      if (error) throw error;
+
+      const ids = Array.isArray(data?.child_item_ids) ? data.child_item_ids.map(String) : [];
+      const codes = Array.isArray(data?.child_item_codes) ? data.child_item_codes.map(String) : [];
+      setChildItemIds(ids);
+      setChildItemCodes(codes);
+      setScannedChildCodes(new Set());
+
+      // Build label data from parent item + target location
+      const parent = parentTaskItem?.item;
+      const accountName =
+        task.account?.account_name ||
+        parent?.account?.account_name ||
+        'Account';
+
+      const labelData: ItemLabelData[] = codes.map((code, idx) => ({
+        id: ids[idx] || `${code}-${idx}`,
+        itemCode: code,
+        description: parent?.description || '',
+        vendor: parent?.vendor || '',
+        account: accountName,
+        sidemark: parent?.sidemark || undefined,
+        room: parent?.room || undefined,
+        warehouseName: task.warehouse?.name || undefined,
+        locationCode: targetLocationCode || parent?.location?.code || undefined,
+      }));
+      setLabelItems(labelData);
+
+      // Open print dialog immediately (user gesture required for printing in browsers)
+      setPrintOpen(true);
+
+      toast({
+        title: 'Split created',
+        description: `${codes.length} new label(s) generated.`,
+      });
+
+      onRefetch?.();
+    } catch (err: any) {
+      console.error('[SplitTaskPanel] apply error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Split failed',
+        description: err?.message || 'Could not create split items.',
+      });
+    } finally {
+      setApplyLoading(false);
+    }
+  };
+
+  const handleChildScan = () => {
+    const scanned = normalizeScan(childScanValue);
+    if (!scanned) return;
+
+    const expectedSet = new Set(childItemCodes.map(normalizeScan));
+    if (!expectedSet.has(scanned)) {
+      toast({
+        variant: 'destructive',
+        title: 'Not a new label',
+        description: 'This code is not part of this split task.',
+      });
+      setChildScanValue('');
+      return;
+    }
+
+    setScannedChildCodes((prev) => {
+      const next = new Set(prev);
+      next.add(scanned);
+      return next;
+    });
+    setChildScanValue('');
+  };
+
+  const completeSplitTask = async () => {
+    if (!profile?.tenant_id || !profile?.id) return;
+    if (!allChildrenScanned) {
+      toast({
+        variant: 'destructive',
+        title: 'Scan required',
+        description: 'Scan each newly generated child label before completing this Split task.',
+      });
+      return;
+    }
+
+    const originType = splitMeta?.origin_entity_type;
+    const originId = splitMeta?.origin_entity_id;
+
+    try {
+      // 1) Unblock originating job (shipment/task) by removing this task id from metadata
+      if (originType && originId) {
+        const table = originType === 'shipment' ? 'shipments' : 'tasks';
+        const { data: originRow, error: originErr } = await (supabase.from(table) as any)
+          .select('metadata')
+          .eq('id', originId)
+          .maybeSingle();
+        if (originErr) throw originErr;
+
+        const meta = originRow?.metadata && typeof originRow.metadata === 'object' ? originRow.metadata : {};
+        const ids: string[] = Array.isArray((meta as any).split_required_task_ids)
+          ? (meta as any).split_required_task_ids.map(String)
+          : [];
+        const nextIds = ids.filter((x) => x !== taskId);
+
+        const nextMeta: any = { ...(meta as any) };
+        if (nextIds.length === 0) {
+          delete nextMeta.split_required;
+          delete nextMeta.split_required_task_ids;
+          delete nextMeta.split_required_items;
+          delete nextMeta.split_required_created_at;
+        } else {
+          nextMeta.split_required = true;
+          nextMeta.split_required_task_ids = nextIds;
+        }
+
+        const { error: unblockErr } = await (supabase.from(table) as any)
+          .update({ metadata: nextMeta })
+          .eq('id', originId);
+        if (unblockErr) throw unblockErr;
+      }
+
+      // 2) Update task metadata with child codes for downstream notifications
+      const taskMeta = task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
+      const sw = taskMeta.split_workflow && typeof taskMeta.split_workflow === 'object' ? taskMeta.split_workflow : {};
+      const nextTaskMeta = {
+        ...taskMeta,
+        split_workflow: {
+          ...sw,
+          child_item_codes: childItemCodes,
+        },
+      };
+      await (supabase.from('tasks') as any)
+        .update({ metadata: nextTaskMeta })
+        .eq('id', taskId);
+
+      // 3) Mark Split task completed (no billing events for split tasks)
+      const nowIso = new Date().toISOString();
+      const { error: completeErr } = await (supabase.from('tasks') as any)
+        .update({
+          status: 'completed',
+          completed_at: nowIso,
+          completed_by: profile.id,
+          ended_at: nowIso,
+          ended_by: profile.id,
+        })
+        .eq('id', taskId);
+      if (completeErr) throw completeErr;
+
+      // 4) Notify requester (email only; in-app client notifications not supported)
+      const requesterEmail = (splitMeta?.requested_by_email || '').trim();
+      if (requesterEmail) {
+        void queueSplitCompletedAlert(profile.tenant_id, taskId, parentItemCode || 'Item', requesterEmail);
+      }
+
+      toast({ title: 'Split task completed' });
+      onRefetch?.();
+    } catch (err: any) {
+      console.error('[SplitTaskPanel] complete error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Could not complete split task',
+        description: err?.message || 'Please try again.',
+      });
+    }
+  };
+
+  if (!splitMeta || !parentTaskItem) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MaterialIcon name="call_split" size="sm" />
+            Split Task
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          This task is missing split workflow metadata.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MaterialIcon name="call_split" size="sm" />
+            Split Workflow
+            <Badge variant="outline" className="ml-2">
+              {leftoverQty || 0} label{(leftoverQty || 0) === 1 ? '' : 's'}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Parent item</Label>
+              <div className="font-medium">{parentItemCode || parentItemId}</div>
+              <div className="text-sm text-muted-foreground">
+                Current location: {parentTaskItem.item?.location?.code || '—'}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Quantities</Label>
+              <div className="text-sm">
+                Grouped: <span className="font-medium">{groupedQty ?? '—'}</span>
+                {keepQty != null && (
+                  <>
+                    {' '}· Keep: <span className="font-medium">{keepQty}</span>
+                  </>
+                )}
+                {leftoverQty != null && (
+                  <>
+                    {' '}· Split: <span className="font-medium">{leftoverQty}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Step 1: Scan parent */}
+          <div className="space-y-2">
+            <Label>Step 1 — Scan parent item code</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder={`Scan ${parentItemCode}`}
+                value={parentScanValue}
+                onChange={(e) => setParentScanValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleParentScan();
+                  }
+                }}
+                disabled={parentScanned}
+              />
+              <Button onClick={handleParentScan} disabled={parentScanned || !parentScanValue.trim()}>
+                {parentScanned ? (
+                  <>
+                    <MaterialIcon name="check" size="sm" className="mr-2" />
+                    Confirmed
+                  </>
+                ) : (
+                  'Confirm'
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Step 2: Choose target location for leftovers */}
+          <div className="space-y-2">
+            <Label>Step 2 — Target location for leftover child items</Label>
+            <SearchableSelect
+              value={targetLocationId}
+              onChange={setTargetLocationId}
+              options={locationOptions}
+              placeholder={locationsLoading ? 'Loading locations…' : 'Select a location'}
+              disabled={locationsLoading || locationOptions.length === 0}
+            />
+            <p className="text-xs text-muted-foreground">
+              Defaults to the warehouse’s default receiving location. Leftover child items are <span className="font-medium">not</span> automatically placed into any container.
+            </p>
+          </div>
+
+          {/* Step 3: Preview codes */}
+          <div className="space-y-2">
+            <Label>Step 3 — Preview new child codes</Label>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handlePreview} disabled={!canPreview || previewLoading}>
+                {previewLoading ? (
+                  <>
+                    <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                    Previewing…
+                  </>
+                ) : (
+                  <>
+                    <MaterialIcon name="preview" size="sm" className="mr-2" />
+                    Preview codes
+                  </>
+                )}
+              </Button>
+              <div className="text-xs text-muted-foreground flex items-center">
+                {previewCodes.length > 0 ? `${previewCodes.length} code(s) ready` : '—'}
+              </div>
+            </div>
+            {previewCodes.length > 0 && (
+              <div className="rounded-md border bg-muted/30 p-3 text-sm font-mono whitespace-pre-wrap">
+                {previewCodes.join('\n')}
+              </div>
+            )}
+          </div>
+
+          {/* Step 4: Apply split */}
+          <div className="space-y-2">
+            <Label>Step 4 — Create split + print labels</Label>
+            <Button onClick={handleApplySplit} disabled={!canApply || applyLoading}>
+              {applyLoading ? (
+                <>
+                  <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                  Creating…
+                </>
+              ) : (
+                <>
+                  <MaterialIcon name="print" size="sm" className="mr-2" />
+                  Split &amp; Print Labels
+                </>
+              )}
+            </Button>
+            {childItemCodes.length > 0 && (
+              <div className="text-sm text-muted-foreground">
+                Created {childItemCodes.length} child item(s): <span className="font-mono">{childItemCodes[0]}</span>
+                {childItemCodes.length > 1 ? ` … (+${childItemCodes.length - 1})` : ''}
+              </div>
+            )}
+            {childItemCodes.length > 0 && (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setPrintOpen(true)}>
+                  Reprint labels
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Step 5: Scan child labels to confirm applied */}
+          {childItemCodes.length > 0 && (
+            <div className="space-y-2">
+              <Label>Step 5 — Scan each new child label after it’s attached</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Scan child label code…"
+                  value={childScanValue}
+                  onChange={(e) => setChildScanValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleChildScan();
+                    }
+                  }}
+                />
+                <Button onClick={handleChildScan} disabled={!childScanValue.trim()}>
+                  Add scan
+                </Button>
+              </div>
+              <div className="rounded-md border p-3 space-y-1">
+                {childItemCodes.map((c) => {
+                  const done = scannedChildCodes.has(normalizeScan(c));
+                  return (
+                    <div key={c} className="flex items-center justify-between text-sm">
+                      <span className="font-mono">{c}</span>
+                      {done ? (
+                        <span className="text-green-600 flex items-center gap-1">
+                          <MaterialIcon name="check" size="sm" />
+                          Scanned
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Pending</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <Button onClick={completeSplitTask} disabled={!allChildrenScanned}>
+                <MaterialIcon name="check_circle" size="sm" className="mr-2" />
+                Complete Split Task
+              </Button>
+              {!allChildrenScanned && (
+                <p className="text-xs text-muted-foreground">
+                  You must scan exactly {childItemCodes.length} new label(s) to complete this task.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <PrintLabelsDialog
+        open={printOpen}
+        onOpenChange={setPrintOpen}
+        items={labelItems}
+        title="Print Split Labels"
+        description={
+          labelItems.length > 0
+            ? `Print ${labelItems.length} new child label(s) for ${parentItemCode}`
+            : 'Print labels'
+        }
+      />
+    </>
+  );
+}
+
