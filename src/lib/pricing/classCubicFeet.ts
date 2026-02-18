@@ -17,7 +17,7 @@ function asNullableNumber(n: unknown): number | null {
  * Returns a single cubic-feet size value when the class represents a single size.
  *
  * - If both min/max exist and are equal → that value
- * - If only one side exists → that value
+ * - If only one side exists → null (legacy one-sided bounds aren't a single size)
  * - If both exist and differ → null (legacy "range" is ambiguous for a single size)
  */
 export function getClassCubicFeetSingleValue(cls: PartialCubicFeet): number | null {
@@ -28,7 +28,7 @@ export function getClassCubicFeetSingleValue(cls: PartialCubicFeet): number | nu
   if (min !== null && max !== null) {
     return min === max ? min : null;
   }
-  return min ?? max;
+  return null;
 }
 
 /**
