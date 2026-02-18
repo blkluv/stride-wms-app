@@ -236,26 +236,15 @@ export function useRepairQuotes(itemId: string | undefined) {
 
       if (error) throw error;
 
-      if (profile?.tenant_id && itemId) {
-        void logItemActivity({
-          tenantId: profile.tenant_id,
-          itemId,
-          actorUserId: profile.id,
-          eventType: 'repair_quote_approved',
-          eventLabel: 'Repair quote approved',
-          details: { repair_quote_id: quoteId },
-        });
-      }
-
       // Create alert for repair quote approval
       const quote = quotes.find(q => q.id === quoteId);
       if (quote) {
         if (profile?.tenant_id && itemId) {
-          logItemActivity({
+          void logItemActivity({
             tenantId: profile.tenant_id,
             itemId,
             actorUserId: profile.id,
-            eventType: 'item_repair_quote_approved',
+            eventType: 'repair_quote_approved',
             eventLabel: `Repair quote approved ($${(quote.flat_rate ?? 0).toFixed(2)})`,
             details: {
               repair_quote_id: quoteId,

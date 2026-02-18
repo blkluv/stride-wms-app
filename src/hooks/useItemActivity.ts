@@ -27,49 +27,6 @@ export interface ItemActivity {
   created_at: string;
 }
 
-export type ItemActivityCategory =
-  | 'movements'
-  | 'tasks'
-  | 'shipments'
-  | 'notes'
-  | 'billing'
-  | 'photos_docs'
-  | 'status_account'
-  | 'repair'
-  | 'other';
-
-export function categorizeItemEvent(eventType: string): ItemActivityCategory {
-  const t = String(eventType || '');
-
-  if (t.startsWith('item_moved') || t.startsWith('item_location_changed') || t.includes('location')) return 'movements';
-  if (t.startsWith('task_')) return 'tasks';
-  if (t.startsWith('item_shipment_') || t.includes('received_in_shipment') || t.includes('released_in_shipment')) return 'shipments';
-  if (t.startsWith('item_note_')) return 'notes';
-  if (t.startsWith('item_photo_') || t.includes('photo') || t.includes('document_') || t.includes('document')) return 'photos_docs';
-  if (t.startsWith('repair_quote_') || t.startsWith('item_repair_')) return 'repair';
-
-  // Billing + flags/indicators live together in this codebase
-  if (
-    t.startsWith('billing_') ||
-    t.includes('scan_charge') ||
-    t.includes('billing_charge') ||
-    t.startsWith('item_flag_') ||
-    t.startsWith('indicator_') ||
-    t.startsWith('flag_')
-  ) return 'billing';
-
-  if (
-    t.startsWith('item_status_') ||
-    t.startsWith('item_account_') ||
-    t.startsWith('item_class_') ||
-    t.startsWith('item_custom_field_') ||
-    t.startsWith('item_field_') ||
-    t.startsWith('inventory_count_')
-  ) return 'status_account';
-
-  return 'other';
-}
-
 type ActivityRow = {
   id: string;
   actor_user_id?: string | null;
@@ -126,6 +83,13 @@ function activitySemanticKey(row: Pick<ItemActivity, 'event_type' | 'details'>):
     if (typeof repairQuoteId === 'string' && repairQuoteId.length > 0) return `${eventType}|repair_quote:${repairQuoteId}`;
   }
 
+  return null;
+}
+
+function normalizeDocumentEventType(eventType: string): 'document_uploaded' | 'document_removed' | null {
+  const t = String(eventType || '');
+  if (t === 'document_uploaded' || t === 'document_added' || t === 'item_document_added') return 'document_uploaded';
+  if (t === 'document_removed' || t === 'item_document_removed') return 'document_removed';
   return null;
 }
 
@@ -438,7 +402,7 @@ export function useItemActivity(
       // This avoids duplicates when we have newer, actor-attributed activity.
       const baseShipmentEventKeys = new Set<string>();
       const baseRepairEventKeys = new Set<string>();
-      const baseDocumentIds = new Set<string>();
+      const baseDocumentEventKeys = new Set<string>();
 
       for (const a of base) {
         const details = (a.details || {}) as any;
@@ -458,7 +422,10 @@ export function useItemActivity(
 
         const docId = details?.document_id;
         if (typeof docId === 'string' && docId) {
-          baseDocumentIds.add(docId);
+          const normalizedDocType = normalizeDocumentEventType(a.event_type);
+          if (normalizedDocType) {
+            baseDocumentEventKeys.add(`${docId}|${normalizedDocType}`);
+          }
         }
       }
 
@@ -486,7 +453,9 @@ export function useItemActivity(
       const docs = docsRaw.filter((r) => {
         const docId = (r.details as any)?.document_id;
         if (typeof docId !== 'string' || !docId) return true;
-        return !baseDocumentIds.has(docId);
+        const normalizedDocType = normalizeDocumentEventType(r.event_type);
+        if (!normalizedDocType) return true;
+        return !baseDocumentEventKeys.has(`${docId}|${normalizedDocType}`);
       });
 
       const unified = [
