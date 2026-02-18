@@ -176,3 +176,7 @@ User decision (warning badge list v1):
   - SPF not verified
 - User question: whether those are the only deliverability risks (builder to advise; follow-up decision if expanding the warning list).
 
+### QA-2026-02-17-ADMINOPS-032
+User decision (add DMARC warning):
+- Add DMARC as a deliverability warning badge in Email Ops (recommended), even if it requires adding a new check/field.
+
