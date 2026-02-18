@@ -439,13 +439,19 @@ export default function ScanHub() {
   };
 
   const parseQRPayload = (input: string): { type: string; id: string; code?: string } | null => {
+    const trimmed = input.trim();
+    // JSON.parse("4006381333931") returns a number (valid JSON), which would otherwise fall through to null.
+    // Treat purely numeric scans as plain barcodes.
+    if (/^\d+$/.test(trimmed)) {
+      return { type: 'unknown', id: '', code: trimmed };
+    }
     try {
-      const parsed = JSON.parse(input);
+      const parsed = JSON.parse(trimmed);
       if (parsed.type && parsed.id) {
         return parsed;
       }
     } catch {
-      return { type: 'unknown', id: '', code: input.trim() };
+      return { type: 'unknown', id: '', code: trimmed };
     }
     return null;
   };
