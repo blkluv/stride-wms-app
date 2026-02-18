@@ -340,7 +340,7 @@ export function SavedInvoicesTab() {
         lineCount: lines.length,
       });
 
-      await sendEmail(account.billing_contact_email, emailData.subject, emailData.html);
+      await sendEmail(account.billing_contact_email, emailData.subject, emailData.html, profile?.tenant_id);
       toast({ title: 'Invoice sent', description: `Invoice ${invoice.invoice_number} sent to ${account.billing_contact_email}` });
       loadInvoices();
     }
@@ -430,7 +430,7 @@ export function SavedInvoicesTab() {
             lineCount: lines.length,
           });
 
-          await sendEmail(account.billing_contact_email, emailData.subject, emailData.html);
+          await sendEmail(account.billing_contact_email, emailData.subject, emailData.html, profile?.tenant_id);
           successCount++;
         }
       } catch (err) {

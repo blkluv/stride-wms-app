@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { isValidEmail, resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,7 +66,15 @@ const handler = async (req: Request): Promise<Response> => {
     // Authenticate and verify tenant membership
     const { adminClient: supabase } = await authenticateAndAuthorize(req, tenant_id);
 
-    const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY not configured" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const resend = new Resend(resendApiKey);
 
     // Fetch brand settings for wrapping
     const { data: brandSettings } = await supabase
@@ -84,6 +93,7 @@ const handler = async (req: Request): Promise<Response> => {
     const logoUrl = brandSettings?.brand_logo_url || tenant?.company_logo_url;
     const companyName = tenant?.company_name || 'Stride Warehouse';
     const primaryColor = brandSettings?.brand_primary_color || '#3b82f6';
+    const platformDefaults = await resolvePlatformEmailDefaults(supabase);
 
     // Wrap email with branding
     const wrappedHtml = `
@@ -121,8 +131,25 @@ const handler = async (req: Request): Promise<Response> => {
 </body>
 </html>`;
 
-    const senderName = from_name || brandSettings?.from_name || companyName;
-    const senderEmail = from_email || brandSettings?.from_email || 'onboarding@resend.dev';
+    const senderName =
+      from_name ||
+      brandSettings?.from_name ||
+      companyName ||
+      platformDefaults.fromName;
+
+    let senderEmail = from_email;
+    if (!senderEmail) {
+      const wantsCustom = brandSettings?.use_default_email === false;
+      const isVerified = brandSettings?.email_domain_verified === true;
+      if (wantsCustom && isVerified && (brandSettings?.from_email || brandSettings?.custom_email_domain)) {
+        senderEmail = brandSettings?.from_email || brandSettings?.custom_email_domain;
+      } else {
+        senderEmail = platformDefaults.fromEmail;
+      }
+    }
+
+    const supportEmail = (brandSettings?.brand_support_email || "").trim();
+    const replyTo = isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo;
 
     console.log("Sending test email to:", to_email, "from:", senderEmail);
     
@@ -130,6 +157,7 @@ const handler = async (req: Request): Promise<Response> => {
       from: `${senderName} <${senderEmail}>`,
       to: to_email,
       subject: `[TEST] ${subject}`,
+      ...(replyTo ? { replyTo } : {}),
       html: wrappedHtml,
     });
 

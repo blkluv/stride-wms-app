@@ -36,6 +36,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
+import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
 import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
@@ -121,6 +122,11 @@ export function Stage2DetailedReceiving({
   const dockCount = dockCountOverride ?? shipment.received_pieces ?? null;
   const { classes, loading: classesLoading } = useClasses();
   const { flagServiceEvents, loading: flagServicesLoading } = useServiceEvents();
+  const { locations: allLocations } = useLocations(shipment.warehouse_id || undefined);
+
+  // Fallback location when RPC can't resolve default
+  const [fallbackLocationId, setFallbackLocationId] = useState<string | null>(null);
+  const [needsReceivingLocation, setNeedsReceivingLocation] = useState(false);
 
   // Emit Entry Count (row count) for Stage 1 display.
   useEffect(() => {
@@ -470,6 +476,7 @@ export function Stage2DetailedReceiving({
       }
     }
 
+    setNeedsReceivingLocation(false);
     setShowCompleteDialog(true);
   };
 
@@ -528,11 +535,16 @@ export function Stage2DetailedReceiving({
         console.warn('[Stage2] could not resolve receiving location');
       }
 
+      if (!receivingLocationId && fallbackLocationId) {
+        receivingLocationId = fallbackLocationId;
+      }
+
       if (!receivingLocationId) {
+        setNeedsReceivingLocation(true);
         toast({
           variant: 'destructive',
           title: 'No Receiving Location',
-          description: 'Could not resolve a default receiving location. Please configure one.',
+          description: 'Please select a receiving location below before completing.',
         });
         setCompleting(false);
         return;
@@ -925,12 +937,12 @@ export function Stage2DetailedReceiving({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-24 text-right">Quantity</TableHead>
-                    <TableHead className="w-40">Vendor</TableHead>
+                    <TableHead className="min-w-[160px]">Vendor</TableHead>
                     <TableHead className="min-w-[220px]">Description</TableHead>
-                    <TableHead className="w-44">Class</TableHead>
-                    <TableHead className="w-40">Side Mark</TableHead>
-                    <TableHead className="w-36">Room</TableHead>
-                    <TableHead className="w-40">Actions</TableHead>
+                    <TableHead className="min-w-[180px]">Class</TableHead>
+                    <TableHead className="min-w-[160px]">Side Mark</TableHead>
+                    <TableHead className="min-w-[140px]">Room</TableHead>
+                    <TableHead className="min-w-[140px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -943,7 +955,7 @@ export function Stage2DetailedReceiving({
                             min={0}
                             value={item.received_quantity}
                             onChange={(e) => updateItem(item.id, 'received_quantity', parseInt(e.target.value) || 0)}
-                            className="w-20 h-8 text-right ml-auto"
+                            className="w-20 h-9 text-right ml-auto"
                             disabled={!canEdit}
                           />
                         </TableCell>
@@ -952,7 +964,7 @@ export function Stage2DetailedReceiving({
                             value={item.vendor}
                             onChange={(e) => updateItem(item.id, 'vendor', e.target.value)}
                             placeholder="Vendor"
-                            className="h-8"
+                            className="h-9"
                             disabled={!canEdit}
                           />
                         </TableCell>
@@ -961,7 +973,7 @@ export function Stage2DetailedReceiving({
                             value={item.description}
                             onChange={(e) => updateItem(item.id, 'description', e.target.value)}
                             placeholder="Description"
-                            className="h-8"
+                            className="h-9"
                             disabled={!canEdit}
                           />
                         </TableCell>
@@ -971,7 +983,7 @@ export function Stage2DetailedReceiving({
                             onValueChange={(value) => updateItem(item.id, 'class_id', value === '__none__' ? null : value)}
                             disabled={!canEdit}
                           >
-                            <SelectTrigger className="h-8">
+                            <SelectTrigger className="h-9">
                               <SelectValue placeholder={classesLoading ? 'Loading...' : 'Select class'} />
                             </SelectTrigger>
                             <SelectContent>
@@ -989,7 +1001,7 @@ export function Stage2DetailedReceiving({
                             value={item.sidemark}
                             onChange={(e) => updateItem(item.id, 'sidemark', e.target.value)}
                             placeholder="Side Mark"
-                            className="h-8"
+                            className="h-9"
                             disabled={!canEdit}
                           />
                         </TableCell>
@@ -998,7 +1010,7 @@ export function Stage2DetailedReceiving({
                             value={item.room}
                             onChange={(e) => updateItem(item.id, 'room', e.target.value)}
                             placeholder="Room"
-                            className="h-8"
+                            className="h-9"
                             disabled={!canEdit}
                           />
                         </TableCell>
@@ -1156,6 +1168,33 @@ export function Stage2DetailedReceiving({
                   Dock Count and Entry Count are different.
                 </div>
               )}
+              {needsReceivingLocation || !!fallbackLocationId ? (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Receiving Location</Label>
+                    <Select
+                      value={fallbackLocationId || ''}
+                      onValueChange={(val) => setFallbackLocationId(val)}
+                      disabled={!canEdit || completing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select location..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allLocations.map((loc) => (
+                          <SelectItem key={loc.id} value={loc.id}>
+                            {loc.code} — {loc.name || loc.location_type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Choose where received items will be placed. Configure a default in warehouse settings to skip this step.
+                    </p>
+                  </div>
+                </>
+              ) : null}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCompleteDialog(false)} disabled={completing}>

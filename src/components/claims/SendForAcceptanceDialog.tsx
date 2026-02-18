@@ -230,6 +230,7 @@ export function SendForAcceptanceDialog({
                   type="text"
                   readOnly
                   value={generatedLink}
+                  autoCapitalize="none"
                   className="flex-1 text-sm p-2 bg-muted rounded border"
                 />
                 <Button variant="outline" size="sm" onClick={copyLink}>

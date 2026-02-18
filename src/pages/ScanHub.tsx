@@ -24,6 +24,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 import { ScanModeIcon } from '@/components/scan/ScanModeIcon';
 import { HelpButton } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
@@ -438,21 +439,12 @@ export default function ScanHub() {
     };
   };
 
-  const parseQRPayload = (input: string): { type: string; id: string; code?: string } | null => {
-    try {
-      const parsed = JSON.parse(input);
-      if (parsed.type && parsed.id) {
-        return parsed;
-      }
-    } catch {
-      return { type: 'unknown', id: '', code: input.trim() };
-    }
-    return null;
-  };
-
   const lookupItem = async (input: string): Promise<ScannedItem | null> => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
+
+    // If the payload explicitly declares itself as a location, skip item lookup entirely
+    if (payload.type === 'location') return null;
 
     let query = supabase
       .from('v_items_with_location')
@@ -481,8 +473,11 @@ export default function ScanHub() {
 
   // Extended lookup for service events - includes class, account, sidemark
   const lookupItemForService = async (input: string): Promise<ServiceScannedItem | null> => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
+
+    // If the payload explicitly declares itself as a location, skip item lookup entirely
+    if (payload.type === 'location') return null;
 
     // Query items table directly to get class (via class_id join), account_id, sidemark_id, account_name
     let query = supabase
@@ -525,26 +520,92 @@ export default function ScanHub() {
   };
 
   const lookupLocation = async (input: string): Promise<ScannedLocation | null> => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
 
-    // Check if it's a location QR
+    // Check if it's a location QR with explicit type
     if (payload.type === 'location' && payload.id) {
-      const loc = locations.find(l => l.id === payload.id);
-      if (loc) {
-        return { id: loc.id, code: loc.code, name: loc.name, type: loc.type };
+      // The label generator stores the location CODE in the id field (not a UUID).
+      // Try matching by code first (most common path for scanned location labels).
+      const codeFromPayload = (payload.code || payload.id).trim();
+      const locByCode = locations.find(l =>
+        l.code.toLowerCase() === codeFromPayload.toLowerCase()
+      );
+      if (locByCode) {
+        return { id: locByCode.id, code: locByCode.code, name: locByCode.name, type: locByCode.type };
+      }
+
+      // Try matching by UUID id (in case a future payload uses real UUIDs)
+      const locById = locations.find(l => l.id === payload.id);
+      if (locById) {
+        return { id: locById.id, code: locById.code, name: locById.name, type: locById.type };
+      }
+
+      // Fallback: query DB by code first, then by id
+      const escapedCode = codeFromPayload.replace(/([\\%_])/g, '\\$1');
+      const { data: dbByCode } = await supabase
+        .from('locations')
+        .select('id, code, name, type')
+        .ilike('code', escapedCode)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (dbByCode) {
+        return { id: dbByCode.id, code: dbByCode.code, name: dbByCode.name, type: dbByCode.type || undefined };
+      }
+
+      // Only try by UUID if it looks like one (avoid Postgres UUID parse errors)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(payload.id)) {
+        const { data: dbById } = await supabase
+          .from('locations')
+          .select('id, code, name, type')
+          .eq('id', payload.id)
+          .is('deleted_at', null)
+          .maybeSingle();
+        if (dbById) {
+          return { id: dbById.id, code: dbById.code, name: dbById.name, type: dbById.type || undefined };
+        }
       }
     }
     
-    // Try matching by code
+    // Try matching by code against in-memory locations (case-insensitive)
+    const codeToMatch = (payload.code || input).trim();
     const loc = locations.find(l => 
-      l.code.toLowerCase() === (payload.code || input).toLowerCase()
+      l.code.toLowerCase() === codeToMatch.toLowerCase()
     );
     if (loc) {
       return { id: loc.id, code: loc.code, name: loc.name, type: loc.type };
     }
 
+    // Fallback: query DB by code if not found in memory
+    // Escape LIKE wildcards so ILIKE behaves like a case-insensitive exact match.
+    const escapedCodeToMatch = codeToMatch.replace(/([\\%_])/g, '\\$1');
+    const { data: dbLoc } = await supabase
+      .from('locations')
+      .select('id, code, name, type')
+      .ilike('code', escapedCodeToMatch)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (dbLoc) {
+      return { id: dbLoc.id, code: dbLoc.code, name: dbLoc.name, type: dbLoc.type || undefined };
+    }
+
     return null;
+  };
+
+  /**
+   * Quick synchronous check against the in-memory locations array.
+   * Used to cheaply determine if a scanned value is likely a location code
+   * before making any async DB calls.  Works for both QR JSON payloads and
+   * plain-text 1D barcode scans.
+   */
+  const isLikelyLocationCode = (input: string): boolean => {
+    const payload = parseScanPayload(input);
+    if (!payload) return false;
+    if (payload.type === 'location') return true;
+    const codeToMatch = (payload.code || input).trim().toLowerCase();
+    if (!codeToMatch) return false;
+    return locations.some(l => l.code.toLowerCase() === codeToMatch);
   };
 
   // Check if an item has a quarantine flag
@@ -615,6 +676,21 @@ export default function ScanHub() {
     
     try {
       if (mode === 'lookup') {
+        // Auto-differentiate: if it's a location barcode, tell the user
+        const likelyLoc = isLikelyLocationCode(input);
+        if (likelyLoc) {
+          const loc = await lookupLocation(input);
+          if (loc) {
+            hapticMedium();
+            toast({
+              title: `Location: ${loc.code}`,
+              description: loc.name || loc.type || 'Location found',
+            });
+            setProcessing(false);
+            return;
+          }
+        }
+
         const item = await lookupItem(input);
         if (item) {
           hapticMedium(); // Item found
@@ -632,11 +708,25 @@ export default function ScanHub() {
 
           navigate(`/inventory/${item.id}`);
         } else {
-          hapticError(); // Item not found
+          // If not quickly detected as location, try full async lookup
+          if (!likelyLoc) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticMedium();
+              toast({
+                title: `Location: ${loc.code}`,
+                description: loc.name || loc.type || 'Location found',
+              });
+              setProcessing(false);
+              return;
+            }
+          }
+
+          hapticError(); // Not found at all
           toast({
             variant: 'destructive',
-            title: 'Item Not Found',
-            description: 'No item found with that code.',
+            title: 'Not Found',
+            description: 'No item or location found with that code.',
           });
         }
         setProcessing(false);
@@ -645,11 +735,29 @@ export default function ScanHub() {
 
       if (mode === 'move') {
         if (phase === 'scanning-item') {
+          // Auto-differentiate: check if the scanned barcode is a location first
+          const likelyLocation = isLikelyLocationCode(input);
+
+          if (likelyLocation) {
+            // User scanned a location barcode during the item phase
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticError();
+              toast({
+                variant: 'destructive',
+                title: 'Location Scanned',
+                description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
+              });
+              setProcessing(false);
+              return;
+            }
+          }
+
+          // Try as item
           const item = await lookupItem(input);
           if (item) {
-            hapticMedium(); // Item found
+            hapticMedium();
 
-            // Check for quarantine
             const isQuarantined = await checkQuarantine(item.id);
             if (isQuarantined) {
               hapticError();
@@ -674,50 +782,91 @@ export default function ScanHub() {
               description: 'Now scan the destination bay.',
             });
           } else {
-            hapticError(); // Item not found
+            // Not found as item - also try as location in case sync check missed it
+            if (!likelyLocation) {
+              const loc = await lookupLocation(input);
+              if (loc) {
+                hapticError();
+                toast({
+                  variant: 'destructive',
+                  title: 'Location Scanned',
+                  description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
+                });
+                setProcessing(false);
+                return;
+              }
+            }
+            hapticError();
             toast({
               variant: 'destructive',
-              title: 'Item Not Found',
-              description: 'Scan a valid item QR code.',
+              title: 'Not Found',
+              description: 'No item or location found with that code.',
             });
           }
         } else if (phase === 'scanning-location') {
+          // Auto-differentiate: try location lookup first (most likely)
           const loc = await lookupLocation(input);
           if (loc) {
-            hapticMedium(); // Location found
+            hapticMedium();
             setTargetLocation(loc);
             setPhase('confirm');
           } else {
-            hapticError(); // Location not found
-            toast({
-              variant: 'destructive',
-              title: 'Location Not Found',
-              description: 'Scan a valid bay/location QR code.',
-            });
+            // Not a location - check if it's another item (user may have scanned wrong code)
+            const item = await lookupItem(input);
+            if (item) {
+              hapticError();
+              toast({
+                variant: 'destructive',
+                title: 'Item Scanned',
+                description: `"${item.item_code}" is an item, not a location. Scan a bay/location QR code to complete the move.`,
+              });
+            } else {
+              hapticError();
+              toast({
+                variant: 'destructive',
+                title: 'Location Not Found',
+                description: 'No location found with that code. Scan a valid bay/location barcode.',
+              });
+            }
           }
         }
       }
 
       if (mode === 'batch') {
-        // In batch mode, first try to parse as location
-        const loc = await lookupLocation(input);
-        if (loc && batchItems.length > 0) {
-          hapticMedium(); // Location found
-          setTargetLocation(loc);
-          setPhase('confirm');
-          setProcessing(false);
-          return;
+        // Auto-detect: check if this is a location code
+        const likelyLocation = isLikelyLocationCode(input);
+
+        if (likelyLocation) {
+          const loc = await lookupLocation(input);
+          if (loc) {
+            if (batchItems.length > 0) {
+              hapticMedium();
+              setTargetLocation(loc);
+              setPhase('confirm');
+              setProcessing(false);
+              return;
+            } else {
+              hapticError();
+              toast({
+                variant: 'destructive',
+                title: 'Location Scanned',
+                description: `"${loc.code}" is a location. Scan items first, then scan a location to move them.`,
+              });
+              setProcessing(false);
+              return;
+            }
+          }
         }
 
         // Try as item
         const item = await lookupItem(input);
         if (item) {
           if (!batchItems.find(i => i.id === item.id)) {
-            hapticLight(); // Item added to batch
+            hapticLight();
             setBatchItems(prev => [...prev, item]);
             toast({
               title: `Added: ${item.item_code}`,
-              description: `${batchItems.length + 1} items in batch. Scan location to finish.`,
+              description: `${batchItems.length + 1} items in batch. Scan location when ready.`,
             });
           } else {
             toast({
@@ -725,12 +874,35 @@ export default function ScanHub() {
               description: `${item.item_code} is already added.`,
             });
           }
-        } else if (!loc) {
-          hapticError(); // Not found
+        } else {
+          // If not quickly detected as location, do a full location lookup as fallback
+          if (!likelyLocation) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              if (batchItems.length > 0) {
+                hapticMedium();
+                setTargetLocation(loc);
+                setPhase('confirm');
+                setProcessing(false);
+                return;
+              } else {
+                hapticError();
+                toast({
+                  variant: 'destructive',
+                  title: 'Location Scanned',
+                  description: `"${loc.code}" is a location. Scan items first, then scan a location to move them.`,
+                });
+                setProcessing(false);
+                return;
+              }
+            }
+          }
+
+          hapticError();
           toast({
             variant: 'destructive',
             title: 'Not Found',
-            description: 'Scan a valid item or location code.',
+            description: 'No item or location found with that code.',
           });
         }
       }

@@ -347,7 +347,7 @@ export function OrganizationSettingsTab() {
                         <FormItem>
                           <FormLabel>Website</FormLabel>
                           <FormControl>
-                            <Input placeholder="https://www.example.com" {...field} />
+                            <Input type="url" placeholder="https://www.example.com" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -361,7 +361,7 @@ export function OrganizationSettingsTab() {
                         <FormItem>
                           <FormLabel>Portal URL</FormLabel>
                           <FormControl>
-                            <Input placeholder="https://app.yourcompany.com" {...field} />
+                            <Input type="url" placeholder="https://app.yourcompany.com" {...field} />
                           </FormControl>
                           <FormDescription>
                             Client portal URL used in email links and notifications

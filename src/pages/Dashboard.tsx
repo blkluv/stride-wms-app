@@ -240,6 +240,14 @@ export default function Dashboard() {
       >
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">{task.title}</div>
+          {task.item && (
+            <div className="text-xs text-foreground/80 truncate font-mono">
+              {task.item.item_code}
+              {task.item.location?.code && (
+                <span className="ml-2 text-muted-foreground">📍 {task.item.location.code}</span>
+              )}
+            </div>
+          )}
           <div className="text-xs text-muted-foreground truncate">
             {task.account?.account_name || 'No account'}
             {task.priority === 'urgent' && (

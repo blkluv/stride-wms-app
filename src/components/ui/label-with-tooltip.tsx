@@ -110,6 +110,7 @@ export function LabelWithTooltip({ htmlFor, children, tooltip, required, classNa
                 ref={textareaRef}
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
+                autoCapitalize="none"
                 className="w-full min-h-[60px] text-xs border rounded p-1.5 resize-y bg-background"
               />
               <div className="flex gap-1 justify-end">

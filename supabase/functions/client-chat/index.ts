@@ -1046,6 +1046,28 @@ async function toolSubmitWillCall(
     return { result: { ok: false, error: "Failed to create pickup request" } };
   }
 
+  // Best-effort: coerce legacy SHP-###### → OUT-##### for new outbound shipments.
+  // (Some environments still have the old trigger installed.)
+  try {
+    const raw = String(shipment.shipment_number || "").trim().toUpperCase();
+    const match = raw.match(/^SHP-(\d{5,})$/);
+    if (match) {
+      const digits = match[1];
+      const outDigits = digits.length > 5 && digits[0] !== "0" ? digits : digits.slice(-5);
+      const coerced = `OUT-${outDigits}`;
+      const { error: renumberError } = await supabase
+        .from("shipments")
+        .update({ shipment_number: coerced })
+        .eq("tenant_id", scope.tenant_id)
+        .eq("id", shipment.id);
+      if (!renumberError) {
+        shipment.shipment_number = coerced;
+      }
+    }
+  } catch (err) {
+    console.warn("[client-chat] shipment_number coerce failed:", err);
+  }
+
   // Create shipment items
   const shipmentItems = draft.item_ids.map((item_id: string) => ({
     shipment_id: shipment.id,

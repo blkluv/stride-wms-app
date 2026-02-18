@@ -114,7 +114,7 @@ export const FormField = React.forwardRef<
       step,
       minRows = 2,
       maxRows = 8,
-      uppercase = false,
+      uppercase,
       className,
       inputClassName,
       labelPosition = "top",
@@ -127,11 +127,17 @@ export const FormField = React.forwardRef<
 
     const textareaRef = useAutoGrow(value, minRows, maxRows);
 
+    // "All caps" for non-long-text fields. Explicit `uppercase` prop overrides.
+    // Keep URLs/emails/passwords as typed (case can matter).
+    const shouldUppercase =
+      type !== "textarea" &&
+      (uppercase !== undefined ? uppercase : type !== "email" && type !== "password" && type !== "url");
+
     const handleChange = (
       e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
     ) => {
       let newValue = e.target.value;
-      if (uppercase) {
+      if (shouldUppercase) {
         newValue = newValue.toUpperCase();
       }
       onChange(newValue);
@@ -156,7 +162,7 @@ export const FormField = React.forwardRef<
       disabled && "cursor-not-allowed opacity-50",
       readOnly && "cursor-default bg-muted",
       // Uppercase if requested
-      uppercase && "uppercase",
+      shouldUppercase && "uppercase",
       // Transition
       "transition-colors duration-150",
       inputClassName
@@ -177,7 +183,7 @@ export const FormField = React.forwardRef<
             readOnly={readOnly}
             autoFocus={autoFocus}
             required={required}
-            autoCapitalize="sentences"
+            autoCapitalize="none"
             aria-invalid={!!error}
             aria-describedby={cn(error && errorId, helpText && helpId)}
             className={cn(baseInputClasses, "resize-none overflow-y-auto")}
@@ -200,7 +206,7 @@ export const FormField = React.forwardRef<
           readOnly={readOnly}
           autoFocus={autoFocus}
           required={required}
-          autoCapitalize={type === "text" ? "sentences" : "off"}
+          autoCapitalize={type === "text" ? "characters" : "none"}
           min={min}
           max={max}
           step={step}

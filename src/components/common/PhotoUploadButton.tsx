@@ -113,6 +113,7 @@ export function PhotoUploadButton({
       className={className}
     >
       <Button
+        type="button"
         variant={variant}
         size={size}
         onClick={() => fileInputRef.current?.click()}

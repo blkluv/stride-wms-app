@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { isValidEmail, resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -144,6 +145,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const platformDefaults = await resolvePlatformEmailDefaults(supabase);
     const { user_id, tenant_id }: InvitePayload = await req.json();
 
     // Get user details
@@ -183,12 +185,34 @@ const handler = async (req: Request): Promise<Response> => {
     const { Resend } = await import("https://esm.sh/resend@2.0.0");
     const resend = new Resend(resendApiKey);
 
+    const { data: senderSettings } = await supabase
+      .from("communication_brand_settings")
+      .select("use_default_email, email_domain_verified, from_email, from_name, custom_email_domain, brand_support_email")
+      .eq("tenant_id", tenant_id)
+      .maybeSingle();
+
+    let fromEmail = platformDefaults.fromEmail;
+    let fromName = senderSettings?.from_name || branding.companyName || platformDefaults.fromName;
+    const supportEmail = (senderSettings?.brand_support_email || "").trim();
+    let replyTo: string | null = isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo;
+
+    const wantsCustom = senderSettings?.use_default_email === false;
+    const isVerified = senderSettings?.email_domain_verified === true;
+    if (wantsCustom && isVerified) {
+      fromEmail = String(
+        senderSettings?.from_email ||
+        senderSettings?.custom_email_domain ||
+        platformDefaults.fromEmail
+      );
+    }
+
     const { error: sendError } = await resend.emails.send({
-      from: `${branding.companyName || 'Warehouse System'} <noreply@mystridehub.com>`,
+      from: `${fromName} <${fromEmail}>`,
       to: [user.email],
       subject: subject,
       html: html,
       text: text,
+      ...(replyTo ? { replyTo } : {}),
     });
 
     if (sendError) {

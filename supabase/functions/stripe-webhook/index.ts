@@ -171,6 +171,7 @@ async function handleCheckoutCompleted(
 ) {
   const session = event.data.object as Stripe.Checkout.Session;
   const tenantId = session.metadata?.tenant_id;
+  const planId = session.metadata?.plan_id ?? null;
 
   if (!tenantId) {
     console.warn("checkout.session.completed: no metadata.tenant_id, skipping");
@@ -199,6 +200,7 @@ async function handleCheckoutCompleted(
       p_tenant_id: tenantId,
       p_stripe_customer_id: customerId,
       p_stripe_subscription_id: subscriptionId,
+      p_plan_id: planId,
     }
   );
 

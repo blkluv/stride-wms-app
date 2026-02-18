@@ -799,6 +799,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_master_account: boolean | null
+          is_system_account: boolean | null
           is_wholesale: boolean | null
           metadata: Json | null
           net_terms: number | null
@@ -886,6 +887,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_master_account?: boolean | null
+          is_system_account?: boolean | null
           is_wholesale?: boolean | null
           metadata?: Json | null
           net_terms?: number | null
@@ -973,6 +975,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_master_account?: boolean | null
+          is_system_account?: boolean | null
           is_wholesale?: boolean | null
           metadata?: Json | null
           net_terms?: number | null
@@ -3896,6 +3899,56 @@ export type Database = {
           },
         ]
       }
+      decision_ledger_entries: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          decision_key: string
+          entry_type: string
+          id: string
+          metadata: Json
+          phase: string | null
+          status: string | null
+          title: string | null
+          version: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          decision_key: string
+          entry_type: string
+          id?: string
+          metadata?: Json
+          phase?: string | null
+          status?: string | null
+          title?: string | null
+          version?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          decision_key?: string
+          entry_type?: string
+          id?: string
+          metadata?: Json
+          phase?: string | null
+          status?: string | null
+          title?: string | null
+          version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_ledger_entries_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           created_at: string
@@ -6174,7 +6227,6 @@ export type Database = {
           declared_value: number | null
           deleted_at: string | null
           description: string | null
-          sku: string | null
           has_damage: boolean | null
           id: string
           inspection_photos: Json | null
@@ -6212,6 +6264,7 @@ export type Database = {
           sidemark_id: string | null
           size: number | null
           size_unit: string | null
+          sku: string | null
           status: string
           tenant_id: string
           updated_at: string
@@ -6239,7 +6292,6 @@ export type Database = {
           declared_value?: number | null
           deleted_at?: string | null
           description?: string | null
-          sku?: string | null
           has_damage?: boolean | null
           id?: string
           inspection_photos?: Json | null
@@ -6248,7 +6300,7 @@ export type Database = {
           is_oversize?: boolean | null
           is_overweight?: boolean | null
           is_unstackable?: boolean | null
-          item_code?: string
+          item_code: string
           item_type_id?: string | null
           last_storage_invoiced_through?: string | null
           link?: string | null
@@ -6277,6 +6329,7 @@ export type Database = {
           sidemark_id?: string | null
           size?: number | null
           size_unit?: string | null
+          sku?: string | null
           status?: string
           tenant_id: string
           updated_at?: string
@@ -6304,7 +6357,6 @@ export type Database = {
           declared_value?: number | null
           deleted_at?: string | null
           description?: string | null
-          sku?: string | null
           has_damage?: boolean | null
           id?: string
           inspection_photos?: Json | null
@@ -6342,6 +6394,7 @@ export type Database = {
           sidemark_id?: string | null
           size?: number | null
           size_unit?: string | null
+          sku?: string | null
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -7115,6 +7168,57 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_email_settings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_from_email: string
+          default_from_name: string | null
+          default_reply_to_email: string | null
+          id: number
+          is_active: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_from_email: string
+          default_from_name?: string | null
+          default_reply_to_email?: string | null
+          id?: number
+          is_active?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_from_email?: string
+          default_from_name?: string | null
+          default_reply_to_email?: string | null
+          id?: number
+          is_active?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_email_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_email_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -9307,6 +9411,80 @@ export type Database = {
         }
         Relationships: []
       }
+      saas_pricing_notice_dispatches: {
+        Row: {
+          id: string
+          metadata: Json
+          notice_type: string
+          pricing_version_id: string
+          recipient_count: number
+          sent_at: string
+          sent_by: string | null
+        }
+        Insert: {
+          id?: string
+          metadata?: Json
+          notice_type: string
+          pricing_version_id: string
+          recipient_count?: number
+          sent_at?: string
+          sent_by?: string | null
+        }
+        Update: {
+          id?: string
+          metadata?: Json
+          notice_type?: string
+          pricing_version_id?: string
+          recipient_count?: number
+          sent_at?: string
+          sent_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saas_pricing_notice_dispatches_pricing_version_id_fkey"
+            columns: ["pricing_version_id"]
+            isOneToOne: false
+            referencedRelation: "saas_pricing_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saas_pricing_versions: {
+        Row: {
+          app_monthly_fee: number
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          id: string
+          notes: string | null
+          sms_monthly_addon_fee: number
+          sms_segment_fee: number
+          updated_at: string
+        }
+        Insert: {
+          app_monthly_fee: number
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          id?: string
+          notes?: string | null
+          sms_monthly_addon_fee: number
+          sms_segment_fee: number
+          updated_at?: string
+        }
+        Update: {
+          app_monthly_fee?: number
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          notes?: string | null
+          sms_monthly_addon_fee?: number
+          sms_segment_fee?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       service_categories: {
         Row: {
           created_at: string | null
@@ -9549,6 +9727,100 @@ export type Database = {
             columns: ["shipment_id"]
             isOneToOne: false
             referencedRelation: "v_shipments_canonical"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipment_exceptions: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          reopened_at: string | null
+          reopened_by: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          shipment_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shipment_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          reopened_at?: string | null
+          reopened_by?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shipment_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_exceptions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_reopened_by_fkey"
+            columns: ["reopened_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "v_shipments_canonical"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -12143,6 +12415,103 @@ export type Database = {
           },
         ]
       }
+      tenant_billing_override_log: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          expires_at: string | null
+          id: string
+          is_comped: boolean
+          metadata: Json
+          note: string | null
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          expires_at?: string | null
+          id?: string
+          is_comped: boolean
+          metadata?: Json
+          note?: string | null
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          expires_at?: string | null
+          id?: string
+          is_comped?: boolean
+          metadata?: Json
+          note?: string | null
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_billing_override_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_billing_overrides: {
+        Row: {
+          comped_at: string | null
+          comped_by: string | null
+          comped_note: string | null
+          comped_reason: string | null
+          created_at: string
+          expires_at: string | null
+          is_comped: boolean
+          removed_at: string | null
+          removed_by: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          comped_at?: string | null
+          comped_by?: string | null
+          comped_note?: string | null
+          comped_reason?: string | null
+          created_at?: string
+          expires_at?: string | null
+          is_comped?: boolean
+          removed_at?: string | null
+          removed_by?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          comped_at?: string | null
+          comped_by?: string | null
+          comped_note?: string | null
+          comped_reason?: string | null
+          created_at?: string
+          expires_at?: string | null
+          is_comped?: boolean
+          removed_at?: string | null
+          removed_by?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_billing_overrides_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_company_settings: {
         Row: {
           app_base_url: string | null
@@ -12520,6 +12889,7 @@ export type Database = {
           allow_billing_to_consumer: boolean | null
           allow_felt_pads: boolean | null
           allow_typed_name_as_signature: boolean | null
+          auto_apply_arrival_no_id_flag: boolean
           auto_assembly_on_receiving: boolean | null
           auto_repair_on_damage: boolean | null
           base_order_minutes: number | null
@@ -12573,6 +12943,7 @@ export type Database = {
           allow_billing_to_consumer?: boolean | null
           allow_felt_pads?: boolean | null
           allow_typed_name_as_signature?: boolean | null
+          auto_apply_arrival_no_id_flag?: boolean
           auto_assembly_on_receiving?: boolean | null
           auto_repair_on_damage?: boolean | null
           base_order_minutes?: number | null
@@ -12626,6 +12997,7 @@ export type Database = {
           allow_billing_to_consumer?: boolean | null
           allow_felt_pads?: boolean | null
           allow_typed_name_as_signature?: boolean | null
+          auto_apply_arrival_no_id_flag?: boolean
           auto_assembly_on_receiving?: boolean | null
           auto_repair_on_damage?: boolean | null
           base_order_minutes?: number | null
@@ -12790,9 +13162,294 @@ export type Database = {
           },
         ]
       }
+      tenant_sms_addon_activation: {
+        Row: {
+          acceptance_source: string | null
+          activated_at: string | null
+          activation_status: string
+          created_at: string
+          ip_address: string | null
+          is_active: boolean
+          tenant_id: string
+          terms_accepted_at: string | null
+          terms_accepted_by: string | null
+          terms_version: string | null
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          acceptance_source?: string | null
+          activated_at?: string | null
+          activation_status?: string
+          created_at?: string
+          ip_address?: string | null
+          is_active?: boolean
+          tenant_id: string
+          terms_accepted_at?: string | null
+          terms_accepted_by?: string | null
+          terms_version?: string | null
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          acceptance_source?: string | null
+          activated_at?: string | null
+          activation_status?: string
+          created_at?: string
+          ip_address?: string | null
+          is_active?: boolean
+          tenant_id?: string
+          terms_accepted_at?: string | null
+          terms_accepted_by?: string | null
+          terms_version?: string | null
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sms_addon_activation_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_sms_addon_activation_log: {
+        Row: {
+          acceptance_source: string | null
+          accepted_by: string | null
+          created_at: string
+          event_type: string
+          id: string
+          ip_address: string | null
+          metadata: Json
+          tenant_id: string
+          terms_version: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          acceptance_source?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          tenant_id: string
+          terms_version?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          acceptance_source?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          tenant_id?: string
+          terms_version?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sms_addon_activation_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_sms_sender_profile_log: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          notes: string | null
+          status_from: string | null
+          status_to: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          status_from?: string | null
+          status_to?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          status_from?: string | null
+          status_to?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sms_sender_profile_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_sms_sender_profiles: {
+        Row: {
+          billing_start_at: string | null
+          created_at: string
+          last_error: string | null
+          metadata: Json
+          provisioning_status: string
+          requested_at: string | null
+          requested_by: string | null
+          sender_type: string
+          tenant_id: string
+          twilio_phone_number_e164: string | null
+          twilio_phone_number_sid: string | null
+          updated_at: string
+          verification_approved_at: string | null
+          verification_rejected_at: string | null
+          verification_submitted_at: string | null
+        }
+        Insert: {
+          billing_start_at?: string | null
+          created_at?: string
+          last_error?: string | null
+          metadata?: Json
+          provisioning_status?: string
+          requested_at?: string | null
+          requested_by?: string | null
+          sender_type?: string
+          tenant_id: string
+          twilio_phone_number_e164?: string | null
+          twilio_phone_number_sid?: string | null
+          updated_at?: string
+          verification_approved_at?: string | null
+          verification_rejected_at?: string | null
+          verification_submitted_at?: string | null
+        }
+        Update: {
+          billing_start_at?: string | null
+          created_at?: string
+          last_error?: string | null
+          metadata?: Json
+          provisioning_status?: string
+          requested_at?: string | null
+          requested_by?: string | null
+          sender_type?: string
+          tenant_id?: string
+          twilio_phone_number_e164?: string | null
+          twilio_phone_number_sid?: string | null
+          updated_at?: string
+          verification_approved_at?: string | null
+          verification_rejected_at?: string | null
+          verification_submitted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sms_sender_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_subscription_invoices: {
+        Row: {
+          amount_due: number
+          amount_paid: number
+          amount_remaining: number
+          created_at: string
+          currency: string | null
+          due_date: string | null
+          hosted_invoice_url: string | null
+          id: string
+          invoice_pdf: string | null
+          metadata: Json
+          paid_at: string | null
+          period_end: string | null
+          period_start: string | null
+          status: string
+          stripe_created_at: string | null
+          stripe_customer_id: string | null
+          stripe_invoice_id: string
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_due?: number
+          amount_paid?: number
+          amount_remaining?: number
+          created_at?: string
+          currency?: string | null
+          due_date?: string | null
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_pdf?: string | null
+          metadata?: Json
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status: string
+          stripe_created_at?: string | null
+          stripe_customer_id?: string | null
+          stripe_invoice_id: string
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_due?: number
+          amount_paid?: number
+          amount_remaining?: number
+          created_at?: string
+          currency?: string | null
+          due_date?: string | null
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_pdf?: string | null
+          metadata?: Json
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          stripe_created_at?: string | null
+          stripe_customer_id?: string | null
+          stripe_invoice_id?: string
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_subscription_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_subscriptions: {
         Row: {
           base_price_override: number | null
+          billable_seat_count: number | null
+          billable_seat_count_updated_at: string | null
           cancel_at_period_end: boolean | null
           created_at: string | null
           current_period_end: string | null
@@ -12809,6 +13466,8 @@ export type Database = {
         }
         Insert: {
           base_price_override?: number | null
+          billable_seat_count?: number | null
+          billable_seat_count_updated_at?: string | null
           cancel_at_period_end?: boolean | null
           created_at?: string | null
           current_period_end?: string | null
@@ -12825,6 +13484,8 @@ export type Database = {
         }
         Update: {
           base_price_override?: number | null
+          billable_seat_count?: number | null
+          billable_seat_count_updated_at?: string | null
           cancel_at_period_end?: boolean | null
           created_at?: string | null
           current_period_end?: string | null
@@ -14588,6 +15249,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ensure_unidentified_account: {
+        Args: { p_tenant_id?: string }
+        Returns: string
+      }
       fn_apply_location_capacity_deltas: {
         Args: { p_deltas: Json; p_tenant_id: string }
         Returns: number
@@ -14608,7 +15273,9 @@ export type Database = {
         | { Args: { p_tenant_id: string }; Returns: string }
       generate_ninv_number: { Args: never; Returns: string }
       generate_quote_number: { Args: never; Returns: string }
-      generate_shipment_number: { Args: never; Returns: string }
+      generate_shipment_number:
+        | { Args: never; Returns: string }
+        | { Args: { p_prefix?: string }; Returns: string }
       generate_stocktake_number: { Args: never; Returns: string }
       generate_storage_for_date: {
         Args: { p_date: string }
@@ -14816,8 +15483,123 @@ export type Database = {
           success: boolean
         }[]
       }
+      rpc_activate_sms_addon: {
+        Args: { p_acceptance_source?: string; p_terms_version: string }
+        Returns: Json
+      }
       rpc_add_unit_to_container: {
         Args: { p_container_id: string; p_unit_id: string }
+        Returns: Json
+      }
+      rpc_admin_get_platform_email_settings: {
+        Args: never
+        Returns: {
+          default_from_email: string
+          default_from_name: string
+          default_reply_to_email: string
+          is_active: boolean
+          updated_at: string
+        }[]
+      }
+      rpc_admin_get_sms_sender_profile_log: {
+        Args: { p_limit?: number; p_tenant_id: string }
+        Returns: {
+          actor_user_id: string
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          notes: string
+          status_from: string
+          status_to: string
+          tenant_id: string
+        }[]
+      }
+      rpc_admin_get_tenant_billing_override_log: {
+        Args: { p_limit?: number; p_tenant_id: string }
+        Returns: {
+          actor_user_id: string
+          created_at: string
+          event_type: string
+          expires_at: string
+          id: string
+          is_comped: boolean
+          metadata: Json
+          note: string
+          reason: string
+          tenant_id: string
+        }[]
+      }
+      rpc_admin_list_sms_sender_profiles: {
+        Args: { p_status?: string }
+        Returns: {
+          app_subdomain: string
+          billing_start_at: string
+          company_email: string
+          company_name: string
+          last_error: string
+          profile_updated_at: string
+          provisioning_status: string
+          requested_at: string
+          sender_type: string
+          sms_addon_active: boolean
+          sms_addon_status: string
+          sms_enabled: boolean
+          tenant_id: string
+          tenant_name: string
+          twilio_phone_number_e164: string
+          twilio_phone_number_sid: string
+          verification_approved_at: string
+          verification_rejected_at: string
+          verification_submitted_at: string
+        }[]
+      }
+      rpc_admin_list_tenant_billing_overrides: {
+        Args: { p_filter?: string }
+        Returns: {
+          app_subdomain: string
+          company_email: string
+          company_name: string
+          comped_at: string
+          comped_by: string
+          comped_note: string
+          comped_reason: string
+          expires_at: string
+          is_comped: boolean
+          override_updated_at: string
+          removed_at: string
+          removed_by: string
+          stripe_customer_id: string
+          stripe_subscription_id: string
+          subscription_status: string
+          tenant_id: string
+          tenant_name: string
+          tenant_status: string
+        }[]
+      }
+      rpc_admin_set_platform_email_settings: {
+        Args: {
+          p_default_from_email: string
+          p_default_from_name?: string
+          p_default_reply_to_email?: string
+          p_is_active?: boolean
+        }
+        Returns: {
+          default_from_email: string
+          default_from_name: string
+          default_reply_to_email: string
+          is_active: boolean
+          updated_at: string
+        }[]
+      }
+      rpc_admin_set_tenant_billing_override: {
+        Args: {
+          p_expires_at?: string
+          p_is_comped: boolean
+          p_note?: string
+          p_reason?: string
+          p_tenant_id: string
+        }
         Returns: Json
       }
       rpc_allocate_manifest_items_to_expected: {
@@ -14830,6 +15612,10 @@ export type Database = {
       }
       rpc_assign_receiving_location_for_shipment: {
         Args: { p_location_id?: string; p_note?: string; p_shipment_id: string }
+        Returns: Json
+      }
+      rpc_deactivate_sms_addon: {
+        Args: { p_acceptance_source?: string; p_reason?: string }
         Returns: Json
       }
       rpc_deallocate_manifest_item: {
@@ -14849,6 +15635,7 @@ export type Database = {
         }
         Returns: Json
       }
+      rpc_get_effective_saas_pricing: { Args: { p_at?: string }; Returns: Json }
       rpc_get_location_capacity: {
         Args: { p_location_id: string }
         Returns: Json
@@ -14876,7 +15663,13 @@ export type Database = {
           utilization_pct: number
         }[]
       }
+      rpc_get_my_billing_override: { Args: never; Returns: Json }
+      rpc_get_my_sms_addon_activation: { Args: never; Returns: Json }
       rpc_get_my_subscription_gate: { Args: never; Returns: Json }
+      rpc_get_tenant_billable_seat_count: {
+        Args: { p_tenant_id: string }
+        Returns: number
+      }
       rpc_initialize_tenant_subscription_from_checkout: {
         Args: {
           p_current_period_end?: string
@@ -14916,6 +15709,28 @@ export type Database = {
       rpc_resolve_receiving_location: {
         Args: { p_account_id?: string; p_warehouse_id: string }
         Returns: Json
+      }
+      rpc_upsert_subscription_invoice_from_stripe: {
+        Args: {
+          p_amount_due?: number
+          p_amount_paid?: number
+          p_amount_remaining?: number
+          p_currency?: string
+          p_due_date?: string
+          p_hosted_invoice_url?: string
+          p_invoice_pdf?: string
+          p_metadata?: Json
+          p_paid_at?: string
+          p_period_end?: string
+          p_period_start?: string
+          p_status?: string
+          p_stripe_created_at?: string
+          p_stripe_customer_id?: string
+          p_stripe_invoice_id: string
+          p_stripe_subscription_id?: string
+          p_tenant_id: string
+        }
+        Returns: undefined
       }
       rpc_upsert_tenant_subscription_from_stripe: {
         Args: {
