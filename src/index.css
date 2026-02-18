@@ -208,9 +208,11 @@
   }
 
   /* Minimum touch target utility (44x44px iOS guideline) */
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
+  @media (pointer: coarse) {
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
   }
 
   /* Data Label - Micro uppercase text for labels */
