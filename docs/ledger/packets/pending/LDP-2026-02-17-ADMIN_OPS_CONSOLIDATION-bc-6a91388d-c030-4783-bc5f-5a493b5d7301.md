@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `25`
+- Q&A items extracted: `26`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -50,6 +50,7 @@
 | DL-2026-02-17-028 | Email Ops includes tenant status table with sortable columns, status filtering, and search autocomplete | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-023` | - | - |
 | DL-2026-02-17-029 | Builder will define plain-language Email Ops status taxonomy and meanings for operators | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-024` | - | - |
 | DL-2026-02-17-030 | Email Ops tenant table uses separate columns for Status and Sender Type | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-025` | - | - |
+| DL-2026-02-17-031 | Email Ops Sender Type filter values include Platform, Custom (verified), and Custom (pending) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-026` | - | - |
 
 ## Detailed Decision Entries
 
@@ -647,6 +648,28 @@ This makes the table clearer for non-technical operators: one column answers “
 - Implement both columns and allow sorting on both.
 - Status filtering should be based on the Status column only (not conflated with sender type).
 
+### DL-2026-02-17-031: Email Ops Sender Type filter values include Platform, Custom (verified), and Custom (pending)
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-026`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The Email Ops tenant table “Sender Type” filter will include these values:
+- Platform sender
+- Custom sender (verified)
+- Custom sender (pending)
+
+#### Why
+Operators need to quickly distinguish tenants that are fully sending from their own domain, tenants that are still in setup, and tenants using the platform fallback sender.
+
+#### Implementation impact
+- Compute sender type from existing configuration fields (e.g., `communication_brand_settings.use_default_email`, `custom_email_domain`, `email_domain_verified`, `dkim_verified`, `spf_verified`).
+- Ensure the Sender Type column is sortable and filterable, independent from overall Status (health/action-needed).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -678,3 +701,4 @@ This makes the table clearer for non-technical operators: one column answers “
 | DLE-2026-02-17-027 | 2026-02-17 | DL-2026-02-17-028 | planned | - | builder | Add Email Ops tenant status table with sortable columns, status filtering, and search autocomplete/selector. |
 | DLE-2026-02-17-028 | 2026-02-17 | DL-2026-02-17-029 | planned | - | builder | Define initial Email Ops tenant status taxonomy + criteria in plain language for non-technical operators. |
 | DLE-2026-02-17-029 | 2026-02-17 | DL-2026-02-17-030 | planned | - | builder | Separate Email Ops tenant table into “Status” and “Sender Type” columns for clarity and filterability. |
+| DLE-2026-02-17-030 | 2026-02-17 | DL-2026-02-17-031 | planned | - | builder | Implement Sender Type column + filters for Platform vs Custom (verified/pending). |

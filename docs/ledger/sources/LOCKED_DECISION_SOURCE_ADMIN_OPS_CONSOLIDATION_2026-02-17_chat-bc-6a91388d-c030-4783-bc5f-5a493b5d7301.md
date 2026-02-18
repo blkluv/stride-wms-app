@@ -139,3 +139,10 @@ User request (status meanings + builder selection):
 User decision (table columns):
 - In the Email Ops tenant table, separate “Status” from “Sender Type” by using two columns (instead of encoding both concepts into a single Status string).
 
+### QA-2026-02-17-ADMINOPS-026
+User decision (Sender Type filter values):
+- Email Ops tenant table “Sender Type” filter values should be:
+  - Platform sender
+  - Custom sender (verified)
+  - Custom sender (pending)
+
