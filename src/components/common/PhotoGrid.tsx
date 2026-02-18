@@ -127,31 +127,18 @@ export function PhotoGrid({
 
       {/* Lightbox */}
       <Dialog open={!!lightboxUrl} onOpenChange={() => setLightboxUrl(null)}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] !h-[calc(100vh-1.5rem)] max-w-6xl !max-h-[calc(100vh-1.5rem)] !overflow-hidden p-3 sm:p-4">
+        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100dvh-1.5rem)] max-w-6xl max-h-[calc(100dvh-1.5rem)] overflow-hidden p-3 sm:p-4">
           {lightboxUrl && (
-            <div className="relative flex flex-1 flex-col min-h-0">
+            <div className="relative flex flex-col min-h-0 flex-1">
               <img
                 src={lightboxUrl}
                 alt="Photo"
-                className="w-full flex-1 min-h-0 object-contain rounded-lg"
+                className="w-full flex-1 min-h-0 object-contain rounded-lg bg-muted"
               />
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-11 w-11 sm:hidden"
-                  onClick={() => {
-                    const index = photos.indexOf(lightboxUrl);
-                    handleDownload(lightboxUrl, index >= 0 ? index : 0);
-                  }}
-                >
-                  <MaterialIcon name="download" size="md" />
-                  <span className="sr-only">Download</span>
-                </Button>
+              <div className="flex gap-2 mt-3 justify-center sm:justify-end flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="hidden sm:inline-flex"
                   onClick={() => {
                     const index = photos.indexOf(lightboxUrl);
                     handleDownload(lightboxUrl, index >= 0 ? index : 0);
@@ -161,32 +148,17 @@ export function PhotoGrid({
                   Download
                 </Button>
                 {!readonly && onPhotosChange && (
-                  <>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="h-11 w-11 sm:hidden"
-                      onClick={() => {
-                        handleDelete(lightboxUrl);
-                        setLightboxUrl(null);
-                      }}
-                    >
-                      <MaterialIcon name="close" size="md" />
-                      <span className="sr-only">Delete</span>
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="hidden sm:inline-flex"
-                      onClick={() => {
-                        handleDelete(lightboxUrl);
-                        setLightboxUrl(null);
-                      }}
-                    >
-                      <MaterialIcon name="close" size="sm" className="mr-1" />
-                      Delete
-                    </Button>
-                  </>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      handleDelete(lightboxUrl);
+                      setLightboxUrl(null);
+                    }}
+                  >
+                    <MaterialIcon name="close" size="sm" className="mr-1" />
+                    Delete
+                  </Button>
                 )}
               </div>
             </div>
