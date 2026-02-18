@@ -189,3 +189,10 @@ User decision (DMARC warning criteria + badge labels):
   - “DMARC missing” (higher importance)
   - “DMARC monitoring only (p=none)” (lower importance)
 
+### QA-2026-02-17-ADMINOPS-034
+User decision (when to show warnings + tenant UI toggle):
+- Only show DKIM/SPF/DMARC warnings if the tenant has opted to use their own email/domain (not the app-provided/platform sender).
+- Add a simple checkbox/toggle in tenant email settings (e.g., “Use my own company email/domain”):
+  - When checked: show the custom domain setup fields (DNS instructions + verification).
+  - When unchecked: hide custom domain fields and show only platform sender info (their platform-created From address) plus the Reply-To/inbound address fields.
+

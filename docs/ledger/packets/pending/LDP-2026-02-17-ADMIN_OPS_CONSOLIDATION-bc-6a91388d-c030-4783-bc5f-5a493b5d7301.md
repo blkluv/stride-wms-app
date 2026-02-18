@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `33`
+- Q&A items extracted: `34`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -58,6 +58,7 @@
 | DL-2026-02-17-036 | Email Ops warning badges include DKIM not verified and SPF not verified | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-031` | - | - |
 | DL-2026-02-17-037 | Email Ops warning badges include DMARC missing/misconfigured | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-032` | - | - |
 | DL-2026-02-17-038 | DMARC warning triggers on missing OR p=none with distinct badge labels | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-033` | - | - |
+| DL-2026-02-17-039 | Only show warnings/custom-domain fields when tenant opts into using their own email; toggle controls UI | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-034` | - | - |
 
 ## Detailed Decision Entries
 
@@ -833,6 +834,29 @@ This surfaces the next best-practice DNS item (DMARC) while avoiding a false sen
   - present_enforcing (not shown as warning)
 - Only show DMARC warnings for custom sender domains (platform fallback sender does not require tenant DMARC).
 
+### DL-2026-02-17-039: Only show warnings/custom-domain fields when tenant opts into using their own email; toggle controls UI
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-034`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Only show custom-domain setup fields and DKIM/SPF/DMARC warning badges when the tenant has explicitly opted into using their own company email/domain (not the platform-provided sender).
+
+Tenant email settings UX should use a simple checkbox/toggle:
+- Checked (“use my own email/domain”): show custom domain setup fields + DNS/verification UI.
+- Unchecked (platform sender): hide custom domain setup fields and show only platform sender info (per-tenant platform-created From address) + Reply-To/inbound address fields.
+
+#### Why
+Keep platform-sender mode as simple as possible for non-technical users; don’t show DNS/deliverability warnings unless they are actively trying to use their own domain.
+
+#### Implementation impact
+- Map the toggle state to a persisted field (preferably reusing an existing boolean like `use_default_email` if present).
+- Email Ops should only compute/display DKIM/SPF/DMARC warnings when the tenant is in “custom sender” mode (or has started custom sender setup).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -872,3 +896,4 @@ This surfaces the next best-practice DNS item (DMARC) while avoiding a false sen
 | DLE-2026-02-17-035 | 2026-02-17 | DL-2026-02-17-036 | planned | - | builder | Implement DKIM/SPF warning badges based on existing verification flags (deliverability risks). |
 | DLE-2026-02-17-036 | 2026-02-17 | DL-2026-02-17-037 | planned | - | builder | Add DMARC warning badge (presence/validity check) for tenant custom sender domains. |
 | DLE-2026-02-17-037 | 2026-02-17 | DL-2026-02-17-038 | planned | - | builder | Implement DMARC parsing to distinguish “missing” vs “p=none” warnings with distinct badge labels. |
+| DLE-2026-02-17-038 | 2026-02-17 | DL-2026-02-17-039 | planned | - | builder | Show custom-domain fields and warnings only when tenant opts into using their own email/domain; add checkbox/toggle to switch modes. |
