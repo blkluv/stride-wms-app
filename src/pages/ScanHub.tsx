@@ -24,6 +24,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 import { ScanModeIcon } from '@/components/scan/ScanModeIcon';
 import { HelpButton } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
@@ -438,20 +439,8 @@ export default function ScanHub() {
     };
   };
 
-  const parseQRPayload = (input: string): { type: string; id: string; code?: string } | null => {
-    try {
-      const parsed = JSON.parse(input);
-      if (parsed.type && parsed.id) {
-        return parsed;
-      }
-    } catch {
-      return { type: 'unknown', id: '', code: input.trim() };
-    }
-    return null;
-  };
-
   const lookupItem = async (input: string): Promise<ScannedItem | null> => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
 
     let query = supabase
@@ -481,7 +470,7 @@ export default function ScanHub() {
 
   // Extended lookup for service events - includes class, account, sidemark
   const lookupItemForService = async (input: string): Promise<ServiceScannedItem | null> => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
 
     // Query items table directly to get class (via class_id join), account_id, sidemark_id, account_name
@@ -525,7 +514,7 @@ export default function ScanHub() {
   };
 
   const lookupLocation = async (input: string): Promise<ScannedLocation | null> => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
 
     // Check if it's a location QR with explicit type
@@ -577,7 +566,7 @@ export default function ScanHub() {
    * before making any async DB calls.
    */
   const isLikelyLocationCode = (input: string): boolean => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return false;
     if (payload.type === 'location') return true;
     const codeToMatch = (payload.code || input).trim().toLowerCase();
