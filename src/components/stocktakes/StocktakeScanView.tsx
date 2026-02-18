@@ -38,6 +38,7 @@ import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { formatItemSize } from '@/lib/items/formatItemSize';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -960,6 +961,18 @@ export default function StocktakeScanView() {
                 )}
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* Activity */}
+        {id && (
+          <div className="mt-6">
+            <EntityActivityFeed
+              entityType="stocktake"
+              entityId={id}
+              title="Activity"
+              description="Timeline of all scans, lifecycle changes, and variance resolution for this stocktake"
+            />
           </div>
         )}
       </div>

@@ -311,7 +311,7 @@ export default function ClaimDetail() {
                 <TabsTrigger value="photos">Photos</TabsTrigger>
                 <TabsTrigger value="attachments">Attachments</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
-                <TabsTrigger value="audit">Audit Log</TabsTrigger>
+                <TabsTrigger value="audit">Activity</TabsTrigger>
               </TabsList>
 
               <TabsContent value="photos" className="mt-4">
