@@ -212,13 +212,23 @@ export default {
         },
         // Banner roll-down/up animations
         "banner-roll-down": {
-          "0%": { transform: "translateX(-50%) translateY(-100%)", opacity: "0" },
-          "60%": { transform: "translateX(-50%) translateY(5%)", opacity: "1" },
-          "100%": { transform: "translateX(-50%) translateY(0)", opacity: "1" },
+          "0%": { transform: "translateX(-50%) translateY(-120%) scaleY(0.85)", opacity: "0" },
+          "60%": { transform: "translateX(-50%) translateY(6%) scaleY(1.02)", opacity: "1" },
+          "100%": { transform: "translateX(-50%) translateY(0) scaleY(1)", opacity: "1" },
         },
         "banner-roll-up": {
-          "0%": { transform: "translateX(-50%) translateY(0)", opacity: "1" },
-          "100%": { transform: "translateX(-50%) translateY(-100%)", opacity: "0" },
+          "0%": { transform: "translateX(-50%) translateY(0) scaleY(1)", opacity: "1" },
+          "100%": { transform: "translateX(-50%) translateY(-120%) scaleY(0.85)", opacity: "0" },
+        },
+        // Bottom banner (toast) roll-up / roll-down
+        "banner-roll-up-from-bottom": {
+          "0%": { transform: "translateX(-50%) translateY(120%) scaleY(0.85)", opacity: "0" },
+          "60%": { transform: "translateX(-50%) translateY(-6%) scaleY(1.02)", opacity: "1" },
+          "100%": { transform: "translateX(-50%) translateY(0) scaleY(1)", opacity: "1" },
+        },
+        "banner-roll-down-to-bottom": {
+          "0%": { transform: "translateX(-50%) translateY(0) scaleY(1)", opacity: "1" },
+          "100%": { transform: "translateX(-50%) translateY(120%) scaleY(0.85)", opacity: "0" },
         },
         "banner-glow": {
           "0%, 100%": { boxShadow: "0 0 0 0 rgba(59, 130, 246, 0)" },
@@ -238,6 +248,8 @@ export default {
         "indicator-bounce": "indicator-bounce 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
         "banner-roll-down": "banner-roll-down 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
         "banner-roll-up": "banner-roll-up 250ms ease-out forwards",
+        "banner-roll-up-from-bottom": "banner-roll-up-from-bottom 400ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
+        "banner-roll-down-to-bottom": "banner-roll-down-to-bottom 250ms ease-out forwards",
         "banner-glow": "banner-glow 3s ease-in-out infinite",
       },
       transitionTimingFunction: {

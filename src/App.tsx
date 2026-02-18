@@ -9,10 +9,12 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { WarehouseProvider } from "@/contexts/WarehouseContext";
 import { AppleBannerProvider } from "@/contexts/AppleBannerContext";
+import { ToastBannerProvider } from "@/contexts/ToastBannerContext";
 import { PromptProvider } from "@/components/prompts";
 import { SubscriptionGateProvider, SubscriptionGatedRoute } from "@/components/subscription/SubscriptionGate";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { RequireRole } from "@/components/RequireRole";
+import { ToastBanner } from "@/components/ui/ToastBanner";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
@@ -103,6 +105,7 @@ const App = () => (
       {/* Replaced by AppleBanner system — remove after verification */}
       <BrowserRouter>
         <AppleBannerProvider>
+        <ToastBannerProvider>
         <AuthProvider>
           <WarehouseProvider>
           <PromptProvider>
@@ -211,11 +214,13 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           <AIBotSwitch />
+          <ToastBanner />
           </SidebarProvider>
           </SubscriptionGateProvider>
           </PromptProvider>
           </WarehouseProvider>
         </AuthProvider>
+        </ToastBannerProvider>
         </AppleBannerProvider>
       </BrowserRouter>
     </TooltipProvider>
