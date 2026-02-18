@@ -24,6 +24,7 @@ import {
 import { QRScanner } from '@/components/scan/QRScanner';
 import { useStocktakeScan, ScanResult } from '@/hooks/useStocktakes';
 import { useLocations } from '@/hooks/useLocations';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { supabase } from '@/integrations/supabase/client';
 import {
   hapticLight,
@@ -34,6 +35,17 @@ import {
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
 import { parseScanPayload } from '@/lib/scan/parseScanPayload';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { formatItemSize } from '@/lib/items/formatItemSize';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 
 const scanResultConfig: Record<ScanResult, {
   color: string;
@@ -98,11 +110,18 @@ interface ScannedItemDetails {
   scan_result: ScanResult;
   item_id: string | null;
   item_code: string;
+  sku: string | null;
+  quantity: number | null;
+  size: number | null;
+  size_unit: string | null;
   vendor: string | null;
   description: string | null;
   location_code: string | null;
   account_name: string | null;
   sidemark: string | null;
+  room: string | null;
+  primary_photo_url: string | null;
+  metadata: Record<string, unknown> | null;
   scanned_at: string;
   auto_fix_applied: boolean;
 }
@@ -146,6 +165,35 @@ export default function StocktakeScanView() {
     refetch,
   } = useStocktakeScan(id || '');
 
+  // Item list view (tenant-managed)
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const stocktakeVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
+
   const { locations } = useLocations(stocktake?.warehouse_id);
 
   // Filter locations to only those in the stocktake
@@ -168,11 +216,18 @@ export default function StocktakeScanView() {
           scan_result: s.scan_result as ScanResult,
           item_id: s.item_id,
           item_code: s.item_code || 'Unknown',
+          sku: null,
+          quantity: null,
+          size: null,
+          size_unit: null,
           vendor: null,
           description: null,
           location_code: s.scanned_location?.code || null,
           account_name: null,
           sidemark: null,
+          room: null,
+          primary_photo_url: null,
+          metadata: null,
           scanned_at: s.scanned_at,
           auto_fix_applied: s.auto_fix_applied,
         })));
@@ -184,9 +239,16 @@ export default function StocktakeScanView() {
         .select(`
           id,
           item_code,
+          sku,
+          quantity,
+          size,
+          size_unit,
           vendor,
           description,
           sidemark,
+          room,
+          primary_photo_url,
+          metadata,
           current_location_id,
           account:accounts!items_account_id_fkey(account_name)
         `)
@@ -201,11 +263,18 @@ export default function StocktakeScanView() {
           scan_result: s.scan_result as ScanResult,
           item_id: s.item_id,
           item_code: s.item_code || item?.item_code || 'Unknown',
+          sku: (item as any)?.sku || null,
+          quantity: (item as any)?.quantity ?? null,
+          size: (item as any)?.size ?? null,
+          size_unit: (item as any)?.size_unit ?? null,
           vendor: item?.vendor || null,
           description: item?.description || null,
           location_code: s.scanned_location?.code || null,
           account_name: (item?.account as any)?.account_name || null,
           sidemark: item?.sidemark || null,
+          room: (item as any)?.room || null,
+          primary_photo_url: (item as any)?.primary_photo_url || null,
+          metadata: (item as any)?.metadata || null,
           scanned_at: s.scanned_at,
           auto_fix_applied: s.auto_fix_applied,
         };
@@ -671,6 +740,36 @@ export default function StocktakeScanView() {
                     </Button>
                   )}
 
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={activeItemViewId || defaultItemViewId || 'default'}
+                      onValueChange={setActiveItemViewId}
+                      disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                    >
+                      <SelectTrigger className="w-[140px] sm:w-[180px] h-10">
+                        <div className="flex items-center gap-2">
+                          <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                          <SelectValue placeholder="View" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {itemDisplaySettings.views.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                            {v.is_default ? ' (default)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <ItemColumnsPopover
+                      settings={itemDisplaySettings}
+                      viewId={activeItemViewId || defaultItemViewId || 'default'}
+                      disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                      onSave={saveItemDisplaySettings}
+                    />
+                  </div>
+
                   <Button variant="outline" size="icon" onClick={refetch}>
                     <MaterialIcon name="refresh" size="sm" />
                   </Button>
@@ -741,42 +840,41 @@ export default function StocktakeScanView() {
                             Result <SortIcon field="scan_result" />
                           </div>
                         </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('item_code')}>
-                          <div className="flex items-center gap-2">
-                            Item Code <SortIcon field="item_code" />
-                          </div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('vendor')}>
-                          <div className="flex items-center gap-2">
-                            Vendor <SortIcon field="vendor" />
-                          </div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('description')}>
-                          <div className="flex items-center gap-2">
-                            Description <SortIcon field="description" />
-                          </div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('location_code')}>
-                          <div className="flex items-center gap-2">
-                            Location <SortIcon field="location_code" />
-                          </div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('account_name')}>
-                          <div className="flex items-center gap-2">
-                            Account <SortIcon field="account_name" />
-                          </div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('sidemark')}>
-                          <div className="flex items-center gap-2">
-                            Sidemark <SortIcon field="sidemark" />
-                          </div>
-                        </TableHead>
+                        {stocktakeVisibleColumns.map((col) => {
+                          const sortFieldForCol = (() => {
+                            const cfKey = parseCustomFieldColumnKey(col);
+                            if (cfKey) return null;
+                            switch (col as BuiltinItemColumnKey) {
+                              case 'item_code': return 'item_code' as const;
+                              case 'vendor': return 'vendor' as const;
+                              case 'description': return 'description' as const;
+                              case 'location': return 'location_code' as const;
+                              case 'client_account': return 'account_name' as const;
+                              case 'sidemark': return 'sidemark' as const;
+                              default: return null;
+                            }
+                          })();
+
+                          const clickable = !!sortFieldForCol;
+                          return (
+                            <TableHead
+                              key={col}
+                              className={clickable ? 'cursor-pointer hover:bg-muted/50' : undefined}
+                              onClick={clickable ? () => handleSort(sortFieldForCol!) : undefined}
+                            >
+                              <div className={col === 'quantity' || col === 'size' ? 'flex items-center justify-end gap-2' : 'flex items-center gap-2'}>
+                                {getColumnLabel(itemDisplaySettings, col)}
+                                {clickable && <SortIcon field={sortFieldForCol!} />}
+                              </div>
+                            </TableHead>
+                          );
+                        })}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredAndSortedItems.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={1 + stocktakeVisibleColumns.length} className="text-center py-8 text-muted-foreground">
                             {scannedItemDetails.length === 0 ? 'No items scanned yet' : 'No items match filters'}
                           </TableCell>
                         </TableRow>
@@ -800,24 +898,54 @@ export default function StocktakeScanView() {
                                   </Badge>
                                 )}
                               </TableCell>
-                              <TableCell className="font-mono font-medium">
-                                {item.item_code}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {item.vendor || '-'}
-                              </TableCell>
-                              <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                                {item.description || '-'}
-                              </TableCell>
-                              <TableCell className="font-mono">
-                                {item.location_code || '-'}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {item.account_name || '-'}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                {item.sidemark || '-'}
-                              </TableCell>
+                              {stocktakeVisibleColumns.map((col) => {
+                                const cfKey = parseCustomFieldColumnKey(col);
+                                if (cfKey) {
+                                  const meta = item.metadata;
+                                  const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                                  const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                                  const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                                  return <TableCell key={col} className="max-w-[180px] truncate text-muted-foreground">{display}</TableCell>;
+                                }
+
+                                switch (col as BuiltinItemColumnKey) {
+                                  case 'photo': {
+                                    const url = item.primary_photo_url || null;
+                                    const node = url ? (
+                                      <img src={url} alt={item.item_code} className="h-8 w-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                                    );
+                                    return (
+                                      <TableCell key={col} className="w-12" onClick={(e) => e.stopPropagation()}>
+                                        {item.item_id ? <ItemPreviewCard itemId={item.item_id}>{node}</ItemPreviewCard> : node}
+                                      </TableCell>
+                                    );
+                                  }
+                                  case 'item_code':
+                                    return <TableCell key={col} className="font-mono font-medium">{item.item_code}</TableCell>;
+                                  case 'sku':
+                                    return <TableCell key={col} className="text-muted-foreground">{item.sku || '-'}</TableCell>;
+                                  case 'quantity':
+                                    return <TableCell key={col} className="text-right tabular-nums text-muted-foreground">{item.quantity ?? '-'}</TableCell>;
+                                  case 'size':
+                                    return <TableCell key={col} className="text-right tabular-nums text-muted-foreground">{formatItemSize(item.size, item.size_unit)}</TableCell>;
+                                  case 'vendor':
+                                    return <TableCell key={col} className="text-muted-foreground">{item.vendor || '-'}</TableCell>;
+                                  case 'description':
+                                    return <TableCell key={col} className="max-w-[200px] truncate text-muted-foreground">{item.description || '-'}</TableCell>;
+                                  case 'location':
+                                    return <TableCell key={col} className="font-mono">{item.location_code || '-'}</TableCell>;
+                                  case 'client_account':
+                                    return <TableCell key={col} className="text-muted-foreground">{item.account_name || '-'}</TableCell>;
+                                  case 'sidemark':
+                                    return <TableCell key={col} className="text-muted-foreground">{item.sidemark || '-'}</TableCell>;
+                                  case 'room':
+                                    return <TableCell key={col} className="text-muted-foreground">{item.room || '-'}</TableCell>;
+                                  default:
+                                    return <TableCell key={col}>-</TableCell>;
+                                }
+                              })}
                             </TableRow>
                           );
                         })
