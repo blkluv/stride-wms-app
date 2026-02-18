@@ -163,10 +163,10 @@ export function ColumnSettingsPopover({ viewId }: ColumnSettingsPopoverProps) {
 
       return {
         ...base,
-        views: base.views.map((v) => (v.id === activeViewId ? { ...v, order, hidden } : v)),
+        views: base.views.map((v) => (v.id === activeView.id ? { ...v, order, hidden } : v)),
       };
     });
-  }, [settings, activeViewId]);
+  }, [settings, activeView.id]);
 
   if (!activeView) return null;
 
