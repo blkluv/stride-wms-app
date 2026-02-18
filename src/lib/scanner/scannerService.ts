@@ -86,6 +86,20 @@ export function getSessionImages(sessionId: string): string[] {
 }
 
 /**
+ * Replace an existing session image (used for crop adjustments).
+ */
+export function replaceImageInSession(sessionId: string, index: number, imageDataUrl: string): void {
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    throw new Error('Scanner session not found');
+  }
+  if (index < 0 || index >= session.capturedImages.length) {
+    throw new Error('Invalid image index');
+  }
+  session.capturedImages[index] = imageDataUrl;
+}
+
+/**
  * Complete session and generate PDF
  */
 export async function completeScannerSession(

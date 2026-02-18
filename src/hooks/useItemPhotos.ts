@@ -421,6 +421,16 @@ export function useItemPhotos(itemId: string | undefined, includeTaskPhotos: boo
         .single();
 
       if (error) throw error;
+
+      logItemActivity({
+        tenantId: profile.tenant_id,
+        itemId,
+        actorUserId: profile.id,
+        eventType: 'item_photo_added',
+        eventLabel: `Photo added (${photoType})`,
+        details: { photo_id: data?.id, photo_type: photoType, file_name: data?.file_name || null, source: 'scanner' },
+      });
+
       return data;
     } catch (error) {
       console.error('Error adding photo from URL:', error);
@@ -460,6 +470,15 @@ export function useItemPhotos(itemId: string | undefined, includeTaskPhotos: boo
         .insert(records);
 
       if (error) throw error;
+
+      logItemActivity({
+        tenantId: profile.tenant_id,
+        itemId,
+        actorUserId: profile.id,
+        eventType: 'item_photo_added',
+        eventLabel: `Photos added (${photoType})`,
+        details: { photo_type: photoType, count: urls.length, source: 'scanner' },
+      });
 
       fetchPhotos();
       return true;

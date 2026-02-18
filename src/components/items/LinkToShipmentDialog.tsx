@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
+import { logActivity } from '@/lib/activity/logActivity';
 
 interface Shipment {
   id: string;
@@ -131,6 +132,39 @@ export function LinkToShipmentDialog({
       if (error) throw error;
 
       const selectedShipment = shipments.find(s => s.id === selectedShipmentId);
+
+      // Activity logging (best-effort; never blocks UI)
+      if (profile?.tenant_id) {
+        const shipmentNumber = selectedShipment?.shipment_number || 'Unknown';
+        void logActivity({
+          entityType: 'item',
+          tenantId: profile.tenant_id,
+          entityId: itemId,
+          actorUserId: profile.id,
+          eventType: 'item_shipment_linked',
+          eventLabel: `Linked to shipment ${shipmentNumber}`,
+          details: {
+            shipment_id: selectedShipmentId,
+            shipment_number: shipmentNumber,
+            shipment_type: selectedShipment?.shipment_type,
+            shipment_status: selectedShipment?.status,
+          },
+        });
+
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: selectedShipmentId,
+          actorUserId: profile.id,
+          eventType: 'item_added',
+          eventLabel: `Item ${itemCode} linked`,
+          details: {
+            item_id: itemId,
+            item_code: itemCode,
+          },
+        });
+      }
+
       toast({
         title: 'Item Linked',
         description: `${itemCode} has been linked to ${selectedShipment?.shipment_number}.`,

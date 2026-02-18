@@ -74,6 +74,7 @@ export function BrandSettingsCard({ brandSettings, onUpdate }: BrandSettingsCard
               <Label htmlFor="brand_logo_url">Logo URL</Label>
               <Input
                 id="brand_logo_url"
+                type="url"
                 placeholder="https://example.com/logo.png"
                 value={formData.brand_logo_url}
                 onChange={(e) => setFormData(prev => ({ ...prev, brand_logo_url: e.target.value }))}
@@ -116,6 +117,7 @@ export function BrandSettingsCard({ brandSettings, onUpdate }: BrandSettingsCard
               <Label htmlFor="portal_base_url">Portal Base URL</Label>
               <Input
                 id="portal_base_url"
+                type="url"
                 placeholder="https://portal.yourcompany.com"
                 value={formData.portal_base_url}
                 onChange={(e) => setFormData(prev => ({ ...prev, portal_base_url: e.target.value }))}

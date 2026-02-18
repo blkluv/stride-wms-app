@@ -17,6 +17,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
+import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 
 interface QuickReleaseDialogProps {
   open: boolean;
@@ -112,6 +113,19 @@ export function QuickReleaseDialog({
         .single();
 
       if (shipmentError) throw shipmentError;
+      let effectiveShipmentNumber: string | null = shipment.shipment_number;
+
+      // Coerce legacy SHP-###### → OUT-##### for new outbound shipments (best-effort).
+      const coerced = coerceOutboundShipmentNumber(effectiveShipmentNumber);
+      if (coerced) {
+        const { error: renumberError } = await (supabase.from('shipments') as any)
+          .update({ shipment_number: coerced })
+          .eq('tenant_id', profile.tenant_id)
+          .eq('id', shipment.id);
+        if (!renumberError) {
+          effectiveShipmentNumber = coerced;
+        }
+      }
 
       // Create shipment items linking to actual inventory items
       const shipmentItems = selectedItems.map(item => ({
@@ -143,7 +157,7 @@ export function QuickReleaseDialog({
 
       toast({
         title: 'Items Released',
-        description: `${selectedItems.length} item(s) released successfully. Shipment ${shipment.shipment_number} created.`,
+        description: `${selectedItems.length} item(s) released successfully. Shipment ${effectiveShipmentNumber} created.`,
       });
 
       onSuccess();

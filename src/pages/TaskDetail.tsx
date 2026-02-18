@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -28,8 +28,20 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -55,6 +67,7 @@ import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
 import { validateTaskCompletion, TaskCompletionValidationResult } from '@/lib/billing/taskCompletionValidation';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { logActivity } from '@/lib/activity/logActivity';
 import { queueRepairUnableToCompleteAlert } from '@/lib/alertQueue';
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { updateBillingEventFields } from '@/services/billing';
@@ -105,6 +118,9 @@ interface TaskItemRow {
   item?: {
     id: string;
     item_code: string;
+    sku: string | null;
+    size: number | null;
+    size_unit: string | null;
     description: string | null;
     vendor: string | null;
     inspection_status: string | null;
@@ -112,6 +128,9 @@ interface TaskItemRow {
     location?: { code: string } | null;
     account?: { account_name: string } | null;
     sidemark: string | null;
+    room?: string | null;
+    primary_photo_url?: string | null;
+    metadata?: Record<string, unknown> | null;
   } | null;
 }
 
@@ -127,6 +146,36 @@ export default function TaskDetailPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { toast } = useToast();
+
+  // Tenant-managed item list views (systemwide)
+  const {
+    settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettingsForUser();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const itemVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [taskItems, setTaskItems] = useState<TaskItemRow[]>([]);
@@ -338,7 +387,7 @@ export default function TaskDetailPage() {
       const { data: items, error: itemsError } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, description, vendor, sidemark, inspection_status,
+          id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
           current_location_id,
           location:locations!items_current_location_id_fkey(code),
           account:accounts!items_account_id_fkey(account_name)
@@ -595,6 +644,29 @@ export default function TaskDetailPage() {
         .eq('id', id);
       if (error) throw error;
 
+      // Activity logs (task + linked items)
+      void logActivity({
+        entityType: 'task',
+        tenantId: profile.tenant_id,
+        entityId: id,
+        actorUserId: profile.id,
+        eventType: 'task_unable',
+        eventLabel: 'Task marked unable to complete',
+        details: { note },
+      });
+
+      for (const ti of taskItems) {
+        if (!ti.item_id) continue;
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: ti.item_id,
+          actorUserId: profile.id,
+          eventType: 'task_unable',
+          eventLabel: `Task marked unable to complete: ${task?.task_type || 'Task'}`,
+          details: { task_id: id, task_type: task?.task_type || null, note },
+        });
+      }
+
       // For Repair tasks: send unrepairable item alert (damage/quarantine remain)
       if (task?.task_type === 'Repair') {
         const itemCodes = taskItems
@@ -752,6 +824,7 @@ export default function TaskDetailPage() {
           toast({
             title: 'Repair Task Created',
             description: `Auto-repair task created for ${itemData.item_code}`,
+            navigateTo: `/tasks/${repairTask.id}`,
           });
         }
       }
@@ -1317,31 +1390,57 @@ export default function TaskDetailPage() {
             {taskItems.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MaterialIcon name="assignment" size="sm" />
-                    Items ({taskItems.length})
-                  </CardTitle>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MaterialIcon name="assignment" size="sm" />
+                      Items ({taskItems.length})
+                    </CardTitle>
+                    <div className="w-full sm:w-56 flex items-center gap-2">
+                      <Select
+                        value={activeItemViewId || defaultItemViewId || 'default'}
+                        onValueChange={setActiveItemViewId}
+                        disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                      >
+                        <SelectTrigger className="h-10 flex-1">
+                          <SelectValue placeholder="View" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {itemDisplaySettings.views.map((v) => (
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.name}
+                              {v.is_default ? ' (default)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Item Code</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Vendor</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Location</TableHead>
-                        {task.task_type === 'Inspection' ? (
+                        {itemVisibleColumns.map((col) => (
+                          <TableHead key={col}>{getColumnLabel(itemDisplaySettings, col)}</TableHead>
+                        ))}
+                        {task.task_type === 'Inspection' && (
                           <>
                             <TableHead className="text-center">Pass</TableHead>
                             <TableHead className="text-center">Fail</TableHead>
                           </>
-                        ) : (
-                          <>
-                            <TableHead>Account</TableHead>
-                            <TableHead>Sidemark</TableHead>
-                          </>
                         )}
+                        <TableHead className="w-8">
+                          <div className="flex justify-end">
+                            <ItemColumnsPopover
+                              settings={itemDisplaySettings}
+                              baseSettings={tenantItemDisplaySettings}
+                              viewId={activeItemViewId || defaultItemViewId || 'default'}
+                              disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                              onSave={saveItemDisplaySettings}
+                              compact
+                            />
+                          </div>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1351,20 +1450,72 @@ export default function TaskDetailPage() {
                           className={task.task_type !== 'Inspection' ? "cursor-pointer hover:bg-muted/50" : "hover:bg-muted/50"}
                           onClick={() => task.task_type !== 'Inspection' && ti.item?.id && navigate(`/inventory/${ti.item.id}`)}
                         >
-                          <TableCell
-                            className="font-medium text-primary cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              ti.item?.id && navigate(`/inventory/${ti.item.id}`);
-                            }}
-                          >
-                            {ti.item?.item_code || ti.item_id.slice(0, 8)}
-                          </TableCell>
-                          <TableCell>{ti.quantity || 1}</TableCell>
-                          <TableCell>{ti.item?.vendor || '-'}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">{ti.item?.description || '-'}</TableCell>
-                          <TableCell>{(ti.item as any)?.location?.code || '-'}</TableCell>
-                          {task.task_type === 'Inspection' ? (
+                          {itemVisibleColumns.map((col) => {
+                            const cfKey = parseCustomFieldColumnKey(col);
+                            const item = ti.item;
+
+                            if (cfKey) {
+                              const meta = item?.metadata;
+                              const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                              const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                              const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                              return <TableCell key={col} className="max-w-[180px] truncate">{display}</TableCell>;
+                            }
+
+                            switch (col as BuiltinItemColumnKey) {
+                              case 'photo': {
+                                const node = item?.primary_photo_url ? (
+                                  <img
+                                    src={item.primary_photo_url}
+                                    alt={item.item_code}
+                                    className="h-8 w-8 rounded object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                                );
+                                return (
+                                  <TableCell key={col} onClick={(e) => e.stopPropagation()}>
+                                    {item?.id ? <ItemPreviewCard itemId={item.id}>{node}</ItemPreviewCard> : node}
+                                  </TableCell>
+                                );
+                              }
+                              case 'item_code':
+                                return (
+                                  <TableCell
+                                    key={col}
+                                    className="font-medium text-primary cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      item?.id && navigate(`/inventory/${item.id}`);
+                                    }}
+                                  >
+                                    {item?.item_code || ti.item_id.slice(0, 8)}
+                                  </TableCell>
+                                );
+                              case 'sku':
+                                return <TableCell key={col}>{item?.sku || '-'}</TableCell>;
+                              case 'quantity':
+                                return <TableCell key={col}>{ti.quantity || 1}</TableCell>;
+                              case 'size':
+                                return <TableCell key={col} className="text-right tabular-nums">{formatItemSize(item?.size, item?.size_unit)}</TableCell>;
+                              case 'vendor':
+                                return <TableCell key={col}>{item?.vendor || '-'}</TableCell>;
+                              case 'description':
+                                return <TableCell key={col} className="max-w-[200px] truncate">{item?.description || '-'}</TableCell>;
+                              case 'location':
+                                return <TableCell key={col}>{(item as any)?.location?.code || '-'}</TableCell>;
+                              case 'client_account':
+                                return <TableCell key={col}>{(item as any)?.account?.account_name || '-'}</TableCell>;
+                              case 'sidemark':
+                                return <TableCell key={col}>{item?.sidemark || '-'}</TableCell>;
+                              case 'room':
+                                return <TableCell key={col}>{item?.room || '-'}</TableCell>;
+                              default:
+                                return <TableCell key={col}>-</TableCell>;
+                            }
+                          })}
+
+                          {task.task_type === 'Inspection' && (
                             <>
                               <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                                 {ti.item?.inspection_status === 'pass' ? (
@@ -1397,12 +1548,8 @@ export default function TaskDetailPage() {
                                 )}
                               </TableCell>
                             </>
-                          ) : (
-                            <>
-                              <TableCell>{(ti.item as any)?.account?.account_name || '-'}</TableCell>
-                              <TableCell>{ti.item?.sidemark || '-'}</TableCell>
-                            </>
                           )}
+                          <TableCell />
                         </TableRow>
                       ))}
                     </TableBody>

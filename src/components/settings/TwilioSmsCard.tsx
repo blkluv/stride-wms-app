@@ -650,6 +650,7 @@ export function TwilioSmsCard({ settings, tenantId, onUpdate }: TwilioSmsCardPro
                 onChange={setProofOfConsentUrl}
                 onCopy={handleCopy}
                 placeholder="https://yoursite.com/sms-opt-in"
+                type="url"
                 hint={
                   generatedOptInUrl
                     ? `Use your generated app URL: ${generatedOptInUrl}`
@@ -767,6 +768,7 @@ export function TwilioSmsCard({ settings, tenantId, onUpdate }: TwilioSmsCardPro
                 onChange={setPrivacyPolicyUrl}
                 onCopy={handleCopy}
                 placeholder="https://yoursite.com/privacy"
+                type="url"
                 hint="URL to your company's privacy policy"
                 badge="Required"
               />
@@ -778,6 +780,7 @@ export function TwilioSmsCard({ settings, tenantId, onUpdate }: TwilioSmsCardPro
                 onChange={setTermsConditionsUrl}
                 onCopy={handleCopy}
                 placeholder="https://yoursite.com/terms"
+                type="url"
                 hint="URL to your company's terms and conditions"
                 badge="Required"
               />
@@ -816,9 +819,10 @@ interface CopyableFieldProps {
   placeholder?: string;
   hint?: string;
   badge?: string;
+  type?: React.ComponentProps<typeof Input>['type'];
 }
 
-function CopyableField({ label, value, onChange, onCopy, placeholder, hint, badge }: CopyableFieldProps) {
+function CopyableField({ label, value, onChange, onCopy, placeholder, hint, badge, type }: CopyableFieldProps) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
@@ -827,6 +831,7 @@ function CopyableField({ label, value, onChange, onCopy, placeholder, hint, badg
       </div>
       <div className="flex gap-2">
         <Input
+          type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}

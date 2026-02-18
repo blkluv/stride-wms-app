@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { LabelConfig, LabelFieldConfig } from '@/hooks/useTenantPreferences';
 
 interface LocationLabelData {
+  id: string;
   code: string;
   name: string;
   type: string;
@@ -13,6 +14,7 @@ interface LocationLabelData {
 export interface ItemLabelData {
   id: string;
   itemCode: string;
+  sku?: string;
   description: string;
   vendor: string;
   account: string;
@@ -68,7 +70,7 @@ function createItemQRPayload(item: ItemLabelData): string {
 function createLocationQRPayload(location: LocationLabelData): string {
   const payload: QRPayload = {
     type: 'location',
-    id: location.code, // Using code as ID for locations
+    id: location.id,
     code: location.code,
     v: 1,
   };
@@ -232,7 +234,15 @@ export async function generateItemLabelsPDF(items: ItemLabelData[], config?: Lab
         if (!value) continue;
 
         // Insert a divider after the header fields (account, sidemark, room) before item code
-        if (!drewDivider && (field.key === 'itemCode' || field.key === 'vendor' || field.key === 'description' || field.key === 'warehouseName' || field.key === 'locationCode')) {
+        if (
+          !drewDivider &&
+          (field.key === 'itemCode' ||
+            field.key === 'sku' ||
+            field.key === 'vendor' ||
+            field.key === 'description' ||
+            field.key === 'warehouseName' ||
+            field.key === 'locationCode')
+        ) {
           if (yPos > MARGIN + 20) {
             doc.setDrawColor(200, 200, 200);
             doc.setLineWidth(1);
@@ -343,6 +353,7 @@ function getFieldValue(item: ItemLabelData, key: string): string {
     case 'sidemark': return item.sidemark || '';
     case 'room': return item.room ? `Room: ${item.room}` : '';
     case 'itemCode': return item.itemCode || '';
+    case 'sku': return item.sku || '';
     case 'vendor': return item.vendor || '';
     case 'description': return item.description || '';
     case 'warehouseName': return item.warehouseName || '';

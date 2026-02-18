@@ -1,25 +1,49 @@
-# LDP-2026-02-16-dock-intake-matching-candidates-expand-bc-c8136eae-835a-405e-bb84-cb901bf5ab45
+# Locked Decision Import Packet
+
+- Packet ID: `LDP-2026-02-16-dock-intake-matching-candidates-expand-bc-c8136eae-835a-405e-bb84-cb901bf5ab45`
+- Topic: Dock Intake matching candidates expand + bulk link
+- Topic Slug: `DOCK_INTAKE_MATCHING_CANDIDATES_EXPAND`
+- Source Artifact: `docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_MATCHING_CANDIDATES_EXPAND_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md`
+- Source Mode: `current_chat`
+- Source Path (if file): `-`
+- Created Date: `2026-02-16`
+- Actor: `builder`
+- Status: `pending`
+
+## Scope Summary
+
+- Q&A items extracted: `1`
+- Existing decisions mapped: `-`
+- New decisions added: `DL-2026-02-16-008`
+- Unresolved/open (draft): `-`
+- Supersedes: `-`
 
 ## Decision Index Rows
 
-| decision_id | date | topic_slug | summary | source_artifact |
-|---|---|---|---|---|
-| DEC-2026-02-16-REC-002 | 2026-02-16 | dock-intake-matching-candidates-expand | Dock Intake matching candidates must expand to show item details (qty/vendor/description/sidemark/room) and support multi-select “Link Selected” linking. | docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_MATCHING_CANDIDATES_EXPAND_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md |
+| DL-2026-02-16-008 | Dock Intake matching candidates expand with item preview and support bulk “Link Selected” | Receiving UI | locked | `docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_MATCHING_CANDIDATES_EXPAND_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md` | - | 2026-02-16 |
 
 ## Detailed Decision Entries
 
-### DEC-2026-02-16-REC-002
-- Date: 2026-02-16
-- Status: locked
-- Context: users need to verify candidate matches by comparing line items inline during Dock Intake creation.
-- Decision: make candidate rows expandable with an item preview (qty, vendor, description, sidemark, room) and add a “Link Selected” bulk action (while keeping per-candidate Link).
-- Rationale: prevents mis-linking and avoids context-switching away from Dock Intake to inspect items.
-- Source: docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_MATCHING_CANDIDATES_EXPAND_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md
+### DL-2026-02-16-008: Dock Intake matching candidates expand with item preview and support bulk “Link Selected”
+- Domain: Receiving UI
+- State: locked
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_DOCK_INTAKE_MATCHING_CANDIDATES_EXPAND_2026-02-16_chat-bc-c8136eae-835a-405e-bb84-cb901bf5ab45.md`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-16
+- Locked at: 2026-02-16
+
+#### Decision
+During Dock Intake creation, matching candidate rows must be expandable to show inline item preview details (qty, vendor, description, sidemark, room) and the UI must support multi-select with a bulk “Link Selected” action while preserving per-candidate linking.
+
+#### Why
+Operators need to verify candidate matches without leaving Dock Intake; inline previews and bulk linking reduce mis-linking and context switching.
+
+#### Implementation impact
+- UI: `src/components/incoming/DockIntakeMatchingPanel.tsx` add expandable row previews and bulk selection/linking.
 
 ## Implementation Log Rows
 
-| event_id | date | decision_id | type | summary |
-|---|---|---|---|---|
-| EVT-2026-02-16-REC-004 | 2026-02-16 | DEC-2026-02-16-REC-002 | ui | DockIntakeMatchingPanel: candidate rows are now collapsible and show a line-item preview (qty/vendor/description/sidemark/room) to confirm match before linking. |
-| EVT-2026-02-16-REC-005 | 2026-02-16 | DEC-2026-02-16-REC-002 | ui | DockIntakeMatchingPanel: added checkboxes + “Link Selected” bulk linking to link multiple candidate shipments to one dock intake. |
+| DLE-2026-02-16-010 | 2026-02-16 | DL-2026-02-16-008 | completed | `src/components/incoming/DockIntakeMatchingPanel.tsx` | builder | Candidate rows are collapsible and show a line-item preview (qty/vendor/description/sidemark/room) to confirm matches before linking. |
+| DLE-2026-02-16-011 | 2026-02-16 | DL-2026-02-16-008 | completed | `src/components/incoming/DockIntakeMatchingPanel.tsx` | builder | Added checkboxes + “Link Selected” bulk action to link multiple candidate shipments to one dock intake. |
 

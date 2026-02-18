@@ -25,6 +25,7 @@ export {
   startScannerSession,
   addImageToSession,
   removeImageFromSession,
+  replaceImageInSession,
   getSessionImages,
   completeScannerSession,
   cancelScannerSession,

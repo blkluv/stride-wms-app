@@ -170,3 +170,129 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 50. Q: Shipment-level exception chip list (final confirmation)?
     A: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
 
+51. Q: After an intake is completed/closed, can users return to view/edit it?
+    A: Yes. The same Dock Intake page (Stage 1 + Stage 2) should remain accessible.
+       It is read-only by default with an "Edit" button to unlock changes, without
+       reopening the intake status or re-running the completion flow.
+
+52. Q: Auto-generated Receiving Document PDF: when saved and how to handle re-generation?
+    A: Save immediately upon Stage 2 completion. If a Receiving Document already exists,
+       overwrite the visible version (keep only the latest visible) while keeping older
+       versions archived (not deleted from storage).
+
+53. Q: How do users revisit archived Receiving Document versions?
+    A: Via the Activity feed. Activity should be interactive globally across the app:
+       users can tap entity codes (item/shipment/etc) and documents to navigate/open them.
+
+54. Q: Activity link rendering style (when codes appear in the text)?
+    A: Inline clickable text within the sentence (option B), not separate chips under the row.
+
+55. Q: Should the redesigned Documents field (grid thumbnails + viewer + upload/download permissions)
+       be reused outside Dock Intake (e.g., Quote detail)?
+    A: Yes — apply the same redesigned Documents field to the Quote detail page as well.
+
+56. Q: Which Quote detail page should receive the redesigned Documents field?
+    A: Quote Builder / Quote detail (`/quotes/:id`) (option B).
+
+57. Q: Quote Builder currently uses a legacy "Attachments" section. Keep it or replace it?
+    A: Replace it with the redesigned Documents field (option A).
+
+58. Q: For existing quotes with legacy attachments, should we migrate/surface them in the new Documents grid?
+    A: No (option B). It's fine to leave legacy attachments out since there aren't quotes with attachments in the system.
+
+59. Q: Quote Builder Documents field permissions (and client access)?
+    A: Staff only (admin + manager). Client users should not have access to the Quotes list or Quote Builder/detail pages.
+
+60. Q: What does "Closed" mean for Dock Intake receiving?
+    A: It refers to `shipments.inbound_status = 'closed'` (not the global `shipments.status`).
+       This is set when Stage 2 is completed: the dock intake has been fully received,
+       `received_at` is set, and the intake workflow is considered finished.
+
+61. Q: When Stage 2 is completed, what should the shipment's visible status be, and how should "Received Today" work?
+    A: Stage 2 completion should set the shipment's visible status to "received" (i.e., update `shipments.status = 'received'`).
+       Intakes/shipments with `status = 'received'` should appear on the "Received Today" card when `received_at` is today.
+
+62. Q: Quote Builder (`/quotes/:id`) Documents field: scan support or upload only?
+    A: Upload only. Button UI + preview behavior should match the Intake Documents field (same look/feel and thumbnail/viewer behavior).
+
+63. Q: Quote Builder upload-only Documents header button layout?
+    A: Single full-width "Upload" button (option A).
+
+64. Q: In Hub cards / list rows, what status label should dock intakes show after Stage 2 completion?
+    A: Show "Received" (option A). ("Closed" is an internal inbound stage marker; the user-facing status should be received.)
+
+65. Q: Hub card expanded lists: clicking a shipment row should navigate where?
+    A: To the Shipment Details page (`/shipments/:id`), even for dock intakes.
+
+66. Q: "Intakes In Progress" card: should it include dock intakes with inbound_status = closed?
+    A: No (option A). Closed is not in-progress; include only draft/stage1_complete/receiving.
+
+67. Q: "Intakes In Progress" card list: status label for those rows?
+    A: Show a single label "In Progress" for all in-progress intake stages (option B).
+
+68. Q: "Received Today" card: should it combine received dock intakes with other inbound types (expected/manifest) in one list?
+    A: No (option B). Keep dock intakes separate from other inbound types.
+
+69. Q: On the Shipments Hub, what should the "Received Today" card show?
+    A: Only Dock Intakes received today (inbound_kind = dock_intake).
+
+70. Q: On the Shipments Hub, what should the "Expected Today" card show?
+    A: Expected shipments scheduled for today regardless of current status/stage (e.g., closed, pending, etc).
+
+71. Q: What should the /shipments/received page show?
+    A: Only received Dock Intakes (option B), to align with the Hub's "Received Today" card behavior.
+
+72. Q: On /shipments/received (dock intakes only), default filter/sort?
+    A: Show all received dock intakes (not limited to today) (option B) and default sort by received date (newest first).
+
+73. Q: Should /shipments/received include quick date filters (Today/7d/30d/All)?
+    A: No. Keep search + sort only.
+
+74. Q: "Expected Today" should use which date field to determine "today"?
+    A: Use `expected_arrival_date` (not eta_start/eta_end).
+
+75. Q: "Expected Today" should include which inbound kinds?
+    A: Include expected + manifests scheduled for today (option B).
+
+76. Q: Expanding "Expected Today" list should include what?
+    A: Only scheduled inbound shipments for today (expected + manifests) (option A). Do not include unlinked dock intakes.
+
+77. Q: "Expected Today" list row click destination?
+    A: Navigate to the corresponding inbound detail page (expected/manifest) (option A), not the generic Shipment Details page.
+
+78. Q: "Received Today" (dock intakes only) list row click destination?
+    A: Navigate to the Dock Intake page (`/incoming/dock-intake/:id`) (option A).
+
+79. Q: Hub cards expanded list click behavior should be card-specific or always Shipment Details?
+    A: Card-specific. Expected Today -> inbound detail pages; Intakes In Progress -> Shipment Details; Received Today -> Dock Intake page.
+
+80. Q: "Shipped Today" should use which timestamp to determine "today"?
+    A: Use `completed_at` (option A). Treat completion timestamp as the shipped timestamp for dashboard purposes.
+
+81. Q: "Shipped Today" should include which outbound statuses?
+    A: Include outbound shipments in statuses released + completed + shipped (option A), using `completed_at` window.
+
+82. Q: "Shipped Today" expanded list row click destination?
+    A: Navigate to the outbound shipment details page for the order clicked.
+
+83. Q: Which route is the "outbound shipment details page" for shipped/outbound shipments?
+    A: Use the shipment details page for that shipment (`/shipments/:id`). (User-facing: "go to the shipment details page for the OUT# clicked"; route specifics not important.)
+
+84. Q: Tapping the "Shipped Today" card (not expanding): what should /shipments/released show?
+    A: Option A — all outbound shipments in released/completed/shipped (not limited to today), default sort newest completed first, search + sort only.
+
+85. Q: Tapping the "Received Today" card (not expanding): where should it go?
+    A: Go to the Dock Intakes list page showing all intakes (not just today's received).
+
+86. Q: Which route/page is the Dock Intakes list page?
+    A: Incoming Manager (`/incoming/manager`) (option B).
+
+87. Q: Tapping the "Intakes In Progress" card (not expanding): where should it go?
+    A: Incoming Manager (`/incoming/manager`) on the intakes view (option A).
+
+88. Q: Tapping the "Expected Today" card (not expanding): where should it go?
+    A: Incoming Manager (`/incoming/manager`) on the expected view (option A).
+
+89. Q: Tapping the "Shipped Today" card (not expanding): where should it go?
+    A: `/shipments/released` (option A).
+

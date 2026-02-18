@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
@@ -6,6 +6,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useReceivingSession } from '@/hooks/useReceivingSession';
 import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
+import {
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+} from '@/lib/items/itemDisplaySettings';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { isValidUuid, cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -27,8 +35,9 @@ import { ShipmentCoverageDialog } from '@/components/shipments/ShipmentCoverageD
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
-import { ScanDocumentButton, DocumentUploadButton, DocumentList } from '@/components/scanner';
+import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -44,10 +53,21 @@ import { SignatureDialog } from '@/components/shipments/SignatureDialog';
 import { generateReleasePdf, ReleasePdfData, ReleasePdfItem } from '@/lib/releasePdf';
 import { QRScanner } from '@/components/scan/QRScanner';
 import { useLocations } from '@/hooks/useLocations';
+import { useDocuments } from '@/hooks/useDocuments';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { ShipmentExceptionsChips } from '@/components/shipments/ShipmentExceptionsChips';
+import {
+  MATCHING_DISCREPANCY_CODES,
+  SHIPMENT_EXCEPTION_CODE_META,
+  useShipmentExceptions,
+  type ShipmentExceptionCode,
+} from '@/hooks/useShipmentExceptions';
+import { createCharges } from '@/services/billing';
+import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
+import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 import { mergeServiceTimeActualSnapshot, mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
@@ -104,6 +124,8 @@ interface ReceivedItemData {
   status: 'received' | 'partial' | 'missing';
 }
 
+type ScanListSortField = 'item_code' | 'location';
+
 interface Shipment {
   id: string;
   shipment_number: string;
@@ -111,6 +133,14 @@ interface Shipment {
   status: string;
   account_id: string | null;
   warehouse_id: string | null;
+  // Outbound / release (SOP) fields
+  customer_authorized: boolean | null;
+  customer_authorized_at: string | null;
+  customer_authorized_by: string | null;
+  driver_name: string | null;
+  liability_accepted: boolean | null;
+  release_to_name: string | null;
+  release_to_email: string | null;
   carrier: string | null;
   tracking_number: string | null;
   po_number: string | null;
@@ -121,18 +151,17 @@ interface Shipment {
   receiving_notes: string | null;
   receiving_photos: (string | TaggablePhoto)[] | null;
   receiving_documents: string[] | null;
-  customer_authorized: boolean | null;
-  customer_authorized_at: string | null;
-  customer_authorized_by: string | null;
   release_type: string | null;
   released_to: string | null;
   release_to_phone: string | null;
+  destination_name: string | null;
+  origin_name: string | null;
+  scheduled_date: string | null;
   sidemark_id: string | null;
   sidemark: string | null;
   signature_data: string | null;
   signature_name: string | null;
   signature_timestamp: string | null;
-  customer_authorized: boolean | null;
   created_at: string;
   accounts?: { id: string; account_name: string; account_code: string } | null;
   warehouses?: { id: string; name: string } | null;
@@ -164,6 +193,29 @@ export default function ShipmentDetail() {
   const { toast } = useToast();
   const { hasPermission, hasRole } = usePermissions();
 
+  // Tenant-managed defaults + per-user overrides for item list views
+  const {
+    settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettingsForUser();
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, defaultItemViewId]);
+
+  const shipmentItemVisibleColumns: ItemColumnKey[] = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
+  const shipmentItemsTableColSpan = 2 + shipmentItemVisibleColumns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
+
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
   // Only admins can add credits
@@ -186,9 +238,16 @@ export default function ShipmentDetail() {
   const [editPoNumber, setEditPoNumber] = useState('');
   const [editExpectedArrival, setEditExpectedArrival] = useState<Date | undefined>(undefined);
   const [editNotes, setEditNotes] = useState('');
+  const [editInternalNotes, setEditInternalNotes] = useState('');
   const [editReleaseType, setEditReleaseType] = useState('');
   const [editReleasedTo, setEditReleasedTo] = useState('');
+  const [editReleaseToName, setEditReleaseToName] = useState('');
+  const [editReleaseToEmail, setEditReleaseToEmail] = useState('');
   const [editReleaseToPhone, setEditReleaseToPhone] = useState('');
+  const [editDriverName, setEditDriverName] = useState('');
+  const [editDestinationName, setEditDestinationName] = useState('');
+  const [editOriginName, setEditOriginName] = useState('');
+  const [editScheduledDate, setEditScheduledDate] = useState<Date | undefined>(undefined);
   const [editCustomerAuthorized, setEditCustomerAuthorized] = useState(false);
   const [addAddonDialogOpen, setAddAddonDialogOpen] = useState(false);
   const [addCreditDialogOpen, setAddCreditDialogOpen] = useState(false);
@@ -202,6 +261,9 @@ export default function ShipmentDetail() {
   const [showReassignDialog, setShowReassignDialog] = useState(false);
   const [showOutboundCompleteDialog, setShowOutboundCompleteDialog] = useState(false);
   const [completingOutbound, setCompletingOutbound] = useState(false);
+  const [outboundNotesTab, setOutboundNotesTab] = useState<'public' | 'internal' | 'exceptions'>('internal');
+  const [missingExceptionNoteCodes, setMissingExceptionNoteCodes] = useState<ShipmentExceptionCode[]>([]);
+  const outboundNotesRef = useRef<HTMLDivElement | null>(null);
   const [classes, setClasses] = useState<{ id: string; code: string; name: string }[]>([]);
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
   const [documentRefreshKey, setDocumentRefreshKey] = useState(0);
@@ -223,10 +285,17 @@ export default function ShipmentDetail() {
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
   const [pendingOverrideWarnings, setPendingOverrideWarnings] = useState<SOPBlocker[] | undefined>(undefined);
   const [submittingPartialRelease, setSubmittingPartialRelease] = useState(false);
+  const [scanListSortField, setScanListSortField] = useState<ScanListSortField>('location');
+  const [scanListSortDirection, setScanListSortDirection] = useState<'asc' | 'desc'>('asc');
   const [accountSettings, setAccountSettings] = useState<{
     default_shipment_notes: string | null;
     highlight_shipment_notes: boolean;
   } | null>(null);
+
+  const { documents, refetch: refetchDocuments } = useDocuments({
+    contextType: 'shipment',
+    contextId: shipment?.id,
+  });
 
   // Receiving session hook
   const {
@@ -239,6 +308,9 @@ export default function ShipmentDetail() {
   } = useReceivingSession(id);
 
   const { locations } = useLocations(shipment?.warehouse_id || undefined);
+  const { openCount: outboundOpenExceptionCount } = useShipmentExceptions(
+    shipment?.shipment_type === 'outbound' ? shipment?.id : undefined
+  );
 
   const normalizeLocationCode = (code?: string | null) =>
     (code || '').toUpperCase().replace(/[_\s]+/g, '-');
@@ -348,7 +420,7 @@ export default function ShipmentDetail() {
       if (itemIds.length > 0) {
         const { data: itemsRows, error: itemsFetchError } = await supabase
           .from('items')
-          .select('id, item_code, description, vendor, sidemark, room, class_id, declared_value, coverage_type, current_location_id, account_id')
+          .select('id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
           .in('id', itemIds);
 
         if (itemsFetchError) {
@@ -378,10 +450,13 @@ export default function ShipmentDetail() {
             itemsById.set(row.id, {
               id: row.id,
               item_code: row.item_code,
+              sku: null,
               description: row.description,
               vendor: row.vendor,
               sidemark: row.sidemark,
               room: row.room,
+              primary_photo_url: row.primary_photo_url ?? null,
+              metadata: row.metadata ?? null,
               class_id: row.class_id,
               declared_value: row.declared_value,
               coverage_type: row.coverage_type,
@@ -442,6 +517,11 @@ export default function ShipmentDetail() {
   useEffect(() => {
     fetchShipment();
   }, [fetchShipment]);
+
+  // Reset exception-note validation state when navigating between shipments
+  useEffect(() => {
+    setMissingExceptionNoteCodes([]);
+  }, [shipment?.id]);
 
   // Wrapped startSession with prompt trigger and audit logging
   const startSession = useCallback(async () => {
@@ -717,6 +797,7 @@ export default function ShipmentDetail() {
           const labelData: ItemLabelData[] = createdItems.map(item => ({
             id: item.id,
             itemCode: item.item_code || '',
+            sku: (item as any).sku || '',
             description: item.description || '',
             vendor: item.vendor || '',
             account: shipment?.accounts?.account_name || '',
@@ -1276,6 +1357,12 @@ export default function ShipmentDetail() {
     setCompletingOutbound(true);
     try {
       const now = new Date().toISOString();
+      const releasedToName =
+        signatureInfo.signatureName?.trim()
+        || shipment.released_to
+        || shipment.driver_name
+        || shipment.release_to_name
+        || null;
 
       // Snapshot estimated service time at completion (best-effort; must not block shipping)
       let completedMetadata: any | undefined = undefined;
@@ -1356,6 +1443,11 @@ export default function ShipmentDetail() {
         signature_data: signatureInfo.signatureData,
         signature_name: signatureInfo.signatureName,
         signature_timestamp: now,
+        // Persist release recipient (validation requires released_to OR driver_name)
+        released_to: releasedToName,
+        driver_name: releasedToName,
+        // Keep legacy contact field in sync for older UIs/exports
+        release_to_name: releasedToName,
       };
       if (completedMetadata !== undefined) {
         shipmentUpdate.metadata = completedMetadata;
@@ -1415,9 +1507,234 @@ export default function ShipmentDetail() {
         }),
       });
 
+      // Will-call billing + client alert (non-blocking; completion should still succeed)
+      if (
+        shipment.shipment_type === 'outbound' &&
+        shipment.release_type === 'will_call' &&
+        profile?.tenant_id &&
+        profile?.id &&
+        shipment.account_id
+      ) {
+        try {
+          // Fetch shipment_items + item details for rate lookup and billing context.
+          // Do not rely on the page's local item state here (it may be stale after updates).
+          const { data: shipmentItemsForBilling, error: shipmentItemsBillingError } = await (supabase
+            .from('shipment_items') as any)
+            .select(`
+              id,
+              expected_quantity,
+              item_id,
+              items:item_id(
+                id,
+                item_code,
+                class_id,
+                sidemark_id,
+                account_id,
+                account:accounts(account_name)
+              )
+            `)
+            .eq('shipment_id', shipment.id)
+            .neq('status', 'cancelled')
+            .is('deleted_at', null);
+
+          if (shipmentItemsBillingError) throw shipmentItemsBillingError;
+
+          const rawItems = (shipmentItemsForBilling || []) as any[];
+          const uniqueItemIds = [
+            ...new Set(rawItems.map((si) => si?.items?.id).filter(Boolean) as string[]),
+          ];
+
+          // Deduplicate: skip items already billed for this shipment (avoid accidental double-charges).
+          const existingBilledItemIds = new Set<string>();
+          if (uniqueItemIds.length > 0) {
+            const { data: existingEvents, error: existingError } = await supabase
+              .from('billing_events')
+              .select('item_id')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipment.id)
+              .eq('event_type', 'will_call')
+              .eq('charge_type', 'Will_Call')
+              .neq('status', 'void')
+              .in('item_id', uniqueItemIds);
+
+            if (existingError) {
+              console.warn('[ShipmentDetail] Unable to check existing billing events (will proceed):', existingError);
+            } else {
+              (existingEvents || []).forEach((e: any) => {
+                if (e?.item_id) existingBilledItemIds.add(e.item_id);
+              });
+            }
+          }
+
+          // Fetch only the classes we need to map class_id → class_code
+          const classIds = [
+            ...new Set(rawItems.map((si) => si?.items?.class_id).filter(Boolean) as string[]),
+          ];
+          const classMap = new Map<string, string>();
+          if (classIds.length > 0) {
+            const { data: classesData, error: classesError } = await supabase
+              .from('classes')
+              .select('id, code')
+              .eq('tenant_id', profile.tenant_id)
+              .in('id', classIds);
+
+            if (classesError) throw classesError;
+            (classesData || []).forEach((c: any) => {
+              if (c?.id) classMap.set(c.id, c.code);
+            });
+          }
+
+          const chargeRequests: Parameters<typeof createCharges>[0] = [];
+          const alertRequests: Array<{
+            index: number;
+            tenantId: string;
+            serviceName: string;
+            itemCode: string;
+            accountName: string;
+            amount: number;
+            description: string;
+          }> = [];
+
+          for (const si of rawItems) {
+            const item = si?.items;
+            if (!item?.id || existingBilledItemIds.has(item.id)) continue;
+
+            const accountId: string | null = item.account_id || shipment.account_id;
+            if (!accountId) continue;
+
+            const classCode: string | null = item.class_id ? (classMap.get(item.class_id) ?? null) : null;
+
+            // Rate lookup via unified pricing (new system first, legacy fallback)
+            let rate = 0;
+            let serviceName = 'Will Call';
+            let alertRule: string = 'none';
+            let hasError = false;
+            let errorMessage: string | undefined = undefined;
+
+            try {
+              const rateResult = await getEffectiveRate({
+                tenantId: profile.tenant_id,
+                chargeCode: 'Will_Call',
+                accountId,
+                classCode: classCode || undefined,
+              });
+
+              serviceName = rateResult.charge_name || serviceName;
+              alertRule = rateResult.alert_rule || 'none';
+
+              if (rateResult.has_error) {
+                rate = 0;
+                hasError = true;
+                errorMessage = rateResult.error_message || 'Rate lookup error';
+              } else {
+                rate = rateResult.effective_rate || 0;
+              }
+            } catch (rateErr: any) {
+              const msg = rateErr instanceof Error ? rateErr.message : String(rateErr);
+              if (msg === BILLING_DISABLED_ERROR) {
+                throw new Error(BILLING_DISABLED_ERROR);
+              }
+              rate = 0;
+              hasError = true;
+              errorMessage = msg;
+            }
+
+            const quantityRaw = Number(si?.expected_quantity ?? 1);
+            const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw : 1;
+            const description = `Will Call: ${item.item_code}`;
+            const totalAmount = quantity * rate;
+
+            const requestIndex = chargeRequests.length;
+
+            chargeRequests.push({
+              tenantId: profile.tenant_id,
+              accountId,
+              chargeCode: 'Will_Call',
+              eventType: 'will_call',
+              context: { type: 'shipment', shipmentId: shipment.id, itemId: item.id },
+              description,
+              quantity,
+              classCode,
+              rateOverride: rate,
+              hasRateError: hasError,
+              rateErrorMessage: errorMessage,
+              sidemarkId: item.sidemark_id || shipment.sidemark_id || null,
+              classId: item.class_id || null,
+              metadata: { class_code: classCode },
+              userId: profile.id,
+            });
+
+            // Track alerts to queue for services with alert_rule: 'email_office'
+            if (alertRule === 'email_office') {
+              alertRequests.push({
+                index: requestIndex,
+                tenantId: profile.tenant_id,
+                serviceName,
+                itemCode: item.item_code,
+                accountName:
+                  item.account?.account_name ||
+                  shipment.accounts?.account_name ||
+                  'Unknown Account',
+                amount: totalAmount,
+                description,
+              });
+            }
+          }
+
+          if (chargeRequests.length > 0) {
+            const results = await createCharges(chargeRequests);
+
+            for (const alert of alertRequests) {
+              const res = results[alert.index];
+              if (res?.success && res.billingEventId) {
+                await queueBillingEventAlert(
+                  alert.tenantId,
+                  res.billingEventId,
+                  alert.serviceName,
+                  alert.itemCode,
+                  alert.accountName,
+                  // Use persisted amount if available (promos may adjust totals)
+                  typeof res.amount === 'number' ? res.amount : alert.amount,
+                  alert.description
+                );
+              }
+            }
+          }
+        } catch (billingErr: any) {
+          if (billingErr?.message === BILLING_DISABLED_ERROR) {
+            toast({
+              variant: 'destructive',
+              title: 'Billing Disabled',
+              description: BILLING_DISABLED_ERROR,
+            });
+          } else {
+            console.error('[ShipmentDetail] Outbound billing failed (non-blocking):', billingErr);
+          }
+        }
+
+        // Queue client-facing "Will Call Released" communication trigger
+        try {
+          await queueAlert({
+            tenantId: profile.tenant_id,
+            alertType: 'will_call_released',
+            entityType: 'shipment',
+            entityId: shipment.id,
+            subject: `Will-Call Released — ${shipment.shipment_number}`,
+          });
+        } catch (alertErr) {
+          console.error('[ShipmentDetail] Failed to queue will-call released alert (non-blocking):', alertErr);
+        }
+      }
+
       // Generate release PDF and upload as a document
       try {
         const staffName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || null;
+        const releasedToForPdf =
+          signatureInfo.signatureName?.trim()
+          || shipment.released_to
+          || shipment.driver_name
+          || shipment.release_to_name
+          || null;
 
         const pdfItems: ReleasePdfItem[] = activeOutboundItems.map(si => ({
           itemCode: si.item?.item_code || si.expected_description || '-',
@@ -1438,7 +1755,7 @@ export default function ShipmentDetail() {
           shipmentNumber: shipment.shipment_number,
           shipmentType: shipment.shipment_type,
           releaseType: shipment.release_type,
-          releasedTo: shipment.released_to || null,
+          releasedTo: releasedToForPdf,
           releaseToPhone: shipment.release_to_phone || null,
           carrier: shipment.carrier,
           trackingNumber: shipment.tracking_number,
@@ -1484,7 +1801,7 @@ export default function ShipmentDetail() {
               page_count: 1,
               mime_type: 'application/pdf',
               label: `Release Document - ${shipment.shipment_number}`,
-              notes: `Release signed by ${signatureInfo.signatureName || shipment.released_to || 'Driver'}`,
+              notes: `Release signed by ${releasedToForPdf || 'Driver'}`,
               is_sensitive: false,
             },
           });
@@ -1500,6 +1817,7 @@ export default function ShipmentDetail() {
       setShowSignatureDialog(false);
       setPendingOverrideWarnings(undefined);
       setDocumentRefreshKey(prev => prev + 1);
+      void refetchDocuments();
       fetchShipment();
     } catch (error) {
       console.error('Error completing outbound shipment:', error);
@@ -1514,6 +1832,58 @@ export default function ShipmentDetail() {
   // ------------------------------------------
   const handleCompleteOutbound = async () => {
     if (!shipment) return;
+
+    // Intake-style: if any OPEN shipment exception is missing its note, block completion
+    // and direct the user to the Exceptions tab to fill notes.
+    if (profile?.tenant_id) {
+      try {
+        const { data: openExceptionRows, error: openExceptionError } = await (supabase
+          .from('shipment_exceptions') as any)
+          .select('code, note')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('shipment_id', shipment.id)
+          .eq('status', 'open');
+
+        if (openExceptionError) throw openExceptionError;
+
+        const missingCodes: ShipmentExceptionCode[] = (Array.isArray(openExceptionRows) ? openExceptionRows : [])
+          .map((r: any) => ({
+            code: r?.code as ShipmentExceptionCode,
+            note: r?.note as string | null,
+          }))
+          .filter((r: any) => r?.code && !MATCHING_DISCREPANCY_CODES.has(r.code) && !String(r.note || '').trim())
+          .map((r: any) => r.code);
+
+        if (missingCodes.length > 0) {
+          setMissingExceptionNoteCodes(missingCodes);
+          setOutboundNotesTab('exceptions');
+          setShowOutboundCompleteDialog(false);
+          outboundNotesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          toast({
+            variant: 'destructive',
+            title: 'Cannot Complete Shipment',
+            description: missingCodes
+              .map((code) => `Exception note required: ${SHIPMENT_EXCEPTION_CODE_META[code]?.label || code}`)
+              .join('. '),
+          });
+          return;
+        }
+
+        // Clear any prior validation state once requirements are satisfied
+        if (missingExceptionNoteCodes.length > 0) {
+          setMissingExceptionNoteCodes([]);
+        }
+      } catch (err) {
+        console.error('[ShipmentDetail] Exception note validation error:', err);
+        setShowOutboundCompleteDialog(false);
+        toast({
+          variant: 'destructive',
+          title: 'Validation Error',
+          description: 'Failed to validate exception notes. Please try again.',
+        });
+        return;
+      }
+    }
 
     // Call SOP validator RPC first
     try {
@@ -1534,14 +1904,18 @@ export default function ShipmentDetail() {
 
       const result = validationResult as { ok: boolean; blockers: SOPBlocker[] };
       const allBlockers = result?.blockers || [];
-      const hardBlockers = allBlockers.filter(
+      // "Released To / Driver Name" is captured in the Signature dialog immediately after validation,
+      // so don't block completion on it here.
+      const blockersForDialog = allBlockers.filter((b: SOPBlocker) => b.code !== 'NO_RELEASED_TO');
+
+      const hardBlockers = blockersForDialog.filter(
         (b: SOPBlocker) => b.severity === 'blocking' || !b.severity
       );
-      const warnings = allBlockers.filter((b: SOPBlocker) => b.severity === 'warning');
+      const warnings = blockersForDialog.filter((b: SOPBlocker) => b.severity === 'warning');
 
       // If there are hard blockers, show the dialog (no override)
       if (hardBlockers.length > 0) {
-        setSopBlockers(allBlockers);
+        setSopBlockers(blockersForDialog);
         setSopValidationOpen(true);
         setShowOutboundCompleteDialog(false);
         return;
@@ -1549,7 +1923,7 @@ export default function ShipmentDetail() {
 
       // If there are warnings (but no hard blockers), show the dialog with override option
       if (warnings.length > 0) {
-        setSopBlockers(allBlockers);
+        setSopBlockers(blockersForDialog);
         setSopValidationOpen(true);
         setShowOutboundCompleteDialog(false);
         return;
@@ -1584,10 +1958,12 @@ export default function ShipmentDetail() {
   // ------------------------------------------
   const shipmentStatusLabels: Record<string, string> = {
     expected: 'Expected',
+    pending: 'Pending',
     receiving: 'In Progress',
     in_progress: 'In Progress',
     received: 'Received',
     partial: 'Partial',
+    released: 'Released',
     shipped: 'Shipped',
     completed: 'Completed',
     cancelled: 'Cancelled',
@@ -1638,15 +2014,16 @@ export default function ShipmentDetail() {
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      {/* Header / Billing / Actions (keep stable during sidebar expand/collapse) */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-3 lg:items-start">
+        {/* Left: shipment identity */}
+        <div className="flex items-center gap-3 lg:col-span-2 min-w-0">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
             <MaterialIcon name="arrow_back" size="md" />
           </Button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{shipment.shipment_number}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold">{shipment.shipment_number}</h1>
               <ShipmentExceptionBadge
                 shipmentId={shipment.id}
                 onClick={
@@ -1657,7 +2034,7 @@ export default function ShipmentDetail() {
               />
               <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
               {shipment.release_type && (
-                <Badge variant="outline" className="text-xs">{shipment.release_type}</Badge>
+                <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
               )}
             </div>
             <p className="text-muted-foreground text-sm truncate">
@@ -1666,92 +2043,124 @@ export default function ShipmentDetail() {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap gap-2 sm:flex-nowrap">
-          <Button variant="outline" size="sm" onClick={() => {
-            if (!isEditing) {
-              setEditCarrier(shipment.carrier || '');
-              setEditTrackingNumber(shipment.tracking_number || '');
-              setEditPoNumber(shipment.po_number || '');
-              setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
-              setEditNotes(shipment.notes || '');
-              {
-                const existingReleaseType = shipment.release_type || '';
-                // Normalize legacy will-call variants to the current allowed value.
-                setEditReleaseType(existingReleaseType.startsWith('will_call') ? 'will_call' : existingReleaseType);
+        {/* Right: billing (top) + actions (below) */}
+        <div className="lg:col-span-1 min-w-0 space-y-3">
+          {canSeeBilling && shipment.account_id && (
+            <BillingCalculator
+              shipmentId={shipment.id}
+              shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
+              refreshKey={billingRefreshKey}
+              title="Billing Calculator"
+            />
+          )}
+
+          {/* Action Buttons (below calculator) */}
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Button variant="outline" size="sm" onClick={() => {
+              if (!isEditing) {
+                setEditCarrier(shipment.carrier || '');
+                setEditTrackingNumber(shipment.tracking_number || '');
+                setEditPoNumber(shipment.po_number || '');
+                setEditExpectedArrival(shipment.expected_arrival_date ? new Date(shipment.expected_arrival_date) : undefined);
+                setEditNotes(shipment.notes || '');
+                setEditInternalNotes(shipment.receiving_notes || '');
+                if (shipment.shipment_type === 'outbound') {
+                  setEditReleaseType(
+                    shipment.release_type?.startsWith('will_call')
+                      ? 'will_call'
+                      : (shipment.release_type || 'will_call')
+                  );
+                  setEditReleasedTo(shipment.released_to || shipment.driver_name || shipment.release_to_name || '');
+                  setEditReleaseToName(shipment.release_to_name || '');
+                  setEditReleaseToEmail(shipment.release_to_email || '');
+                  setEditReleaseToPhone(shipment.release_to_phone || '');
+                  setEditDriverName(shipment.driver_name || '');
+                  setEditDestinationName(shipment.destination_name || '');
+                  setEditOriginName(shipment.origin_name || '');
+                  setEditScheduledDate(shipment.scheduled_date ? new Date(shipment.scheduled_date) : undefined);
+                  setEditCustomerAuthorized(!!shipment.customer_authorized);
+                } else {
+                  setEditReleaseType('');
+                  setEditReleasedTo('');
+                  setEditReleaseToName('');
+                  setEditReleaseToEmail('');
+                  setEditReleaseToPhone('');
+                  setEditDriverName('');
+                  setEditDestinationName('');
+                  setEditOriginName('');
+                  setEditScheduledDate(undefined);
+                  setEditCustomerAuthorized(false);
+                }
               }
-              setEditReleasedTo(shipment.released_to || '');
-              setEditReleaseToPhone(shipment.release_to_phone || '');
-              setEditCustomerAuthorized(!!shipment.customer_authorized);
-            }
-            setIsEditing(!isEditing);
-          }}>
-            <MaterialIcon name="edit" size="sm" className="mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit'}</span>
-            <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
-          </Button>
-          {canReceive && !isReceiving && hasPermission(PERMISSIONS.SHIPMENTS_RECEIVE) && (
-            <Button size="sm" onClick={startSession} disabled={sessionLoading}>
-              <MaterialIcon name="play_arrow" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Start Receiving</span>
-              <span className="sm:hidden">Receive</span>
+              setIsEditing(!isEditing);
+            }}>
+              <MaterialIcon name="edit" size="sm" className="mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit'}</span>
+              <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
             </Button>
-          )}
-          {canStartPull && (
-            <Button size="sm" onClick={handleStartPull}>
-              <MaterialIcon name="qr_code_scanner" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Start Pull</span>
-              <span className="sm:hidden">Pull</span>
-            </Button>
-          )}
-          {canStartRelease && (
-            <Button size="sm" onClick={handleStartRelease}>
-              <MaterialIcon name="local_shipping" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Start Release Scan</span>
-              <span className="sm:hidden">Release</span>
-            </Button>
-          )}
-          {/* Complete Shipment button for outbound shipments */}
-          {!isInbound && ['pending', 'expected', 'in_progress', 'released'].includes(shipment.status) && (
-            <Button size="sm" onClick={() => setShowOutboundCompleteDialog(true)} disabled={!canCompleteOutbound}>
-              <MaterialIcon name="check_circle" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Complete Shipment</span>
-              <span className="sm:hidden">Complete</span>
-            </Button>
-          )}
-          {shipment.account_id && canSeeBilling && (
-            <Button variant="secondary" size="sm" onClick={() => setAddAddonDialogOpen(true)}>
-              <MaterialIcon name="attach_money" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Add Charge</span>
-              <span className="sm:hidden">Charge</span>
-            </Button>
-          )}
-          {/* Add Credit Button - Admin Only */}
-          {shipment.account_id && canAddCredit && (
-            <Button variant="secondary" size="sm" onClick={() => setAddCreditDialogOpen(true)}>
-              <MaterialIcon name="money_off" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Add Credit</span>
-              <span className="sm:hidden">Credit</span>
-            </Button>
-          )}
-          {/* Add Coverage button - only for inbound shipments with received items */}
-          {shipment.account_id && canSeeBilling && isInbound && items.some(i => i.item_id) && (
-            <Button variant="outline" size="sm" onClick={() => setCoverageDialogOpen(true)}>
-              <MaterialIcon name="verified_user" size="sm" className="mr-1 sm:mr-2 text-blue-600" />
-              <span className="hidden sm:inline">Add Coverage</span>
-              <span className="sm:hidden">Coverage</span>
-            </Button>
-          )}
-          {/* Reassign Account - moved to selected items bar */}
-          {/* Cancel Shipment - only for expected, pending, or receiving shipments */}
-          {['expected', 'pending', 'receiving', 'in_progress'].includes(shipment.status) && (
-            <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)}>
-              <MaterialIcon name="block" size="sm" className="mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Cancel</span>
-            </Button>
-          )}
-          {/* Help button for receiving workflow */}
-          {isInbound && <HelpButton workflow="receiving" />}
+            {canReceive && !isReceiving && hasPermission(PERMISSIONS.SHIPMENTS_RECEIVE) && (
+              <Button size="sm" onClick={startSession} disabled={sessionLoading}>
+                <MaterialIcon name="play_arrow" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Start Receiving</span>
+                <span className="sm:hidden">Receive</span>
+              </Button>
+            )}
+            {canStartPull && (
+              <Button size="sm" onClick={handleStartPull}>
+                <MaterialIcon name="qr_code_scanner" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Start Pull</span>
+                <span className="sm:hidden">Pull</span>
+              </Button>
+            )}
+            {canStartRelease && (
+              <Button size="sm" onClick={handleStartRelease}>
+                <MaterialIcon name="local_shipping" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Start Release Scan</span>
+                <span className="sm:hidden">Release</span>
+              </Button>
+            )}
+            {/* Complete Shipment button for outbound shipments */}
+            {!isInbound && ['pending', 'expected', 'in_progress', 'released'].includes(shipment.status) && (
+              <Button size="sm" onClick={() => setShowOutboundCompleteDialog(true)} disabled={!canCompleteOutbound}>
+                <MaterialIcon name="check_circle" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Complete Shipment</span>
+                <span className="sm:hidden">Complete</span>
+              </Button>
+            )}
+            {shipment.account_id && canSeeBilling && (
+              <Button variant="secondary" size="sm" onClick={() => setAddAddonDialogOpen(true)}>
+                <MaterialIcon name="attach_money" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Add Charge</span>
+                <span className="sm:hidden">Charge</span>
+              </Button>
+            )}
+            {/* Add Credit Button - Admin Only */}
+            {shipment.account_id && canAddCredit && (
+              <Button variant="secondary" size="sm" onClick={() => setAddCreditDialogOpen(true)}>
+                <MaterialIcon name="money_off" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Add Credit</span>
+                <span className="sm:hidden">Credit</span>
+              </Button>
+            )}
+            {/* Add Coverage button - only for inbound shipments with received items */}
+            {shipment.account_id && canSeeBilling && isInbound && items.some(i => i.item_id) && (
+              <Button variant="outline" size="sm" onClick={() => setCoverageDialogOpen(true)}>
+                <MaterialIcon name="verified_user" size="sm" className="mr-1 sm:mr-2 text-blue-600" />
+                <span className="hidden sm:inline">Add Coverage</span>
+                <span className="sm:hidden">Coverage</span>
+              </Button>
+            )}
+            {/* Reassign Account - moved to selected items bar */}
+            {/* Cancel Shipment - only for expected, pending, or receiving shipments */}
+            {['expected', 'pending', 'receiving', 'in_progress'].includes(shipment.status) && (
+              <Button variant="outline" size="sm" onClick={() => setShowCancelDialog(true)}>
+                <MaterialIcon name="block" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Cancel</span>
+              </Button>
+            )}
+            {/* Help button for receiving workflow */}
+            {isInbound && <HelpButton workflow="receiving" />}
+          </div>
         </div>
       </div>
 
@@ -1894,49 +2303,124 @@ export default function ShipmentDetail() {
                 )}
                 <div className="space-y-2">
                   <Label className="text-sm">Manual override</Label>
-                  <div className="max-h-40 overflow-y-auto rounded-md border p-2 space-y-1">
+                  <div className="max-h-40 overflow-y-auto rounded-md border">
                     {(() => {
                       const overrideCandidates = pullSessionActive
                         ? activeOutboundItems.filter(item => !isOutboundDock(item.item?.current_location?.code))
                         : activeOutboundItems.filter(item => !isReleasedLocation(item.item?.current_location?.code));
+
                       if (overrideCandidates.length === 0) {
-                        return <p className="text-xs text-muted-foreground py-1">All items already {pullSessionActive ? 'pulled' : 'released'}.</p>;
+                        return (
+                          <p className="text-xs text-muted-foreground p-2">
+                            All items already {pullSessionActive ? 'pulled' : 'released'}.
+                          </p>
+                        );
                       }
+
+                      const selectableIds = overrideCandidates
+                        .map(item => item.item?.id)
+                        .filter(Boolean) as string[];
+
+                      const allSelected =
+                        selectableIds.length > 0 && selectableIds.every((id) => manualOverrideItemIds.has(id));
+
+                      const compare = (a: string, b: string) =>
+                        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+                      const dir = scanListSortDirection === 'asc' ? 1 : -1;
+                      const getItemCode = (si: ShipmentItem) =>
+                        (si.item?.item_code || si.expected_description || '').trim();
+                      const getLocationCode = (si: ShipmentItem) =>
+                        (si.item?.current_location?.code || '').trim();
+
+                      const sortedCandidates = [...overrideCandidates].sort((a, b) => {
+                        const aVal = scanListSortField === 'location' ? getLocationCode(a) : getItemCode(a);
+                        const bVal = scanListSortField === 'location' ? getLocationCode(b) : getItemCode(b);
+                        return compare(aVal, bVal) * dir;
+                      });
+
+                      const toggleSort = (field: ScanListSortField) => {
+                        if (scanListSortField === field) {
+                          setScanListSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+                        } else {
+                          setScanListSortField(field);
+                          setScanListSortDirection('asc');
+                        }
+                      };
+
+                      const sortIconName =
+                        scanListSortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward';
+
                       return (
                         <>
-                          <div className="flex items-center gap-2 pb-1 border-b mb-1">
-                            <Checkbox
-                              checked={overrideCandidates.every(item => item.item?.id && manualOverrideItemIds.has(item.item.id))}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setManualOverrideItemIds(new Set(overrideCandidates.map(item => item.item!.id)));
-                                } else {
-                                  setManualOverrideItemIds(new Set());
-                                }
-                              }}
-                            />
-                            <span className="text-xs font-medium">Select All ({overrideCandidates.length})</span>
-                          </div>
-                          {overrideCandidates.map(item => (
-                            <div key={item.id} className="flex items-center gap-2">
-                              <Checkbox
-                                checked={!!item.item?.id && manualOverrideItemIds.has(item.item.id)}
-                                onCheckedChange={(checked) => {
-                                  if (!item.item?.id) return;
-                                  setManualOverrideItemIds(prev => {
-                                    const next = new Set(prev);
+                          <div className="sticky top-0 z-10 bg-background px-2 py-1 border-b">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Checkbox
+                                  checked={allSelected}
+                                  onCheckedChange={(checked) => {
                                     if (checked) {
-                                      next.add(item.item!.id);
+                                      setManualOverrideItemIds(new Set(selectableIds));
                                     } else {
-                                      next.delete(item.item!.id);
+                                      setManualOverrideItemIds(new Set());
                                     }
-                                    return next;
-                                  });
-                                }}
-                              />
-                              <span className="text-sm">{item.item?.item_code || item.expected_description || 'Unknown item'}</span>
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium inline-flex items-center gap-1 hover:underline"
+                                  onClick={() => toggleSort('item_code')}
+                                >
+                                  Item Code
+                                  {scanListSortField === 'item_code' && (
+                                    <MaterialIcon name={sortIconName} size="sm" className="opacity-70" />
+                                  )}
+                                </button>
+                                <span className="text-xs text-muted-foreground">
+                                  ({overrideCandidates.length})
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="text-xs font-medium inline-flex items-center gap-1 hover:underline"
+                                onClick={() => toggleSort('location')}
+                              >
+                                Location
+                                {scanListSortField === 'location' && (
+                                  <MaterialIcon name={sortIconName} size="sm" className="opacity-70" />
+                                )}
+                              </button>
                             </div>
-                          ))}
+                          </div>
+                          <div className="p-2 space-y-1">
+                            {sortedCandidates.map(item => (
+                              <div key={item.id} className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Checkbox
+                                    checked={!!item.item?.id && manualOverrideItemIds.has(item.item.id)}
+                                    onCheckedChange={(checked) => {
+                                      if (!item.item?.id) return;
+                                      setManualOverrideItemIds(prev => {
+                                        const next = new Set(prev);
+                                        if (checked) {
+                                          next.add(item.item!.id);
+                                        } else {
+                                          next.delete(item.item!.id);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                  <span className="text-sm font-mono truncate">
+                                    {item.item?.item_code || item.expected_description || 'Unknown item'}
+                                  </span>
+                                </div>
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {item.item?.current_location?.code || '-'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </>
                       );
                     })()}
@@ -1971,55 +2455,50 @@ export default function ShipmentDetail() {
             <CardDescription>Update shipment details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Outbound-specific fields */}
+            {/* Outbound-specific fields (legacy outbound system parity) */}
             {isOutbound && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Release Type <span className="text-destructive">*</span></Label>
+                  <Label>Release Type</Label>
                   <Select value={editReleaseType} onValueChange={setEditReleaseType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select release type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="will_call">Will Call</SelectItem>
+                      <SelectItem value="will_call">Will Call (Pickup/Release)</SelectItem>
                       <SelectItem value="disposal">Disposal</SelectItem>
-                      <SelectItem value="return">Return</SelectItem>
+                      <SelectItem value="return">Return to Sender</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Released To / Driver Name <span className="text-destructive">*</span></Label>
+                  <Label>Released To / Driver Name</Label>
                   <Input
                     value={editReleasedTo}
                     onChange={(e) => setEditReleasedTo(e.target.value)}
-                    placeholder="Name of person picking up"
+                    placeholder="Name of person picking up / driver"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Release To Phone</Label>
-                  <Input
-                    value={editReleaseToPhone}
-                    onChange={(e) => setEditReleaseToPhone(e.target.value)}
-                    placeholder="Phone number (optional)"
-                  />
-                </div>
+
                 <div className="sm:col-span-2 flex items-center gap-3 rounded-md border p-3">
                   <Checkbox
                     id="customer-authorized"
                     checked={editCustomerAuthorized}
-                    onCheckedChange={(checked) => setEditCustomerAuthorized(!!checked)}
+                    onCheckedChange={(checked) => setEditCustomerAuthorized(checked === true)}
                   />
                   <div>
                     <Label htmlFor="customer-authorized" className="cursor-pointer font-medium">
                       Customer Authorized
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Check if the client authorized this release (via portal, phone, or email)
+                      Mark when the client approved this outbound release (portal, email, or phone).
                     </p>
                   </div>
                 </div>
               </div>
             )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Carrier</Label>
@@ -2073,57 +2552,256 @@ export default function ShipmentDetail() {
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
-              <Textarea
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Add notes about this shipment..."
-                rows={3}
-              />
+              {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
+                <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                  <div className="font-medium mb-1">Default Shipment Notes</div>
+                  <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
+                </div>
+              )}
+              {isOutbound ? (
+                <Tabs value={outboundNotesTab} onValueChange={(v) => setOutboundNotesTab(v as any)} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <TabsTrigger
+                      value="public"
+                      className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="public" size="sm" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="internal"
+                      className="gap-2 data-[state=active]:bg-amber-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="lock" size="sm" />
+                      Internal
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="exceptions"
+                      className="gap-2 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
+                    >
+                      <MaterialIcon name="warning" size="sm" />
+                      Exceptions
+                      {outboundOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="ml-1 h-5 min-w-5 text-xs">
+                          {outboundOpenExceptionCount}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="public" className="mt-2 space-y-2">
+                    <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="public" size="sm" className="mt-0.5 text-blue-700 dark:text-blue-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            Public (Client-visible)
+                          </div>
+                          <p className="text-xs text-blue-800/90 dark:text-blue-200/90">
+                            Visible in the client portal and client-facing communications. Do not include internal process notes.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <Textarea
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Add PUBLIC notes for the client..."
+                      rows={3}
+                      className="border-blue-300 focus-visible:ring-blue-500"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="internal" className="mt-2 space-y-2">
+                    <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="lock" size="sm" className="mt-0.5 text-amber-700 dark:text-amber-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            Internal (Staff only)
+                          </div>
+                          <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
+                            Only visible to staff. Use for internal instructions, troubleshooting, and operational notes.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <Textarea
+                      value={editInternalNotes}
+                      onChange={(e) => setEditInternalNotes(e.target.value)}
+                      placeholder="Add INTERNAL staff-only notes..."
+                      rows={3}
+                      className="border-amber-300 focus-visible:ring-amber-500"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="exceptions" className="mt-2">
+                    <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="warning" size="sm" className="mt-0.5 text-red-700 dark:text-red-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-red-900 dark:text-red-100">
+                            Exceptions
+                          </div>
+                          <p className="text-xs text-red-800/90 dark:text-red-200/90">
+                            System and workflow exceptions for this shipment.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <ShipmentExceptionsChips
+                      shipmentId={shipment.id}
+                      showHistory={true}
+                      missingNoteCodes={missingExceptionNoteCodes}
+                      onMissingNoteCodeFilled={(code) =>
+                        setMissingExceptionNoteCodes((prev) => prev.filter((c) => c !== code))
+                      }
+                    />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <Textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add notes about this shipment..."
+                  rows={3}
+                />
+              )}
             </div>
+
+            {/* Outbound-specific fields */}
+            {isOutbound && (
+              <>
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium text-sm mb-3">Outbound / Release Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Contact Name</Label>
+                      <Input
+                        value={editReleaseToName}
+                        onChange={(e) => setEditReleaseToName(e.target.value)}
+                        placeholder="Contact person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Email</Label>
+                      <Input
+                        type="email"
+                        value={editReleaseToEmail}
+                        onChange={(e) => setEditReleaseToEmail(e.target.value)}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Contact Phone</Label>
+                      <Input
+                        type="tel"
+                        value={editReleaseToPhone}
+                        onChange={(e) => setEditReleaseToPhone(e.target.value)}
+                        placeholder="Phone number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Driver Name</Label>
+                      <Input
+                        value={editDriverName}
+                        onChange={(e) => setEditDriverName(e.target.value)}
+                        placeholder="Driver or pickup person name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Scheduled Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              'w-full justify-start text-left font-normal',
+                              !editScheduledDate && 'text-muted-foreground'
+                            )}
+                          >
+                            <MaterialIcon name="calendar_today" size="sm" className="mr-2" />
+                            {editScheduledDate ? format(editScheduledDate, 'PPP') : 'Select date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={editScheduledDate}
+                            onSelect={setEditScheduledDate}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Origin Name</Label>
+                      <Input
+                        value={editOriginName}
+                        onChange={(e) => setEditOriginName(e.target.value)}
+                        placeholder="Pickup location or origin"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Destination Name</Label>
+                      <Input
+                        value={editDestinationName}
+                        onChange={(e) => setEditDestinationName(e.target.value)}
+                        placeholder="Delivery location or destination"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="flex gap-2">
               <SaveButton
                 onClick={async () => {
-                  if (isOutbound) {
-                    if (!editReleaseType) {
-                      toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a release type' });
-                      return;
-                    }
-                    if (!editReleasedTo.trim()) {
-                      toast({ variant: 'destructive', title: 'Validation Error', description: 'Please enter who the shipment is released to' });
-                      return;
-                    }
-                  }
-
                   const updates: Record<string, unknown> = {
-                    carrier: editCarrier || null,
-                    tracking_number: editTrackingNumber || null,
-                    po_number: editPoNumber || null,
+                    carrier: editCarrier.trim() || null,
+                    tracking_number: editTrackingNumber.trim() || null,
+                    po_number: editPoNumber.trim() || null,
                     expected_arrival_date: editExpectedArrival?.toISOString() || null,
-                    notes: editNotes || null,
+                    notes: editNotes.trim() || null,
                   };
 
+                  // Add outbound-specific fields if this is an outbound shipment
                   if (isOutbound) {
+                    updates.receiving_notes = editInternalNotes.trim() || null;
                     updates.release_type = editReleaseType || null;
                     updates.released_to = editReleasedTo.trim() || null;
+                    updates.release_to_name = editReleaseToName.trim() || null;
+                    updates.release_to_email = editReleaseToEmail.trim() || null;
                     updates.release_to_phone = editReleaseToPhone.trim() || null;
-                    const wasCustomerAuthorized = Boolean(shipment.customer_authorized);
-                    const isCustomerAuthorized = Boolean(editCustomerAuthorized);
-                    updates.customer_authorized = isCustomerAuthorized;
-                    if (isCustomerAuthorized && !wasCustomerAuthorized) {
-                      updates.customer_authorized_at = new Date().toISOString();
-                      updates.customer_authorized_by = profile?.id || null;
-                    } else if (!isCustomerAuthorized && wasCustomerAuthorized) {
-                      updates.customer_authorized_at = null;
-                      updates.customer_authorized_by = null;
+                    updates.driver_name = editDriverName.trim() || null;
+                    updates.destination_name = editDestinationName.trim() || null;
+                    updates.origin_name = editOriginName.trim() || null;
+                    updates.scheduled_date = editScheduledDate?.toISOString() || null;
+
+                    const wasCustomerAuthorized = !!shipment.customer_authorized;
+                    updates.customer_authorized = editCustomerAuthorized;
+                    if (editCustomerAuthorized !== wasCustomerAuthorized) {
+                      if (editCustomerAuthorized) {
+                        updates.customer_authorized_at = new Date().toISOString();
+                        updates.customer_authorized_by = profile?.id || null;
+                      } else {
+                        updates.customer_authorized_at = null;
+                        updates.customer_authorized_by = null;
+                      }
                     }
                   }
+
                   const { error } = await supabase
                     .from('shipments')
                     .update(updates)
                     .eq('id', shipment.id);
                   if (error) throw error;
+                  
+                  await logShipmentAudit('shipment_updated', updates);
                   toast({ title: 'Shipment Updated' });
                   fetchShipment();
+                  setIsEditing(false);
                 }}
                 label="Save Changes"
                 savedLabel="Saved"
@@ -2134,35 +2812,6 @@ export default function ShipmentDetail() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* Account Default Shipment Notes - Full width, only show if highlight enabled AND notes not blank */}
-      {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
-        <Card className="mb-6 bg-orange-50 dark:bg-orange-900/20 border-4 border-orange-500 dark:border-orange-400">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <span className="text-orange-600 dark:text-orange-400">⚠️</span>
-              Account Notes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm whitespace-pre-wrap font-bold text-orange-700 dark:text-orange-300">{accountSettings.default_shipment_notes}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Billing Calculator - Full width at top right area */}
-      {canSeeBilling && shipment.account_id && (
-        <div className="flex justify-end mb-6">
-          <div className="w-full lg:w-1/3">
-            <BillingCalculator
-              shipmentId={shipment.id}
-              shipmentDirection={shipment.shipment_type as 'inbound' | 'outbound' | 'return'}
-              refreshKey={billingRefreshKey}
-              title="Billing Calculator"
-            />
-          </div>
-        </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -2190,11 +2839,25 @@ export default function ShipmentDetail() {
                 <p className="font-medium">{shipment.po_number || '-'}</p>
               </div>
               <div>
-                <Label className="text-muted-foreground">{isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}</Label>
+                <Label className="text-muted-foreground">
+                  {isOutbound ? 'Expected Pickup/Ship Date' : 'Expected Arrival'}
+                </Label>
                 <p className="font-medium">
                   {shipment.expected_arrival_date
                     ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
                     : '-'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">
+                  {isOutbound ? 'Released To' : 'Received At'}
+                </Label>
+                <p className="font-medium">
+                  {isOutbound
+                    ? shipment.released_to || shipment.driver_name || shipment.release_to_name || '-'
+                    : shipment.received_at
+                      ? format(new Date(shipment.received_at), 'MMM d, yyyy h:mm a')
+                      : '-'}
                 </p>
               </div>
               {isOutbound && (
@@ -2203,43 +2866,183 @@ export default function ShipmentDetail() {
                   <p className="font-medium capitalize">{shipment.release_type?.replace(/_/g, ' ') || '-'}</p>
                 </div>
               )}
-              <div>
-                <Label className="text-muted-foreground">
-                  {isOutbound ? 'Released To' : 'Received At'}
-                </Label>
-                <p className="font-medium">
-                  {isOutbound
-                    ? shipment.released_to || '-'
-                    : shipment.received_at
-                      ? format(new Date(shipment.received_at), 'MMM d, yyyy h:mm a')
-                      : '-'}
-                </p>
-              </div>
-              {isOutbound && (
-                <div>
-                  <Label className="text-muted-foreground">Release To Phone</Label>
-                  <p className="font-medium">{shipment.release_to_phone || '-'}</p>
-                </div>
-              )}
               {isOutbound && (
                 <div>
                   <Label className="text-muted-foreground">Customer Authorized</Label>
-                  <div className="font-medium">
+                  <p className="font-medium">
                     {shipment.customer_authorized ? (
                       <Badge variant="outline" className="text-green-600 border-green-300">Authorized</Badge>
                     ) : (
                       <Badge variant="outline" className="text-yellow-600 border-yellow-300">Not Authorized</Badge>
                     )}
-                  </div>
+                  </p>
                 </div>
               )}
             </div>
-            {shipment.notes && (
-              <div>
-                <Label className="text-muted-foreground">Notes</Label>
-                <p className="mt-1">{shipment.notes}</p>
+
+            {/* Outbound-specific fields */}
+            {isOutbound && (
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-sm mb-3">Release Details</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {shipment.release_to_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Name</Label>
+                      <p className="font-medium">{shipment.release_to_name}</p>
+                    </div>
+                  )}
+                  {shipment.release_to_email && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Email</Label>
+                      <p className="font-medium">{shipment.release_to_email}</p>
+                    </div>
+                  )}
+                  {shipment.release_to_phone && (
+                    <div>
+                      <Label className="text-muted-foreground">Contact Phone</Label>
+                      <p className="font-medium">{shipment.release_to_phone}</p>
+                    </div>
+                  )}
+                  {shipment.driver_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Driver Name</Label>
+                      <p className="font-medium">{shipment.driver_name}</p>
+                    </div>
+                  )}
+                  {shipment.scheduled_date && (
+                    <div>
+                      <Label className="text-muted-foreground">Scheduled Date</Label>
+                      <p className="font-medium">
+                        {format(new Date(shipment.scheduled_date), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                  )}
+                  {shipment.origin_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Origin</Label>
+                      <p className="font-medium">{shipment.origin_name}</p>
+                    </div>
+                  )}
+                  {shipment.destination_name && (
+                    <div>
+                      <Label className="text-muted-foreground">Destination</Label>
+                      <p className="font-medium">{shipment.destination_name}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+
+            {accountSettings?.highlight_shipment_notes && accountSettings?.default_shipment_notes?.trim() && (
+              <div className="rounded-md border border-orange-200 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 text-sm text-orange-900 dark:text-orange-100">
+                <div className="font-medium mb-1">Default Shipment Notes</div>
+                <p className="whitespace-pre-wrap">{accountSettings.default_shipment_notes}</p>
+              </div>
+            )}
+
+            {isOutbound ? (
+              <div className="space-y-2" ref={outboundNotesRef}>
+                <Label className="text-muted-foreground">Notes</Label>
+                <Tabs value={outboundNotesTab} onValueChange={(v) => setOutboundNotesTab(v as any)} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <TabsTrigger
+                      value="public"
+                      className="gap-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="public" size="sm" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="internal"
+                      className="gap-2 data-[state=active]:bg-amber-600 data-[state=active]:text-white"
+                    >
+                      <MaterialIcon name="lock" size="sm" />
+                      Internal
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="exceptions"
+                      className="gap-2 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
+                    >
+                      <MaterialIcon name="warning" size="sm" />
+                      Exceptions
+                      {outboundOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="ml-1 h-5 min-w-5 text-xs">
+                          {outboundOpenExceptionCount}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="public" className="mt-2">
+                    <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="public" size="sm" className="mt-0.5 text-blue-700 dark:text-blue-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            Public (Client-visible)
+                          </div>
+                          <p className="text-xs text-blue-800/90 dark:text-blue-200/90">
+                            Visible in client portal and client-facing communications.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {shipment.notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No public notes.</p>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="internal" className="mt-2">
+                    <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="lock" size="sm" className="mt-0.5 text-amber-700 dark:text-amber-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            Internal (Staff only)
+                          </div>
+                          <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
+                            Only visible to staff.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {shipment.receiving_notes?.trim() ? (
+                      <p className="whitespace-pre-wrap">{shipment.receiving_notes}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No internal notes.</p>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="exceptions" className="mt-2">
+                    <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-3 mb-2">
+                      <div className="flex items-start gap-2">
+                        <MaterialIcon name="warning" size="sm" className="mt-0.5 text-red-700 dark:text-red-300" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-red-900 dark:text-red-100">
+                            Exceptions
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <ShipmentExceptionsChips
+                      shipmentId={shipment.id}
+                      showHistory={true}
+                      missingNoteCodes={missingExceptionNoteCodes}
+                      onMissingNoteCodeFilled={(code) =>
+                        setMissingExceptionNoteCodes((prev) => prev.filter((c) => c !== code))
+                      }
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : shipment.notes?.trim() ? (
+              <div>
+                <Label className="text-muted-foreground">Notes</Label>
+                <p className="mt-1 whitespace-pre-wrap">{shipment.notes}</p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -2288,6 +3091,51 @@ export default function ShipmentDetail() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Inbound dock-intake signature (carrier sign-for) */}
+        {!isOutbound && (shipment.signature_data || shipment.signature_name) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MaterialIcon name="draw" size="sm" />
+                Signature
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="border rounded-md p-2 bg-white">
+                {shipment.signature_data ? (
+                  <img
+                    src={shipment.signature_data}
+                    alt="Signature"
+                    className="max-h-24 mx-auto"
+                  />
+                ) : (
+                  <div className="min-h-24 flex items-center justify-center">
+                    <span className="text-3xl font-cursive italic text-gray-800">
+                      {(shipment.signature_name || '').trim()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <div>
+                  Signed by:{' '}
+                  <span className="text-foreground">
+                    {(shipment.signature_name || '').trim() || '—'}
+                  </span>
+                </div>
+                {shipment.signature_timestamp ? (
+                  <div>
+                    Signed at:{' '}
+                    <span className="text-foreground">
+                      {format(new Date(shipment.signature_timestamp), 'MMM d, yyyy h:mm a')}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Shipment Items */}
@@ -2370,22 +3218,30 @@ export default function ShipmentDetail() {
                   />
                 </TableHead>
                 <TableHead className="w-10"></TableHead>
-                <TableHead className="w-28">Item Code</TableHead>
-                <TableHead className="w-20 text-right">Qty</TableHead>
-                <TableHead className="w-32">Vendor</TableHead>
-                <TableHead className="min-w-[140px]">Description</TableHead>
-                <TableHead className="w-24">Location</TableHead>
+                {shipmentItemVisibleColumns.map((col) => (
+                  <TableHead key={col}>{getColumnLabel(itemDisplaySettings, col)}</TableHead>
+                ))}
                 <TableHead className="w-24">Class</TableHead>
-                <TableHead className="w-28">Sidemark</TableHead>
-                <TableHead className="w-24">Room</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 <TableHead className="w-20"></TableHead>
+                <TableHead className="w-8">
+                  <div className="flex justify-end">
+                    <ItemColumnsPopover
+                      settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
+                      viewId={defaultItemViewId || itemDisplaySettings.views[0]?.id || 'default'}
+                      disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                      onSave={saveItemDisplaySettings}
+                      compact
+                    />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={shipmentItemsTableColSpan} className="text-center text-muted-foreground py-8">
                     No items in this shipment
                   </TableCell>
                 </TableRow>
@@ -2395,6 +3251,7 @@ export default function ShipmentDetail() {
                     key={item.id}
                     item={item as ShipmentItemRowData}
                     isSelected={item.item?.id ? selectedItemIds.has(item.item.id) : false}
+                    visibleColumns={shipmentItemVisibleColumns}
                     onSelect={(checked) => {
                       if (item.item?.id) {
                         if (checked) {
@@ -2518,35 +3375,28 @@ export default function ShipmentDetail() {
 
       {/* Documents Section */}
       <Card className="mt-6">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <div>
-            <CardTitle>Documents</CardTitle>
-            <CardDescription>Scan or upload receiving paperwork, BOLs, and delivery receipts</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <ScanDocumentButton
-              context={{ type: 'shipment', shipmentId: shipment.id }}
-              onSuccess={() => {
-                setDocumentRefreshKey(prev => prev + 1);
-              }}
-              label="Scan"
-              size="sm"
-              directToCamera
-            />
-            <DocumentUploadButton
-              context={{ type: 'shipment', shipmentId: shipment.id }}
-              onSuccess={() => {
-                setDocumentRefreshKey(prev => prev + 1);
-              }}
-              size="sm"
-            />
-          </div>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MaterialIcon name="description" size="sm" />
+            Documents
+            <Badge variant="outline">{documents.length}</Badge>
+          </CardTitle>
+          <CardDescription>
+            Capture or upload paperwork and supporting shipment documents.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <DocumentList
-            contextType="shipment"
-            contextId={shipment.id}
+          <DocumentCapture
             refetchKey={documentRefreshKey}
+            context={{ type: 'shipment', shipmentId: shipment.id, shipmentNumber: shipment.shipment_number }}
+            maxDocuments={12}
+            ocrEnabled={true}
+            onDocumentAdded={() => {
+              void refetchDocuments();
+            }}
+            onDocumentRemoved={() => {
+              void refetchDocuments();
+            }}
           />
         </CardContent>
       </Card>

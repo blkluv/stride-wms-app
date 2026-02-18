@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatClassCubicFeetLabel } from '@/lib/pricing/classCubicFeet';
 
 interface ItemClass {
   id: string;
@@ -68,12 +69,8 @@ export function ClassSelect({
   }, [profile?.tenant_id]);
 
   const formatClassLabel = (cls: ItemClass) => {
-    const range = cls.min_cubic_feet !== null && cls.max_cubic_feet !== null
-      ? ` (${cls.min_cubic_feet}-${cls.max_cubic_feet} cu ft)`
-      : cls.min_cubic_feet !== null
-      ? ` (${cls.min_cubic_feet}+ cu ft)`
-      : '';
-    return `${cls.name}${range}`;
+    const sizeLabel = formatClassCubicFeetLabel(cls);
+    return `${cls.name}${sizeLabel ? ` (${sizeLabel})` : ''}`;
   };
 
   return (

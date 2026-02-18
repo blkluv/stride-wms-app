@@ -12,6 +12,8 @@ interface UseDocumentsOptions {
   contextType?: DocumentContextType;
   contextId?: string;
   includeDeleted?: boolean;
+  /** If false, do not fetch (returns empty list, loading=false). */
+  enabled?: boolean;
 }
 
 interface UseDocumentsReturn {
@@ -25,12 +27,28 @@ interface UseDocumentsReturn {
 }
 
 export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsReturn {
-  const { contextType, contextId, includeDeleted = false } = options;
+  const { contextType, contextId, includeDeleted = false, enabled = true } = options;
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchDocuments = useCallback(async () => {
+    if (!enabled) {
+      setDocuments([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    // Guard: do not fetch the entire documents table when a caller hasn't
+    // provided a contextId yet (common during "draft" creation flows).
+    if (contextType && !contextId) {
+      setDocuments([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -58,11 +76,17 @@ export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsRet
     } finally {
       setLoading(false);
     }
-  }, [contextType, contextId, includeDeleted]);
+  }, [contextType, contextId, includeDeleted, enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      setDocuments([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     fetchDocuments();
-  }, [fetchDocuments]);
+  }, [fetchDocuments, enabled]);
 
   const getSignedUrl = useCallback(async (storageKey: string): Promise<string> => {
     return getDocumentSignedUrl(storageKey);

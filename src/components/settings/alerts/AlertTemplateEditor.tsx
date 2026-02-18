@@ -529,9 +529,13 @@ export function AlertTemplateEditor({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button type="button" className="rounded-full w-5 h-5 flex items-center justify-center bg-muted text-muted-foreground hover:bg-muted/80 text-xs font-medium">
-                        ?
-                      </button>
+                          <button
+                            type="button"
+                            className="rounded-full w-5 h-5 flex items-center justify-center bg-muted text-muted-foreground hover:bg-muted/80"
+                            aria-label="Help"
+                          >
+                            <MaterialIcon name="info" size="sm" className="text-[14px]" />
+                          </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="max-w-xs">
                       <p className="text-sm">Logo is pulled automatically from Organization settings. Color is an optional override for the email header bar and CTA button.</p>

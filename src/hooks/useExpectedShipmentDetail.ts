@@ -11,9 +11,26 @@ export interface ExpectedDetail extends ShipmentRow {
   account_name?: string | null;
 }
 
+export interface ExpectedShipmentItem extends ShipmentItemRow {
+  item?: {
+    id: string;
+    item_code: string;
+    sku: string | null;
+    quantity: number | null;
+    size: number | null;
+    size_unit: string | null;
+    vendor: string | null;
+    description: string | null;
+    sidemark: string | null;
+    room: string | null;
+    primary_photo_url: string | null;
+    metadata: Record<string, unknown> | null;
+  } | null;
+}
+
 export function useExpectedShipmentDetail(shipmentId?: string) {
   const [shipment, setShipment] = useState<ExpectedDetail | null>(null);
-  const [items, setItems] = useState<ShipmentItemRow[]>([]);
+  const [items, setItems] = useState<ExpectedShipmentItem[]>([]);
   const [refs, setRefs] = useState<ExternalRefRow[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -44,11 +61,27 @@ export function useExpectedShipmentDetail(shipmentId?: string) {
     try {
       const { data, error } = await supabase
         .from('shipment_items')
-        .select('*')
+        .select(`
+          *,
+          item:items(
+            id,
+            item_code,
+            sku,
+            quantity,
+            size,
+            size_unit,
+            vendor,
+            description,
+            sidemark,
+            room,
+            primary_photo_url,
+            metadata
+          )
+        `)
         .eq('shipment_id', shipmentId)
         .order('created_at');
       if (error) throw error;
-      setItems(data || []);
+      setItems((data || []) as unknown as ExpectedShipmentItem[]);
     } catch (error) {
       console.error('Error fetching items:', error);
     } finally {

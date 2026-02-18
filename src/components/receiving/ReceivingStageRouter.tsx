@@ -29,9 +29,10 @@ import { useShipmentExceptions } from '@/hooks/useShipmentExceptions';
 import DockIntakeMatchingPanel from '@/components/incoming/DockIntakeMatchingPanel';
 import type { CandidateParams } from '@/hooks/useInboundCandidates';
 import { downloadReceivingPdf, storeReceivingPdf, type ReceivingPdfData } from '@/lib/receivingPdf';
-import { queueReceivingDiscrepancyAlert } from '@/lib/alertQueue';
+import { queueReceivingDiscrepancyAlert, queueShipmentReceivedAlert } from '@/lib/alertQueue';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
+import { ShipmentNotesSection } from '@/components/shipments/ShipmentNotesSection';
 
 interface ShipmentData {
   id: string;
@@ -66,9 +67,12 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   const [shipment, setShipment] = useState<ShipmentData | null>(null);
   const [accountName, setAccountName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'receiving' | 'exceptions'>(
-    searchParams.get('tab') === 'exceptions' ? 'exceptions' : 'receiving'
-  );
+  const [activeTab, setActiveTab] = useState<'receiving' | 'exceptions' | 'notes'>(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'exceptions') return 'exceptions';
+    if (tab === 'notes') return 'notes';
+    return 'receiving';
+  });
   const [mobileMatchingOpen, setMobileMatchingOpen] = useState(false);
   const [pdfRetrying, setPdfRetrying] = useState(false);
   const { openCount } = useShipmentExceptions(shipmentId);
@@ -82,10 +86,40 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   // Stage 2 row count (Entry Count) computed from Stage 2 items table
   const [entryCount, setEntryCount] = useState<number>(0);
 
+  // Billing calculator refresh key (shared across Stage 1 + Stage 2)
+  // Stage 2 autosaves bump this so Stage 1 billing preview updates in real time.
+  const [billingRefreshKey, setBillingRefreshKey] = useState(0);
+
+  // Stage 1 UI state:
+  // - Stage 1 always defaults to expanded on page load.
+  // - Once Stage 2 is open (receiving/closed), users can minimize Stage 1 into a compact summary.
+  const [stage1Expanded, setStage1Expanded] = useState(true);
+
   // Stage 2 UI state (expanded/collapsed) persists locally per shipment
   const stage2ExpandedKey = `receiving.stage2.expanded.${shipmentId}`;
   const [stage2Expanded, setStage2Expanded] = useState<boolean>(false);
   const [startingStage2, setStartingStage2] = useState(false);
+  const [closedEditMode, setClosedEditMode] = useState(false);
+
+  useEffect(() => {
+    // Always expand Stage 1 when opening the intake page.
+    setStage1Expanded(true);
+  }, [shipmentId]);
+
+  useEffect(() => {
+    // Stage 1 can only be minimized once Stage 2 is open.
+    const inboundStatus = (shipment?.inbound_status || 'draft') as InboundStatus;
+    if (inboundStatus !== 'receiving' && inboundStatus !== 'closed') {
+      setStage1Expanded(true);
+    }
+  }, [shipment?.inbound_status]);
+
+  useEffect(() => {
+    // Leaving closed state should re-lock edits by default.
+    if (shipment?.inbound_status !== 'closed') {
+      setClosedEditMode(false);
+    }
+  }, [shipment?.inbound_status]);
 
   // Stage 2 timer: pause existing job confirmation
   const [stage2ConfirmOpen, setStage2ConfirmOpen] = useState(false);
@@ -127,13 +161,14 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
   useEffect(() => {
     const tab = searchParams.get('tab');
-    setActiveTab(tab === 'exceptions' ? 'exceptions' : 'receiving');
+    setActiveTab(tab === 'exceptions' ? 'exceptions' : tab === 'notes' ? 'notes' : 'receiving');
   }, [searchParams]);
 
-  const setTab = (tab: 'receiving' | 'exceptions') => {
+  const setTab = (tab: 'receiving' | 'exceptions' | 'notes') => {
     setActiveTab(tab);
     const next = new URLSearchParams(searchParams);
     if (tab === 'exceptions') next.set('tab', 'exceptions');
+    else if (tab === 'notes') next.set('tab', 'notes');
     else next.delete('tab');
     setSearchParams(next, { replace: true });
   };
@@ -160,7 +195,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   useEffect(() => {
     const inboundStatus = (shipment?.inbound_status || 'draft') as InboundStatus;
 
-    if (inboundStatus !== 'receiving') {
+    if (inboundStatus !== 'receiving' && inboundStatus !== 'closed') {
       setStage2Expanded(false);
       setEntryCount(0);
       return;
@@ -313,13 +348,28 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     if (shipment && profile?.tenant_id) {
       try {
         const pdfData = await buildPdfData(shipment);
-        await storeReceivingPdf(pdfData, shipmentId, profile.tenant_id, profile.id);
+        const result = await storeReceivingPdf(pdfData, shipmentId, profile.tenant_id, profile.id);
+        if (!result.success) {
+          toast({
+            variant: 'destructive',
+            title: 'Receiving Document not saved',
+            description: 'Receiving was completed, but the Receiving Document could not be saved. You can retry from the PDF section.',
+          });
+        }
       } catch {
         console.warn('[ReceivingStageRouter] PDF generation failed (non-blocking)');
       }
 
       // Fire alerts (non-blocking)
       try {
+        // Client + internal: Shipment received notification (with optional Exceptions section)
+        void queueShipmentReceivedAlert(
+          profile.tenant_id,
+          shipmentId,
+          shipment.shipment_number,
+          entryCount
+        );
+
         const { data: exceptions } = await (supabase as any)
           .from('shipment_exceptions')
           .select('id')
@@ -443,6 +493,108 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     />
   ) : null;
 
+  const renderStage1CompactSummary = (opts?: { showClosedStateBadge?: boolean }) => {
+    const showClosedStateBadge = !!opts?.showClosedStateBadge;
+    const carrierCount = liveMatchingParams?.pieces ?? shipment.signed_pieces ?? 0;
+    const dockCount = liveMatchingParams?.dockCount ?? shipment.received_pieces ?? 0;
+    const mismatch =
+      (Number(carrierCount) || 0) > 0 &&
+      (Number(dockCount) || 0) > 0 &&
+      Number(carrierCount) !== Number(dockCount);
+    const mismatchLabel = mismatch
+      ? dockCount > carrierCount
+        ? `Overage by ${dockCount - carrierCount}`
+        : `Shortage by ${carrierCount - dockCount}`
+      : null;
+
+    return (
+      <Card className="border-dashed">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <MaterialIcon name="local_shipping" size="sm" className="text-primary" />
+              <span className="font-medium">Stage 1</span>
+              <Badge variant="outline" className="font-mono whitespace-nowrap">
+                {shipment.shipment_number}
+              </Badge>
+              <Badge variant="outline" className="h-5 text-xs">
+                Carrier {carrierCount || 0}
+              </Badge>
+              <Badge variant="outline" className="h-5 text-xs">
+                Dock {dockCount || 0}
+              </Badge>
+              <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
+                Entry {entryCount}
+              </Badge>
+              {mismatchLabel ? (
+                <Badge variant="destructive" className="h-5 text-xs gap-1">
+                  <MaterialIcon name="warning" size="sm" />
+                  {mismatchLabel}
+                </Badge>
+              ) : null}
+              <ShipmentExceptionBadge shipmentId={shipmentId} onClick={() => setTab('exceptions')} />
+              {showClosedStateBadge ? (
+                closedEditMode ? (
+                  <Badge variant="secondary" className="h-5 text-xs">
+                    Editing unlocked
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="h-5 text-xs">
+                    Read-only
+                  </Badge>
+                )
+              ) : null}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setStage1Expanded(true)}
+            >
+              <MaterialIcon name="expand_more" size="sm" />
+              Expand Stage 1
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            <span className="font-medium text-foreground">Account:</span> {accountName || '-'}
+          </span>
+          {shipment.vendor_name ? (
+            <span>
+              <span className="font-medium text-foreground">Vendor:</span> {shipment.vendor_name}
+            </span>
+          ) : null}
+          {(shipment as any).carrier ? (
+            <span>
+              <span className="font-medium text-foreground">Carrier:</span> {(shipment as any).carrier}
+            </span>
+          ) : null}
+          {(shipment as any).tracking_number ? (
+            <span>
+              <span className="font-medium text-foreground">Tracking:</span>{' '}
+              {(shipment as any).tracking_number}
+            </span>
+          ) : null}
+          {(shipment as any).po_number ? (
+            <span>
+              <span className="font-medium text-foreground">PO/Ref:</span> {(shipment as any).po_number}
+            </span>
+          ) : null}
+          {shipment.driver_name ? (
+            <span>
+              <span className="font-medium text-foreground">Driver:</span> {shipment.driver_name}
+            </span>
+          ) : null}
+          <span>
+            <span className="font-medium text-foreground">Signature:</span>{' '}
+            {shipment.signature_data || shipment.signature_name ? 'Captured' : 'None'}
+          </span>
+        </CardContent>
+      </Card>
+    );
+  };
+
   // Render based on inbound_status
   const renderStageContent = () => {
     switch (status) {
@@ -458,6 +610,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               onMatchingParamsChange={handleMatchingParamsChange}
               onOpenExceptions={() => setTab('exceptions')}
               entryCount={entryCount}
+              externalBillingRefreshKey={billingRefreshKey}
               showCompleteButton={true}
             />
 
@@ -487,6 +640,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               onMatchingParamsChange={handleMatchingParamsChange}
               onOpenExceptions={() => setTab('exceptions')}
               entryCount={entryCount}
+              externalBillingRefreshKey={billingRefreshKey}
               showCompleteButton={false}
             />
 
@@ -520,84 +674,208 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
         );
 
       case 'receiving':
-        return (
-          <div className="space-y-6">
-            <Stage1DockIntake
-              shipmentId={shipmentId}
-              shipmentNumber={shipment.shipment_number}
-              shipment={shipment as any}
-              onComplete={handleStageChange}
-              onRefresh={fetchShipment}
-              onMatchingParamsChange={handleMatchingParamsChange}
-              onOpenExceptions={() => setTab('exceptions')}
-              entryCount={entryCount}
-              showCompleteButton={false}
-            />
+        {
+          const stage1CompactSummary = renderStage1CompactSummary();
 
-            <Collapsible open={stage2Expanded} onOpenChange={handleStage2ExpandedChange}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-                <div className="flex items-center gap-2 text-sm">
-                  <MaterialIcon name="inventory_2" size="sm" className="text-primary" />
-                  <span className="font-medium">Stage 2</span>
-                  <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
-                    Entry {entryCount}
-                  </Badge>
+          return (
+            <div className="space-y-6">
+              {stage1Expanded ? (
+                <>
+                  <Stage1DockIntake
+                    shipmentId={shipmentId}
+                    shipmentNumber={shipment.shipment_number}
+                    shipment={shipment as any}
+                    onComplete={handleStageChange}
+                    onRefresh={fetchShipment}
+                    onMatchingParamsChange={handleMatchingParamsChange}
+                    onOpenExceptions={() => setTab('exceptions')}
+                    entryCount={entryCount}
+                    externalBillingRefreshKey={billingRefreshKey}
+                    showCompleteButton={false}
+                  />
+                  <div className="flex justify-end px-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => setStage1Expanded(false)}
+                    >
+                      <MaterialIcon name="expand_less" size="sm" />
+                      Minimize Stage 1
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                stage1CompactSummary
+              )}
+
+              <Collapsible open={stage2Expanded} onOpenChange={handleStage2ExpandedChange}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+                  <div className="flex items-center gap-2 text-sm">
+                    <MaterialIcon name="inventory_2" size="sm" className="text-primary" />
+                    <span className="font-medium">Stage 2</span>
+                    <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
+                      Entry {entryCount}
+                    </Badge>
+                  </div>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5">
+                      <MaterialIcon name={stage2Expanded ? 'expand_less' : 'expand_more'} size="sm" />
+                      {stage2Expanded ? 'Minimize Stage 2' : 'Expand Stage 2'}
+                    </Button>
+                  </CollapsibleTrigger>
                 </div>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <MaterialIcon name={stage2Expanded ? 'expand_less' : 'expand_more'} size="sm" />
-                    {stage2Expanded ? 'Minimize' : 'Expand'}
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
 
-              <CollapsibleContent forceMount className="mt-4">
-                <Stage2DetailedReceiving
-                  shipmentId={shipmentId}
-                  shipmentNumber={shipment.shipment_number}
-                  shipment={shipment as any}
-                  dockCount={liveMatchingParams?.dockCount ?? shipment.received_pieces ?? null}
-                  onComplete={handleReceivingComplete}
-                  onRefresh={fetchShipment}
-                  onItemMatchingParamsChange={handleItemMatchingParamsChange}
-                  onEntryCountChange={setEntryCount}
-                  onOpenExceptions={() => setTab('exceptions')}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        );
+                <CollapsibleContent forceMount className="mt-4">
+                  <Stage2DetailedReceiving
+                    shipmentId={shipmentId}
+                    shipmentNumber={shipment.shipment_number}
+                    shipment={shipment as any}
+                    dockCount={liveMatchingParams?.dockCount ?? shipment.received_pieces ?? null}
+                    onComplete={handleReceivingComplete}
+                    onRefresh={fetchShipment}
+                    onItemMatchingParamsChange={handleItemMatchingParamsChange}
+                    onEntryCountChange={setEntryCount}
+                    onOpenExceptions={() => setTab('exceptions')}
+                    onOpenNotes={() => setTab('notes')}
+                    onBillingRefresh={() => setBillingRefreshKey((prev) => prev + 1)}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          );
+        }
 
       case 'closed':
-        return (
-          <div className="text-center py-12">
-            <MaterialIcon name="check_circle" size="xl" className="mb-3 text-green-500" />
-            <h3 className="text-lg font-medium mb-1">Receiving Complete</h3>
-            <p className="text-sm text-muted-foreground">
-              This dock intake has been fully received and closed.
-            </p>
-            <div className="flex items-center justify-center gap-4 mt-4 text-sm">
-              <span>Signed: {shipment.signed_pieces ?? '-'}</span>
-              <span>Received: {shipment.received_pieces ?? '-'}</span>
-            </div>
-            <div className="flex items-center justify-center gap-3 mt-6">
-              <Button variant="outline" onClick={handleDownloadPdf}>
-                <MaterialIcon name="picture_as_pdf" size="sm" className="mr-2" />
-                {hasPdf ? 'Download PDF' : 'Generate PDF'}
-              </Button>
-              {!hasPdf && (
-                <Button variant="outline" onClick={handleRetryPdf} disabled={pdfRetrying}>
-                  {pdfRetrying ? (
-                    <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
-                  ) : (
-                    <MaterialIcon name="refresh" size="sm" className="mr-2" />
-                  )}
-                  Retry PDF
-                </Button>
+        {
+          const stage1CompactSummary = renderStage1CompactSummary({ showClosedStateBadge: true });
+
+          return (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <MaterialIcon name="check_circle" size="sm" className="text-green-500" />
+                        Receiving Complete
+                        <Badge variant="outline" className="font-mono whitespace-nowrap">
+                          {shipment.shipment_number}
+                        </Badge>
+                        {closedEditMode ? (
+                          <Badge variant="secondary" className="text-xs">
+                            Editing unlocked
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            Read-only
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        This dock intake is closed. You can still view it, and optionally unlock edits.
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={handleDownloadPdf}>
+                        <MaterialIcon name="picture_as_pdf" size="sm" className="mr-2" />
+                        {hasPdf ? 'Download PDF' : 'Generate PDF'}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleRetryPdf} disabled={pdfRetrying}>
+                        {pdfRetrying ? (
+                          <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                        ) : (
+                          <MaterialIcon name="refresh" size="sm" className="mr-2" />
+                        )}
+                        Regenerate PDF
+                      </Button>
+                      <Button
+                        variant={closedEditMode ? 'secondary' : 'default'}
+                        size="sm"
+                        onClick={() => setClosedEditMode((prev) => !prev)}
+                      >
+                        <MaterialIcon name={closedEditMode ? 'lock' : 'edit'} size="sm" className="mr-2" />
+                        {closedEditMode ? 'Done' : 'Edit'}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  <span>Signed: {shipment.signed_pieces ?? '-'}</span>
+                  <span>Dock: {shipment.received_pieces ?? '-'}</span>
+                  <span>Entry: {entryCount}</span>
+                </CardContent>
+              </Card>
+
+              {stage1Expanded ? (
+                <>
+                  <Stage1DockIntake
+                    shipmentId={shipmentId}
+                    shipmentNumber={shipment.shipment_number}
+                    shipment={shipment as any}
+                    onComplete={handleStageChange}
+                    onRefresh={fetchShipment}
+                    onMatchingParamsChange={handleMatchingParamsChange}
+                    onOpenExceptions={() => setTab('exceptions')}
+                    entryCount={entryCount}
+                    externalBillingRefreshKey={billingRefreshKey}
+                    showCompleteButton={false}
+                    readOnly={!closedEditMode}
+                  />
+                  <div className="flex justify-end px-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => setStage1Expanded(false)}
+                    >
+                      <MaterialIcon name="expand_less" size="sm" />
+                      Minimize Stage 1
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                stage1CompactSummary
               )}
+
+              <Collapsible open={stage2Expanded} onOpenChange={handleStage2ExpandedChange}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+                  <div className="flex items-center gap-2 text-sm">
+                    <MaterialIcon name="inventory_2" size="sm" className="text-primary" />
+                    <span className="font-medium">Stage 2</span>
+                    <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
+                      Entry {entryCount}
+                    </Badge>
+                  </div>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5">
+                      <MaterialIcon name={stage2Expanded ? 'expand_less' : 'expand_more'} size="sm" />
+                      {stage2Expanded ? 'Minimize Stage 2' : 'Expand Stage 2'}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+
+                <CollapsibleContent forceMount className="mt-4">
+                  <Stage2DetailedReceiving
+                    shipmentId={shipmentId}
+                    shipmentNumber={shipment.shipment_number}
+                    shipment={shipment as any}
+                    dockCount={liveMatchingParams?.dockCount ?? shipment.received_pieces ?? null}
+                    onComplete={handleReceivingComplete}
+                    onRefresh={fetchShipment}
+                    onItemMatchingParamsChange={handleItemMatchingParamsChange}
+                    onEntryCountChange={setEntryCount}
+                    onOpenExceptions={() => setTab('exceptions')}
+                    onOpenNotes={() => setTab('notes')}
+                    onBillingRefresh={() => setBillingRefreshKey((prev) => prev + 1)}
+                    readOnly={!closedEditMode}
+                    showCompleteButton={false}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
             </div>
-          </div>
-        );
+          );
+        }
 
       default:
         return (
@@ -620,7 +898,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
           onClick={() => setTab('exceptions')}
         />
       </div>
-    <Tabs value={activeTab} onValueChange={(value) => setTab(value as 'receiving' | 'exceptions')}>
+    <Tabs value={activeTab} onValueChange={(value) => setTab(value as 'receiving' | 'exceptions' | 'notes')}>
       <TabsList className="flex-wrap h-auto gap-1 mb-4">
         <TabsTrigger value="receiving" className="gap-2">
           <MaterialIcon name="inventory_2" size="sm" />
@@ -634,6 +912,10 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               {openCount}
             </Badge>
           )}
+        </TabsTrigger>
+        <TabsTrigger value="notes" className="gap-2">
+          <MaterialIcon name="chat" size="sm" />
+          Notes
         </TabsTrigger>
       </TabsList>
 
@@ -691,6 +973,12 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
       <TabsContent value="exceptions">
         <ExceptionsTab shipmentId={shipmentId} />
+      </TabsContent>
+
+      <TabsContent value="notes">
+        {shipment ? (
+          <ShipmentNotesSection shipmentId={shipmentId} accountId={shipment.account_id} />
+        ) : null}
       </TabsContent>
     </Tabs>
 

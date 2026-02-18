@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { isValidEmail, resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { resolvePlatformInboundReplyConfig, resolveTenantReplyToRoutingAddress } from "../_shared/inboundReplyRouting.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,6 +37,27 @@ function parseCommaEmails(str: string | null | undefined): string[] {
   if (!str) return [];
   return str.split(',').map(e => e.trim().toLowerCase()).filter(e => EMAIL_REGEX.test(e));
 }
+
+function escapeHtml(input: string): string {
+  return (input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+const SHIPMENT_EXCEPTION_LABELS: Record<string, string> = {
+  SHORTAGE: 'Shortage',
+  OVERAGE: 'Overage',
+  MIS_SHIP: 'Mis-Ship',
+  DAMAGE: 'Damage',
+  WET: 'Wet',
+  OPEN: 'Open',
+  MISSING_DOCS: 'Missing Docs',
+  CRUSHED_TORN_CARTONS: 'Crushed/Torn Cartons',
+  OTHER: 'Other',
+};
 
 // =============================================================================
 // RECIPIENT RESOLUTION (Hardened)
@@ -651,6 +673,15 @@ async function buildTemplateVariables(
     office_alert_email_primary: officeAlertEmailPrimary,
     // ── Portal deep-link tokens (defaults; overridden per entity below) ──
     shipment_link: '',
+    // ── Shipment exception aggregate tokens (optional) ──
+    exceptions_count: '0',
+    exceptions_list_text: '',
+    exceptions_section_html: '',
+    // ── Item flag tokens (item.flag_added / item.flag_added.{SERVICE_CODE}) ──
+    flag_service_name: '',
+    flag_service_code: '',
+    flag_added_by_name: '',
+    flag_added_at: '',
     portal_invoice_url: '',
     portal_claim_url: '',
     portal_release_url: '',
@@ -701,6 +732,33 @@ async function buildTemplateVariables(
           variables.portal_account_url = portalBase ? `${portalBase}/accounts/${shipment.account_id}` : '';
         }
 
+        // Backward-compatible token aliases for will-call communication templates.
+        // Will-call is modeled as an OUTBOUND SHIPMENT in Stride WMS, but the templates
+        // use legacy [[release_*]] variables. Populate those from shipment fields.
+        if (alertType === 'will_call_ready' || alertType === 'will_call_released') {
+          variables.release_number = variables.shipment_number;
+          variables.release_link = variables.shipment_link;
+          variables.portal_release_url = variables.shipment_link;
+          variables.release_type = shipment.release_type || 'Will Call';
+
+          const releasedAtRaw = shipment.completed_at || shipment.shipped_at || shipment.signature_timestamp || null;
+          const releasedAt = releasedAtRaw
+            ? new Date(releasedAtRaw).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            : '';
+          variables.release_completed_at = releasedAt;
+          variables.released_at = releasedAt;
+
+          // Not currently tracked on shipments; leave blank tokens for now.
+          variables.pickup_hours = variables.pickup_hours || '';
+          variables.amount_due = variables.amount_due || '';
+        }
+
         const { data: shipmentItems } = await supabase
           .from('items')
           .select('id')
@@ -730,6 +788,67 @@ async function buildTemplateVariables(
         } else {
           variables.items_count = '0';
         }
+
+        // Shipment exceptions (open) — optional section for Shipment Received templates
+        try {
+          const { data: exRows, error: exErr } = await supabase
+            .from('shipment_exceptions')
+            .select('code, note')
+            .eq('tenant_id', tenantId)
+            .eq('shipment_id', entityId)
+            .eq('status', 'open');
+
+          if (exErr) throw exErr;
+
+          const exceptions = Array.isArray(exRows) ? exRows : [];
+          variables.exceptions_count = String(exceptions.length);
+
+          if (exceptions.length > 0) {
+            const formatted = exceptions.map((ex: any) => {
+              const code = String(ex.code || '').trim();
+              const label = SHIPMENT_EXCEPTION_LABELS[code] || code.replace(/_/g, ' ');
+              const note = String(ex.note || '').trim();
+              return { code, label, note };
+            });
+
+            variables.exceptions_list_text = formatted
+              .map((e) => `- ${e.label}${e.note ? `: ${e.note}` : ''}`)
+              .join('\n');
+
+            const listItems = formatted
+              .map((e) => {
+                const safeLabel = escapeHtml(e.label);
+                const safeNote = escapeHtml(e.note);
+                return `
+                  <li style="margin:0 0 10px;">
+                    <strong style="color:#92400e;">${safeLabel}</strong>
+                    ${safeNote ? `<div style="margin-top:2px;color:#475569;white-space:pre-wrap;">${safeNote}</div>` : ''}
+                  </li>
+                `;
+              })
+              .join('');
+
+            variables.exceptions_section_html = `
+              <div style="margin-top:24px;padding:16px;border:1px solid #fde68a;background:#fffbeb;border-radius:12px;">
+                <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#92400e;letter-spacing:0.3px;text-transform:uppercase;">
+                  Exceptions
+                </p>
+                <ul style="margin:0;padding-left:18px;color:#92400e;font-size:14px;">
+                  ${listItems}
+                </ul>
+              </div>
+            `;
+          } else {
+            variables.exceptions_list_text = '';
+            variables.exceptions_section_html = '';
+          }
+        } catch (exBuildErr) {
+          // Exceptions are optional; don't block alert delivery if this fails.
+          console.warn('[send-alerts] failed to build shipment exception tokens:', exBuildErr);
+          variables.exceptions_count = variables.exceptions_count || '0';
+          variables.exceptions_list_text = variables.exceptions_list_text || '';
+          variables.exceptions_section_html = variables.exceptions_section_html || '';
+        }
       }
     } else if (entityType === 'item') {
       const { data: item } = await supabase
@@ -753,6 +872,75 @@ async function buildTemplateVariables(
         variables.item_photos_link = portalBase ? `${portalBase}/inventory/${entityId}` : '';
         variables.items_count = '1';
         itemIds = [entityId];
+
+        // Item flag tokens (service flags): available for item.flag_added and per-flag triggers.
+        // Per-flag triggers use: item.flag_added.{SERVICE_CODE}
+        if (alertType === 'item.flag_added' || alertType.startsWith('item.flag_added.')) {
+          const explicitCode = alertType.startsWith('item.flag_added.')
+            ? alertType.slice('item.flag_added.'.length).trim()
+            : '';
+
+          try {
+            let query = supabase
+              .from('item_flags')
+              .select('service_code, created_at, created_by')
+              .eq('tenant_id', tenantId)
+              .eq('item_id', entityId);
+
+            if (explicitCode) {
+              query = query.eq('service_code', explicitCode);
+            }
+
+            const { data: flagRow } = await query
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const serviceCode = explicitCode || flagRow?.service_code || '';
+            variables.flag_service_code = serviceCode;
+
+            if (flagRow?.created_at) {
+              variables.flag_added_at = new Date(flagRow.created_at).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              });
+            }
+
+            if (flagRow?.created_by) {
+              const { data: actor } = await supabase
+                .from('users')
+                .select('first_name, last_name, email')
+                .eq('id', flagRow.created_by)
+                .maybeSingle();
+
+              const fullName = `${actor?.first_name || ''} ${actor?.last_name || ''}`.trim();
+              variables.flag_added_by_name = fullName || actor?.email || flagRow.created_by;
+            }
+          } catch (flagErr) {
+            console.warn('[send-alerts] failed to resolve item flag tokens:', flagErr);
+          }
+
+          try {
+            if (variables.flag_service_code) {
+              const { data: svc } = await supabase
+                .from('service_events')
+                .select('service_name')
+                .eq('tenant_id', tenantId)
+                .eq('service_code', variables.flag_service_code)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              variables.flag_service_name = svc?.service_name || variables.flag_service_code;
+            }
+          } catch (svcErr) {
+            console.warn('[send-alerts] failed to resolve flag service name:', svcErr);
+            variables.flag_service_name = variables.flag_service_name || variables.flag_service_code || '';
+          }
+        }
 
         // Repair-specific tokens (for repair_started, repair_completed, repair_requires_approval)
         if (alertType.startsWith('repair')) {
@@ -1250,8 +1438,12 @@ const handler = async (req: Request): Promise<Response> => {
           if (brandSettings?.from_name) {
             fromName = brandSettings.from_name;
           }
-          if (brandSettings?.brand_support_email) {
-            replyTo = brandSettings.brand_support_email;
+          const routingReplyTo = await resolveTenantReplyToRoutingAddress(supabase, bodyFilter.tenant_id);
+          const supportEmail = (brandSettings?.brand_support_email || "").trim();
+          if (routingReplyTo) {
+            replyTo = routingReplyTo;
+          } else if (isValidEmail(supportEmail)) {
+            replyTo = supportEmail;
           }
 
           // Also test recipient resolution
@@ -1361,6 +1553,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { Resend } = await import("https://esm.sh/resend@2.0.0");
     const resend = new Resend(resendApiKey);
+
+    const inboundReplyPlatformConfig = await resolvePlatformInboundReplyConfig(supabase);
 
     let sent = 0;
     let failed = 0;
@@ -1527,7 +1721,10 @@ const handler = async (req: Request): Promise<Response> => {
 
         let fromEmail = platformDefaults.fromEmail;
         let fromName = brandSettings?.from_name || variables.tenant_name || platformDefaults.fromName;
-        let replyTo: string | null = (brandSettings?.brand_support_email || "").trim() || platformDefaults.replyTo;
+        const routingReplyTo = await resolveTenantReplyToRoutingAddress(supabase, alert.tenant_id, inboundReplyPlatformConfig);
+        const supportEmail = (brandSettings?.brand_support_email || "").trim();
+        let replyTo: string | null =
+          routingReplyTo || (isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo);
 
         // Only use custom sender if tenant explicitly chose it and it is verified.
         const wantsCustom = brandSettings?.use_default_email === false;

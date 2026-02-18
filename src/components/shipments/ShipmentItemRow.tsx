@@ -25,6 +25,8 @@ import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
+import { type BuiltinItemColumnKey, type ItemColumnKey, parseCustomFieldColumnKey } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 
 interface ShipmentItem {
   id: string;
@@ -38,11 +40,17 @@ interface ShipmentItem {
   status: string;
   item?: {
     item_code: string;
+    sku?: string | null;
+    size?: number | null;
+    size_unit?: string | null;
     description: string | null;
     vendor: string | null;
     sidemark: string | null;
     room: string | null;
     class_id: string | null;
+    primary_photo_url?: string | null;
+    metadata?: Record<string, unknown> | null;
+    account?: { account_name: string } | null;
     current_location?: {
       code: string;
     } | null;
@@ -76,6 +84,8 @@ interface ShipmentItemRowProps {
   isCompleted: boolean;
   classes?: ClassOption[];
   accountId?: string;
+  /** Optional tenant-managed item view columns */
+  visibleColumns?: ItemColumnKey[];
 }
 
 export function ShipmentItemRow({
@@ -89,6 +99,7 @@ export function ShipmentItemRow({
   isCompleted,
   classes = [],
   accountId,
+  visibleColumns,
 }: ShipmentItemRowProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -97,6 +108,7 @@ export function ShipmentItemRow({
 
   // Inline edit state - tracks local values
   const [vendor, setVendor] = useState(item.item?.vendor || item.expected_vendor || '');
+  const [sku, setSku] = useState(item.item?.sku || '');
   const [description, setDescription] = useState(item.item?.description || item.expected_description || '');
   const [quantity, setQuantity] = useState(
     item.item_id 
@@ -140,6 +152,7 @@ export function ShipmentItemRow({
       return; // Skip this sync - we just saved and don't want to revert
     }
     setVendor(item.item?.vendor || item.expected_vendor || '');
+    setSku(item.item?.sku || '');
     setDescription(item.item?.description || item.expected_description || '');
     setQuantity(
       item.item_id 
@@ -155,7 +168,7 @@ export function ShipmentItemRow({
     selectedClassRef.current = classValue;
     sidemarkRef.current = sidemarkValue;
     roomRef.current = roomValue;
-  }, [item.expected_vendor, item.expected_description, item.expected_quantity, item.actual_quantity, item.expected_class, item.item?.class, item.item?.sidemark, item.expected_sidemark, item.item?.vendor, item.item?.description, item.item?.room, item.item_id]);
+  }, [item.expected_vendor, item.expected_description, item.expected_quantity, item.actual_quantity, item.expected_class, item.item?.class, item.item?.sidemark, item.expected_sidemark, item.item?.vendor, item.item?.sku, item.item?.description, item.item?.room, item.item_id]);
 
   // Keep refs in sync with state changes
   useEffect(() => {
@@ -212,6 +225,7 @@ export function ShipmentItemRow({
       const matchedClass = classes.find(c => c.code === value);
       updateData.expected_class_id = matchedClass?.id || null;
     }
+    if (Object.keys(updateData).length === 0) return;
 
     setSaving(true);
     skipNextSyncRef.current = true; // Prevent useEffect from reverting value
@@ -245,6 +259,9 @@ export function ShipmentItemRow({
     }
     if (field === 'vendor') {
       updateData.vendor = value || null;
+    }
+    if (field === 'sku') {
+      updateData.sku = value || null;
     }
     if (field === 'description') {
       updateData.description = value || null;
@@ -445,6 +462,13 @@ export function ShipmentItemRow({
   // Can delete pending items (not yet received)
   const canDelete = isInbound && !isCompleted && !item.item_id;
 
+  const columns: ItemColumnKey[] =
+    visibleColumns && visibleColumns.length > 0
+      ? visibleColumns
+      : (['item_code', 'quantity', 'vendor', 'description', 'location', 'sidemark', 'room'] as ItemColumnKey[]);
+
+  const expandedColSpan = 2 + columns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
+
   return (
     <>
       <TableRow
@@ -480,92 +504,200 @@ export function ShipmentItemRow({
           </Button>
         </TableCell>
 
-        {/* Item Code */}
-        <TableCell className="w-28 font-medium">
-          {item.item_id ? (
-            <ItemPreviewCard itemId={item.item_id}>
-              <span
-                className="text-primary hover:underline cursor-pointer"
-                onClick={handleItemCodeClick}
-              >
-                {item.item?.item_code || '-'}
-              </span>
-            </ItemPreviewCard>
-          ) : (
-            <span className="text-muted-foreground italic text-xs">pending</span>
-          )}
-        </TableCell>
-
-        {/* Qty - editable for all inbound items */}
-        <TableCell className="w-20 text-right" onClick={(e) => canEdit && e.stopPropagation()}>
-          {canEdit ? (
-            <Input
-              type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              onBlur={() => handleBlur('quantity', quantity)}
-              min="1"
-              className="h-7 w-16 text-sm text-right border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input ml-auto"
-            />
-          ) : (
-            <span className="text-sm">
-              {item.item_id ? (item.actual_quantity || '-') : (item.expected_quantity || '-')}
-            </span>
-          )}
-        </TableCell>
-
-        {/* Vendor - editable for all inbound items */}
-        <TableCell className="w-32" onClick={(e) => canEdit && e.stopPropagation()}>
-          {canEdit ? (
-            <Input
-              value={vendor}
-              onChange={(e) => setVendor(e.target.value)}
-              onBlur={() => handleBlur('vendor', vendor)}
-              placeholder="Vendor"
-              autoCapitalize="sentences"
-              className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
-            />
-          ) : (
-            <span className="text-sm">{item.item?.vendor || item.expected_vendor || '-'}</span>
-          )}
-        </TableCell>
-
-        {/* Description - editable for all inbound items */}
-        <TableCell className="min-w-[140px]" onClick={(e) => canEdit && e.stopPropagation()}>
-          {canEdit ? (
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={() => handleBlur('description', description)}
-              placeholder="Description"
-              autoCapitalize="sentences"
-              className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
-            />
-          ) : (
-            <span className="text-sm">{item.item?.description || item.expected_description || '-'}</span>
-          )}
-        </TableCell>
-
-        {/* Location - read-only, only for received items */}
-        <TableCell className="w-24">
-          {item.item?.current_location?.code ? (
-            <span
-              className={cn(
-                'text-sm font-medium',
-                isOutboundDock(item.item.current_location.code) && 'text-lg font-bold text-orange-500',
-                isReleasedLocation(item.item.current_location.code) && 'text-lg font-bold text-green-500'
-              )}
-            >
-              {isOutboundDock(item.item.current_location.code)
-                ? 'Outbound Dock'
-                : isReleasedLocation(item.item.current_location.code)
-                  ? 'Released'
-                  : item.item.current_location.code}
-            </span>
-          ) : (
-            <span className="text-sm text-muted-foreground">-</span>
-          )}
-        </TableCell>
+        {/* View columns */}
+        {columns.map((col) => {
+          const cfKey = parseCustomFieldColumnKey(col);
+          if (cfKey) {
+            const meta = item.item?.metadata;
+            const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+            const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+            const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+            return (
+              <TableCell key={col} className="min-w-[120px]">
+                <span className="text-sm">{display}</span>
+              </TableCell>
+            );
+          }
+          switch (col as BuiltinItemColumnKey) {
+            case 'photo': {
+              const node = item.item?.primary_photo_url ? (
+                <img
+                  src={item.item.primary_photo_url}
+                  alt={item.item?.item_code || 'item'}
+                  className="h-8 w-8 rounded object-cover"
+                />
+              ) : (
+                <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+              );
+              return (
+                <TableCell key={col} className="w-12" onClick={(e) => e.stopPropagation()}>
+                  {item.item_id ? <ItemPreviewCard itemId={item.item_id}>{node}</ItemPreviewCard> : node}
+                </TableCell>
+              );
+            }
+            case 'item_code':
+              return (
+                <TableCell key={col} className="w-28 font-medium">
+                  {item.item_id ? (
+                    <ItemPreviewCard itemId={item.item_id}>
+                      <span className="text-primary hover:underline cursor-pointer" onClick={handleItemCodeClick}>
+                        {item.item?.item_code || '-'}
+                      </span>
+                    </ItemPreviewCard>
+                  ) : (
+                    <span className="text-muted-foreground italic text-xs">pending</span>
+                  )}
+                </TableCell>
+              );
+            case 'sku':
+              return (
+                <TableCell className="w-32" key={col} onClick={(e) => canEditReceived && e.stopPropagation()}>
+                  {canEditReceived ? (
+                    <Input
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      onBlur={() => handleBlur('sku', sku)}
+                      placeholder="SKU"
+                      className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                    />
+                  ) : (
+                    <span className="text-sm">{item.item?.sku || '-'}</span>
+                  )}
+                </TableCell>
+              );
+            case 'quantity':
+              return (
+                <TableCell key={col} className="w-20 text-right" onClick={(e) => canEdit && e.stopPropagation()}>
+                  {canEdit ? (
+                    <Input
+                      type="number"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      onBlur={() => handleBlur('quantity', quantity)}
+                      min="1"
+                      className="h-7 w-16 text-sm text-right border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input ml-auto"
+                    />
+                  ) : (
+                    <span className="text-sm">
+                      {item.item_id ? (item.actual_quantity || '-') : (item.expected_quantity || '-')}
+                    </span>
+                  )}
+                </TableCell>
+              );
+            case 'size':
+              return (
+                <TableCell key={col} className="w-28 text-right tabular-nums">
+                  <span className="text-sm">{formatItemSize(item.item?.size ?? null, item.item?.size_unit ?? null)}</span>
+                </TableCell>
+              );
+            case 'vendor':
+              return (
+                <TableCell key={col} className="w-32" onClick={(e) => canEdit && e.stopPropagation()}>
+                  {canEdit ? (
+                    <Input
+                      value={vendor}
+                      onChange={(e) => setVendor(e.target.value)}
+                      onBlur={() => handleBlur('vendor', vendor)}
+                      placeholder="Vendor"
+                      autoCapitalize="characters"
+                      className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                    />
+                  ) : (
+                    <span className="text-sm">{item.item?.vendor || item.expected_vendor || '-'}</span>
+                  )}
+                </TableCell>
+              );
+            case 'description':
+              return (
+                <TableCell key={col} className="min-w-[140px]" onClick={(e) => canEdit && e.stopPropagation()}>
+                  {canEdit ? (
+                    <Input
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      onBlur={() => handleBlur('description', description)}
+                      placeholder="Description"
+                      autoCapitalize="characters"
+                      className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                    />
+                  ) : (
+                    <span className="text-sm">{item.item?.description || item.expected_description || '-'}</span>
+                  )}
+                </TableCell>
+              );
+            case 'location':
+              return (
+                <TableCell key={col} className="w-24">
+                  {item.item?.current_location?.code ? (
+                    <span
+                      className={cn(
+                        'text-sm font-medium',
+                        isOutboundDock(item.item.current_location.code) && 'text-lg font-bold text-orange-500',
+                        isReleasedLocation(item.item.current_location.code) && 'text-lg font-bold text-green-500'
+                      )}
+                    >
+                      {isOutboundDock(item.item.current_location.code)
+                        ? 'Outbound Dock'
+                        : isReleasedLocation(item.item.current_location.code)
+                          ? 'Released'
+                          : item.item.current_location.code}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+              );
+            case 'client_account':
+              return (
+                <TableCell key={col} className="w-32">
+                  <span className="text-sm">{item.item?.account?.account_name || '-'}</span>
+                </TableCell>
+              );
+            case 'sidemark':
+              return (
+                <TableCell key={col} className="w-28" onClick={(e) => canEdit && e.stopPropagation()}>
+                  {canEdit ? (
+                    <Input
+                      value={sidemark}
+                      onChange={(e) => setSidemark(e.target.value)}
+                      onBlur={() => handleBlur('sidemark', sidemark)}
+                      placeholder="Sidemark"
+                      autoCapitalize="characters"
+                      className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                    />
+                  ) : (
+                    <span className="text-sm">
+                      {item.item?.sidemark || item.expected_sidemark || '-'}
+                    </span>
+                  )}
+                </TableCell>
+              );
+            case 'room':
+              return (
+                <TableCell key={col} className="w-24" onClick={(e) => canEditReceived && e.stopPropagation()}>
+                  {canEditReceived ? (
+                    <Input
+                      value={room}
+                      onChange={(e) => setRoom(e.target.value)}
+                      onBlur={() => handleBlur('room', room)}
+                      placeholder="Room"
+                      autoCapitalize="characters"
+                      className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                    />
+                  ) : (
+                    <span className="text-sm">
+                      {item.item?.room || '-'}
+                    </span>
+                  )}
+                </TableCell>
+              );
+            default:
+              return (
+                <TableCell key={col}>
+                  <span className="text-sm text-muted-foreground">-</span>
+                </TableCell>
+              );
+          }
+        })}
 
         {/* Class - editable for all inbound items with autocomplete */}
         <TableCell className="w-24" onClick={(e) => canEdit && e.stopPropagation()}>
@@ -580,42 +712,6 @@ export function ShipmentItemRow({
           ) : (
             <span className="text-sm">
               {item.item?.class?.code || item.expected_class?.code || '-'}
-            </span>
-          )}
-        </TableCell>
-
-        {/* Sidemark - editable for all inbound items */}
-        <TableCell className="w-28" onClick={(e) => canEdit && e.stopPropagation()}>
-          {canEdit ? (
-            <Input
-              value={sidemark}
-              onChange={(e) => setSidemark(e.target.value)}
-              onBlur={() => handleBlur('sidemark', sidemark)}
-              placeholder="Sidemark"
-              autoCapitalize="sentences"
-              className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
-            />
-          ) : (
-            <span className="text-sm">
-              {item.item?.sidemark || item.expected_sidemark || '-'}
-            </span>
-          )}
-        </TableCell>
-
-        {/* Room - editable for received items */}
-        <TableCell className="w-24" onClick={(e) => canEditReceived && e.stopPropagation()}>
-          {canEditReceived ? (
-            <Input
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              onBlur={() => handleBlur('room', room)}
-              placeholder="Room"
-              autoCapitalize="sentences"
-              className="h-7 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
-            />
-          ) : (
-            <span className="text-sm">
-              {item.item?.room || '-'}
             </span>
           )}
         </TableCell>
@@ -675,12 +771,15 @@ export function ShipmentItemRow({
             )}
           </div>
         </TableCell>
+
+        {/* Column settings header alignment */}
+        <TableCell className="w-8" />
       </TableRow>
 
       {/* Expanded Row - ONLY shows flags */}
       {isExpanded && (
         <TableRow className="bg-amber-50/50 dark:bg-amber-950/20">
-          <TableCell colSpan={11} className="py-2 px-4">
+          <TableCell colSpan={expandedColSpan} className="py-2 px-4">
             {item.item_id ? (
               // Item has been received - show flags
               loadingFlags || serviceEventsLoading ? (

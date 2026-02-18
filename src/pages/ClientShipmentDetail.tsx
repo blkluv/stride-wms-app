@@ -13,6 +13,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
 import { DocumentList } from '@/components/scanner';
+import { ShipmentNotesSection } from '@/components/shipments/ShipmentNotesSection';
 import { format } from 'date-fns';
 
 // ============================================
@@ -352,6 +353,9 @@ export default function ClientShipmentDetail() {
               </CardContent>
             </Card>
 
+            {/* Notes (Public + Exception) */}
+            <ShipmentNotesSection shipmentId={id} isClientUser />
+
             {/* Items */}
             <Card>
               <CardHeader>
@@ -461,6 +465,7 @@ export default function ClientShipmentDetail() {
                 <DocumentList
                   contextType="shipment"
                   contextId={shipment.id}
+                  canDelete={false}
                 />
               </CardContent>
             </Card>

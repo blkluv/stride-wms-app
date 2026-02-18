@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { isValidEmail, resolvePlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { resolveTenantReplyToRoutingAddress } from "../_shared/inboundReplyRouting.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -193,7 +194,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     let fromEmail = platformDefaults.fromEmail;
     let fromName = senderSettings?.from_name || branding.companyName || platformDefaults.fromName;
-    let replyTo: string | null = (senderSettings?.brand_support_email || "").trim() || platformDefaults.replyTo;
+    const routingReplyTo = await resolveTenantReplyToRoutingAddress(supabase, tenant_id);
+    const supportEmail = (senderSettings?.brand_support_email || "").trim();
+    let replyTo: string | null =
+      routingReplyTo || (isValidEmail(supportEmail) ? supportEmail : platformDefaults.replyTo);
 
     const wantsCustom = senderSettings?.use_default_email === false;
     const isVerified = senderSettings?.email_domain_verified === true;

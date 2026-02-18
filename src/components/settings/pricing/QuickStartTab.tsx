@@ -36,6 +36,7 @@ import { useClasses } from '@/hooks/useClasses';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { getClassCubicFeetExportValue } from '@/lib/pricing/classCubicFeet';
 import * as XLSX from 'xlsx';
 
 export function QuickStartTab() {
@@ -155,9 +156,12 @@ export function QuickStartTab() {
     XLSX.utils.book_append_sheet(wb, wsPricingRules, 'Pricing Rules');
 
     // Classes Reference sheet
-    const classRefHeaders = ['code', 'name', 'min_cubic_feet', 'max_cubic_feet', 'sort_order'];
+    const classRefHeaders = ['code', 'name', 'cubic_feet', 'sort_order'];
     const classRefData = classes.map(c => [
-      c.code, c.name, c.min_cubic_feet || '', c.max_cubic_feet || '', c.sort_order || '',
+      c.code,
+      c.name,
+      getClassCubicFeetExportValue(c),
+      c.sort_order || '',
     ]);
     const wsClassRef = XLSX.utils.aoa_to_sheet([classRefHeaders, ...classRefData]);
     XLSX.utils.book_append_sheet(wb, wsClassRef, 'Classes Reference');

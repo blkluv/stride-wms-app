@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,9 +38,23 @@ import { isValidUuid } from '@/lib/utils';
 import { useExpectedShipmentDetail } from '@/hooks/useExpectedShipmentDetail';
 import { useExternalRefs, type RefType } from '@/hooks/useExternalRefs';
 import { useClasses } from '@/hooks/useClasses';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
+import { logActivity } from '@/lib/activity/logActivity';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { formatItemSize } from '@/lib/items/formatItemSize';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 
 function formatDate(d: string | null | undefined): string {
   if (!d) return '-';
@@ -59,6 +74,36 @@ export default function ExpectedShipmentDetail() {
   const { shipment, items, refs: shipmentRefs, loading, refetch } = useExpectedShipmentDetail(id);
   const { refs, addRef, removeRef } = useExternalRefs(id);
   const { classes, loading: classesLoading } = useClasses();
+
+  // Item table view (tenant-managed)
+  const {
+    settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettingsForUser();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const expectedItemVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
 
   const [newRefType, setNewRefType] = useState<RefType>('BOL');
   const [newRefValue, setNewRefValue] = useState('');
@@ -132,6 +177,23 @@ export default function ExpectedShipmentDetail() {
 
       if (error) throw error;
 
+      if (profile?.tenant_id && profile?.id && id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: id,
+          actorUserId: profile.id,
+          eventType: 'item_added',
+          eventLabel: `Expected item duplicated: ${item.expected_description || 'Item'}`,
+          details: {
+            expected_description: item.expected_description || null,
+            expected_vendor: item.expected_vendor || null,
+            expected_sidemark: item.expected_sidemark || null,
+            expected_quantity: item.expected_quantity || 1,
+          },
+        });
+      }
+
       toast({ title: 'Item Duplicated' });
       refetch();
     } catch (err: unknown) {
@@ -160,6 +222,18 @@ export default function ExpectedShipmentDetail() {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      if (profile?.tenant_id && profile?.id && id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: id,
+          actorUserId: profile.id,
+          eventType: 'item_removed',
+          eventLabel: 'Expected item removed',
+          details: { shipment_item_id: itemId },
+        });
+      }
 
       toast({ title: 'Item Removed' });
       refetch();
@@ -227,6 +301,23 @@ export default function ExpectedShipmentDetail() {
           notes: addItemNotes || null,
         });
       if (error) throw error;
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: profile.tenant_id,
+        entityId: id,
+        actorUserId: profile.id,
+        eventType: 'item_added',
+        eventLabel: `Expected item added: ${addItemDesc || 'Item'}`,
+        details: {
+          expected_description: addItemDesc || null,
+          expected_vendor: addItemVendor || null,
+          expected_sidemark: addItemSidemark || null,
+          room: addItemRoom || null,
+          expected_quantity: Number(addItemQty) || 1,
+        },
+      });
+
       toast({ title: 'Item Added' });
       setShowAddItemDialog(false);
       setAddItemDesc('');
@@ -273,29 +364,30 @@ export default function ExpectedShipmentDetail() {
 
   const displayRefs = refs.length > 0 ? refs : shipmentRefs;
   const carrierName = (shipment as any).carrier as string | null;
+  const inboundStatusLabel = (shipment.inbound_status || 'open').replace(/_/g, ' ');
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/incoming')}>
-            <MaterialIcon name="arrow_back" size="sm" className="mr-1" />
-            Back
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <MaterialIcon name="schedule" size="md" />
-              <ShipmentNumberBadge shipmentNumber={shipment.shipment_number} exceptionType={(shipment as any).shipment_exception_type} className="text-2xl" />
-              <Badge variant="secondary">{shipment.inbound_status || 'open'}</Badge>
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {shipment.account_name && <span>{shipment.account_name} &middot; </span>}
-              {shipment.vendor_name && <span>Vendor: {shipment.vendor_name} &middot; </span>}
-              {carrierName && <span>Carrier: {carrierName} &middot; </span>}
-              Created {formatDate(shipment.created_at)}
-            </p>
+        {/* Top row (match Dock Intake layout) */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/incoming')}
+              className="gap-1"
+            >
+              <MaterialIcon name="arrow_back" size="sm" />
+              Back
+            </Button>
+            <PageHeader
+              primaryText="Expected"
+              accentText="Shipment"
+              description="Plan and manage expected inbound shipments"
+            />
           </div>
+
           <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" onClick={handleEditHeader}>
               <MaterialIcon name="edit" size="sm" className="mr-1" />
@@ -307,6 +399,29 @@ export default function ExpectedShipmentDetail() {
             </Button>
           </div>
         </div>
+
+        {/* Header card (match Dock Intake Stage styling) */}
+        <Card className="border-primary/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MaterialIcon name="schedule" size="sm" className="text-primary" />
+              <span>Expected Shipment</span>
+              <ShipmentNumberBadge
+                shipmentNumber={shipment.shipment_number}
+                exceptionType={(shipment as any).shipment_exception_type}
+              />
+              <Badge variant="secondary" className="capitalize">
+                {inboundStatusLabel}
+              </Badge>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {shipment.account_name ? <span>{shipment.account_name}</span> : <span className="italic">No account</span>}
+              {shipment.vendor_name ? <span>{' '}· Vendor: {shipment.vendor_name}</span> : null}
+              {carrierName ? <span>{' '}· Carrier: {carrierName}</span> : null}
+              <span>{' '}· Created {formatDate(shipment.created_at)}</span>
+            </p>
+          </CardHeader>
+        </Card>
 
         {/* Edit Header Panel */}
         {editingHeader && (
@@ -377,314 +492,459 @@ export default function ExpectedShipmentDetail() {
           </Card>
         )}
 
-        {/* Shipping Info Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-xs text-muted-foreground">ETA Start</div>
-              <div className="font-medium">{formatDate(shipment.eta_start)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-xs text-muted-foreground">ETA End</div>
-              <div className="font-medium">{formatDate(shipment.eta_end)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-xs text-muted-foreground">Carrier</div>
-              <div className="font-medium">{carrierName || '-'}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-xs text-muted-foreground">Expected Pieces</div>
-              <div className="font-medium">{shipment.expected_pieces ?? '-'}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="text-xs text-muted-foreground">Items</div>
-              <div className="font-medium">{itemRows.length}</div>
-            </CardContent>
-          </Card>
+        {/* Main content + sticky right summary (mirrors Dock Intake detail layout) */}
+        <div className="grid gap-6 lg:grid-cols-[1fr,360px] items-start">
+          <div className="space-y-6">
+            {/* External References */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MaterialIcon name="qr_code_scanner" size="sm" className="text-primary" />
+                  External References
+                  <HelpTip
+                    tooltip="BOL, PRO, tracking numbers, POs. These references are used to match dock intakes to this expected shipment."
+                    pageKey="incoming.expected_detail"
+                    fieldKey="external_refs"
+                  />
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {displayRefs.map((ref) => (
+                    <Badge key={ref.id} variant="outline" className="gap-1 pl-2 pr-1 py-1">
+                      <span className="text-xs font-semibold">{ref.ref_type}:</span>
+                      <span className="text-xs">{ref.value}</span>
+                      <button
+                        onClick={() => removeRef(ref.id)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <MaterialIcon name="close" size="sm" />
+                      </button>
+                    </Badge>
+                  ))}
+                  {displayRefs.length === 0 && (
+                    <span className="text-sm text-muted-foreground">No references yet.</span>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <Select value={newRefType} onValueChange={(v) => setNewRefType(v as RefType)}>
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BOL">BOL</SelectItem>
+                      <SelectItem value="PRO">PRO</SelectItem>
+                      <SelectItem value="TRACKING">Tracking</SelectItem>
+                      <SelectItem value="PO">PO</SelectItem>
+                      <SelectItem value="REF">REF</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Enter reference value..."
+                    value={newRefValue}
+                    onChange={(e) => setNewRefValue(e.target.value)}
+                    className="max-w-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddRef();
+                    }}
+                  />
+                  <Button size="sm" onClick={handleAddRef} disabled={!newRefValue.trim()}>
+                    Add
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Items Grid */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MaterialIcon name="inventory_2" size="sm" className="text-primary" />
+                    Expected Items
+                    <HelpTip
+                      tooltip="Items expected in this shipment. Items may be created manually or through allocation from a manifest."
+                      pageKey="incoming.expected_detail"
+                      fieldKey="expected_items"
+                    />
+                  </CardTitle>
+
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={activeItemViewId || defaultItemViewId || 'default'}
+                      onValueChange={setActiveItemViewId}
+                      disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                    >
+                      <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
+                        <div className="flex items-center gap-2">
+                          <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                          <SelectValue placeholder="View" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {itemDisplaySettings.views.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                            {v.is_default ? ' (default)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <ItemColumnsPopover
+                      settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
+                      viewId={activeItemViewId || defaultItemViewId || 'default'}
+                      disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                      onSave={saveItemDisplaySettings}
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {itemRows.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MaterialIcon name="inventory_2" size="xl" className="mb-2 opacity-40" />
+                    <p>No items yet. Add items manually or allocate from a manifest.</p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {expectedItemVisibleColumns.map((col) => (
+                            <TableHead
+                              key={col}
+                              className={col === 'quantity' || col === 'size' ? 'text-right' : undefined}
+                            >
+                              {getColumnLabel(itemDisplaySettings, col)}
+                            </TableHead>
+                          ))}
+                          <TableHead className="w-44">Class</TableHead>
+                          <TableHead className="w-24 text-right">Actual</TableHead>
+                          <TableHead className="w-28">Status</TableHead>
+                          <TableHead className="w-28 text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {itemRows.map((item) => (
+                          <TableRow key={item.id}>
+                            {expectedItemVisibleColumns.map((col) => {
+                              const cfKey = parseCustomFieldColumnKey(col);
+                              if (cfKey) {
+                                const meta = item.item?.metadata;
+                                const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                                const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                                const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                                return <TableCell key={col} className="max-w-[180px] truncate">{display}</TableCell>;
+                              }
+
+                              switch (col as BuiltinItemColumnKey) {
+                                case 'photo': {
+                                  const url = item.item?.primary_photo_url || null;
+                                  const node = url ? (
+                                    <img src={url} alt={item.item?.item_code || 'item'} className="h-8 w-8 rounded object-cover" />
+                                  ) : (
+                                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                                  );
+                                  return (
+                                    <TableCell key={col} className="w-12" onClick={(e) => e.stopPropagation()}>
+                                      {item.item?.id ? <ItemPreviewCard itemId={item.item.id}>{node}</ItemPreviewCard> : node}
+                                    </TableCell>
+                                  );
+                                }
+                                case 'item_code': {
+                                  const itemId = item.item?.id || item.item_id || null;
+                                  const label = item.item?.item_code || (item.item_id ? item.item_id.slice(0, 8) : null);
+                                  return (
+                                    <TableCell key={col} className="font-mono font-medium">
+                                      {itemId && label ? (
+                                        <ItemPreviewCard itemId={itemId}>
+                                          <span
+                                            className="text-primary hover:underline cursor-pointer"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigate(`/inventory/${itemId}`);
+                                            }}
+                                          >
+                                            {label}
+                                          </span>
+                                        </ItemPreviewCard>
+                                      ) : (
+                                        <span className="text-muted-foreground italic text-xs">pending</span>
+                                      )}
+                                    </TableCell>
+                                  );
+                                }
+                                case 'sku':
+                                  return <TableCell key={col}>{item.item?.sku || '-'}</TableCell>;
+                                case 'quantity':
+                                  return (
+                                    <TableCell key={col} className="text-right">
+                                      <Input
+                                        type="number"
+                                        min={1}
+                                        value={item.expected_quantity ?? 1}
+                                        onChange={(e) => updateLocalItem(item.id, 'expected_quantity', Number(e.target.value) || 1)}
+                                        onBlur={async () => {
+                                          try {
+                                            await persistItemPatch(item.id, {
+                                              expected_quantity: item.expected_quantity || 1,
+                                            });
+                                          } catch (err: unknown) {
+                                            toast({
+                                              variant: 'destructive',
+                                              title: 'Failed to save quantity',
+                                              description: err instanceof Error ? err.message : 'Could not save item quantity.',
+                                            });
+                                            refetch();
+                                          }
+                                        }}
+                                        className="h-8 text-right"
+                                      />
+                                    </TableCell>
+                                  );
+                                case 'size':
+                                  return (
+                                    <TableCell key={col} className="text-right tabular-nums">
+                                      {formatItemSize(item.item?.size ?? null, item.item?.size_unit ?? null)}
+                                    </TableCell>
+                                  );
+                                case 'vendor':
+                                  return (
+                                    <TableCell key={col}>
+                                      <Input
+                                        value={item.expected_vendor || ''}
+                                        onChange={(e) => updateLocalItem(item.id, 'expected_vendor', e.target.value)}
+                                        onBlur={async () => {
+                                          try {
+                                            await persistItemPatch(item.id, {
+                                              expected_vendor: item.expected_vendor || null,
+                                            });
+                                          } catch (err: unknown) {
+                                            toast({
+                                              variant: 'destructive',
+                                              title: 'Failed to save vendor',
+                                              description: err instanceof Error ? err.message : 'Could not save item vendor.',
+                                            });
+                                            refetch();
+                                          }
+                                        }}
+                                        placeholder="Vendor"
+                                        className="h-8"
+                                      />
+                                    </TableCell>
+                                  );
+                                case 'description':
+                                  return (
+                                    <TableCell key={col}>
+                                      <Input
+                                        value={item.expected_description || ''}
+                                        onChange={(e) => updateLocalItem(item.id, 'expected_description', e.target.value)}
+                                        onBlur={async () => {
+                                          try {
+                                            await persistItemPatch(item.id, {
+                                              expected_description: item.expected_description || null,
+                                            });
+                                          } catch (err: unknown) {
+                                            toast({
+                                              variant: 'destructive',
+                                              title: 'Failed to save description',
+                                              description: err instanceof Error ? err.message : 'Could not save item description.',
+                                            });
+                                            refetch();
+                                          }
+                                        }}
+                                        placeholder="Description"
+                                        className="h-8"
+                                      />
+                                    </TableCell>
+                                  );
+                                case 'location':
+                                  return <TableCell key={col}>-</TableCell>;
+                                case 'client_account':
+                                  return <TableCell key={col}>{shipment?.account_name || '-'}</TableCell>;
+                                case 'sidemark':
+                                  return (
+                                    <TableCell key={col}>
+                                      <Input
+                                        value={item.expected_sidemark || ''}
+                                        onChange={(e) => updateLocalItem(item.id, 'expected_sidemark', e.target.value)}
+                                        onBlur={async () => {
+                                          try {
+                                            await persistItemPatch(item.id, {
+                                              expected_sidemark: item.expected_sidemark || null,
+                                            });
+                                          } catch (err: unknown) {
+                                            toast({
+                                              variant: 'destructive',
+                                              title: 'Failed to save sidemark',
+                                              description: err instanceof Error ? err.message : 'Could not save item sidemark.',
+                                            });
+                                            refetch();
+                                          }
+                                        }}
+                                        placeholder="Sidemark"
+                                        className="h-8"
+                                      />
+                                    </TableCell>
+                                  );
+                                case 'room':
+                                  return (
+                                    <TableCell key={col}>
+                                      <Input
+                                        value={item.room || ''}
+                                        onChange={(e) => updateLocalItem(item.id, 'room', e.target.value)}
+                                        onBlur={async () => {
+                                          try {
+                                            await persistItemPatch(item.id, {
+                                              room: item.room || null,
+                                            });
+                                          } catch (err: unknown) {
+                                            toast({
+                                              variant: 'destructive',
+                                              title: 'Failed to save room',
+                                              description: err instanceof Error ? err.message : 'Could not save item room.',
+                                            });
+                                            refetch();
+                                          }
+                                        }}
+                                        placeholder="Room"
+                                        className="h-8"
+                                      />
+                                    </TableCell>
+                                  );
+                                default:
+                                  return <TableCell key={col}>-</TableCell>;
+                              }
+                            })}
+                            <TableCell>
+                              <Select
+                                value={item.expected_class_id || '__none__'}
+                                onValueChange={async (value) => {
+                                  const classId = value === '__none__' ? null : value;
+                                  updateLocalItem(item.id, 'expected_class_id', classId);
+                                  try {
+                                    await persistItemPatch(item.id, { expected_class_id: classId });
+                                  } catch (err: unknown) {
+                                    toast({
+                                      variant: 'destructive',
+                                      title: 'Failed to save class',
+                                      description: err instanceof Error ? err.message : 'Could not save item class.',
+                                    });
+                                    refetch();
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder={classesLoading ? 'Loading...' : 'Select class'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">No class</SelectItem>
+                                  {classes.map((cls) => (
+                                    <SelectItem key={cls.id} value={cls.id}>
+                                      {cls.code} - {cls.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="text-right">{item.actual_quantity ?? '-'}</TableCell>
+                            <TableCell>
+                              <Badge variant={item.status === 'received' ? 'default' : 'outline'}>
+                                {item.status || 'pending'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  title="Duplicate item"
+                                  onClick={() => handleDuplicateItem(item)}
+                                >
+                                  <MaterialIcon name="content_copy" size="sm" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                                  title="Remove item"
+                                  onClick={() => handleRemoveItem(item.id)}
+                                >
+                                  <MaterialIcon name="delete" size="sm" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right column: sticky summary (visual parity with Dock Intake matching panel column) */}
+          <div className="lg:sticky lg:top-4 space-y-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MaterialIcon name="business" size="sm" className="text-primary" />
+                  Shipment Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">ETA Start</span>
+                  <span className="font-medium">{formatDate(shipment.eta_start)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">ETA End</span>
+                  <span className="font-medium">{formatDate(shipment.eta_end)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Carrier</span>
+                  <span className="font-medium text-right">{carrierName || '-'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Expected Pieces</span>
+                  <span className="font-medium tabular-nums">{shipment.expected_pieces ?? '-'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Items</span>
+                  <span className="font-medium tabular-nums">{itemRows.length}</span>
+                </div>
+                <div className="pt-2 border-t">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">External Refs</span>
+                    <span className="font-medium tabular-nums">{displayRefs.length}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* External References */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              External References
-              <HelpTip
-                tooltip="BOL, PRO, tracking numbers, POs. These references are used to match dock intakes to this expected shipment."
-                pageKey="incoming.expected_detail"
-                fieldKey="external_refs"
-              />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {displayRefs.map((ref) => (
-                <Badge key={ref.id} variant="outline" className="gap-1 pl-2 pr-1 py-1">
-                  <span className="text-xs font-semibold">{ref.ref_type}:</span>
-                  <span className="text-xs">{ref.value}</span>
-                  <button
-                    onClick={() => removeRef(ref.id)}
-                    className="ml-1 hover:text-destructive"
-                  >
-                    <MaterialIcon name="close" size="sm" />
-                  </button>
-                </Badge>
-              ))}
-              {displayRefs.length === 0 && (
-                <span className="text-sm text-muted-foreground">No references yet.</span>
-              )}
-            </div>
-            <div className="flex gap-2 items-center">
-              <Select value={newRefType} onValueChange={(v) => setNewRefType(v as RefType)}>
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BOL">BOL</SelectItem>
-                  <SelectItem value="PRO">PRO</SelectItem>
-                  <SelectItem value="TRACKING">Tracking</SelectItem>
-                  <SelectItem value="PO">PO</SelectItem>
-                  <SelectItem value="REF">REF</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="Enter reference value..."
-                value={newRefValue}
-                onChange={(e) => setNewRefValue(e.target.value)}
-                className="max-w-xs"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddRef();
-                }}
-              />
-              <Button size="sm" onClick={handleAddRef} disabled={!newRefValue.trim()}>
-                Add
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Activity Feed */}
+        <EntityActivityFeed
+          entityType="shipment"
+          entityId={id}
+          title="Activity"
+          description="Timeline of changes to this expected shipment"
+        />
+      </div>
 
-        {/* Items Grid */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              Expected Items
-              <HelpTip
-                tooltip="Items expected in this shipment. Items may be created manually or through allocation from a manifest."
-                pageKey="incoming.expected_detail"
-                fieldKey="expected_items"
-              />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {itemRows.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <MaterialIcon name="inventory_2" size="xl" className="mb-2 opacity-40" />
-                <p>No items yet. Add items manually or allocate from a manifest.</p>
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-24 text-right">Qty</TableHead>
-                      <TableHead className="w-40">Vendor</TableHead>
-                      <TableHead className="min-w-[220px]">Description</TableHead>
-                      <TableHead className="w-44">Class</TableHead>
-                      <TableHead className="w-40">Side Mark</TableHead>
-                      <TableHead className="w-36">Room</TableHead>
-                      <TableHead className="w-24 text-right">Actual</TableHead>
-                      <TableHead className="w-28">Status</TableHead>
-                      <TableHead className="w-28 text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {itemRows.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            min={1}
-                            value={item.expected_quantity ?? 1}
-                            onChange={(e) => updateLocalItem(item.id, 'expected_quantity', Number(e.target.value) || 1)}
-                            onBlur={async () => {
-                              try {
-                                await persistItemPatch(item.id, {
-                                  expected_quantity: item.expected_quantity || 1,
-                                });
-                              } catch (err: unknown) {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Failed to save quantity',
-                                  description: err instanceof Error ? err.message : 'Could not save item quantity.',
-                                });
-                                refetch();
-                              }
-                            }}
-                            className="h-8 text-right"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.expected_vendor || ''}
-                            onChange={(e) => updateLocalItem(item.id, 'expected_vendor', e.target.value)}
-                            onBlur={async () => {
-                              try {
-                                await persistItemPatch(item.id, {
-                                  expected_vendor: item.expected_vendor || null,
-                                });
-                              } catch (err: unknown) {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Failed to save vendor',
-                                  description: err instanceof Error ? err.message : 'Could not save item vendor.',
-                                });
-                                refetch();
-                              }
-                            }}
-                            placeholder="Vendor"
-                            className="h-8"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.expected_description || ''}
-                            onChange={(e) => updateLocalItem(item.id, 'expected_description', e.target.value)}
-                            onBlur={async () => {
-                              try {
-                                await persistItemPatch(item.id, {
-                                  expected_description: item.expected_description || null,
-                                });
-                              } catch (err: unknown) {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Failed to save description',
-                                  description: err instanceof Error ? err.message : 'Could not save item description.',
-                                });
-                                refetch();
-                              }
-                            }}
-                            placeholder="Description"
-                            className="h-8"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={item.expected_class_id || '__none__'}
-                            onValueChange={async (value) => {
-                              const classId = value === '__none__' ? null : value;
-                              updateLocalItem(item.id, 'expected_class_id', classId);
-                              try {
-                                await persistItemPatch(item.id, { expected_class_id: classId });
-                              } catch (err: unknown) {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Failed to save class',
-                                  description: err instanceof Error ? err.message : 'Could not save item class.',
-                                });
-                                refetch();
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-8">
-                              <SelectValue placeholder={classesLoading ? 'Loading...' : 'Select class'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">No class</SelectItem>
-                              {classes.map((cls) => (
-                                <SelectItem key={cls.id} value={cls.id}>
-                                  {cls.code} - {cls.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.expected_sidemark || ''}
-                            onChange={(e) => updateLocalItem(item.id, 'expected_sidemark', e.target.value)}
-                            onBlur={async () => {
-                              try {
-                                await persistItemPatch(item.id, {
-                                  expected_sidemark: item.expected_sidemark || null,
-                                });
-                              } catch (err: unknown) {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Failed to save sidemark',
-                                  description: err instanceof Error ? err.message : 'Could not save item sidemark.',
-                                });
-                                refetch();
-                              }
-                            }}
-                            placeholder="Sidemark"
-                            className="h-8"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.room || ''}
-                            onChange={(e) => updateLocalItem(item.id, 'room', e.target.value)}
-                            onBlur={async () => {
-                              try {
-                                await persistItemPatch(item.id, {
-                                  room: item.room || null,
-                                });
-                              } catch (err: unknown) {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Failed to save room',
-                                  description: err instanceof Error ? err.message : 'Could not save item room.',
-                                });
-                                refetch();
-                              }
-                            }}
-                            placeholder="Room"
-                            className="h-8"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">{item.actual_quantity ?? '-'}</TableCell>
-                        <TableCell>
-                          <Badge variant={item.status === 'received' ? 'default' : 'outline'}>
-                            {item.status || 'pending'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              title="Duplicate item"
-                              onClick={() => handleDuplicateItem(item)}
-                            >
-                              <MaterialIcon name="content_copy" size="sm" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                              title="Remove item"
-                              onClick={() => handleRemoveItem(item.id)}
-                            >
-                              <MaterialIcon name="delete" size="sm" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Activity */}
+      <div className="mt-6">
+        <EntityActivityFeed
+          entityType="shipment"
+          entityId={id}
+          title="Activity"
+          description="Complete timeline of billing, operations, and status changes for this expected intake"
+        />
       </div>
 
       {/* Add Item Dialog */}

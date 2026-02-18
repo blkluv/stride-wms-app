@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolvePlatformEmailDefaults, type PlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { isValidEmail, resolvePlatformEmailDefaults, type PlatformEmailDefaults } from "../_shared/platformEmail.ts";
+import { resolveTenantReplyToRoutingAddress } from "../_shared/inboundReplyRouting.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -17,12 +18,6 @@ function jsonResponse(payload: Record<string, unknown>, status = 200): Response 
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function isValidEmail(value: string | null | undefined): value is string {
-  if (!value) return false;
-  const trimmed = value.trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 async function authenticateRequest(req: Request): Promise<{ userId: string; authHeader: string }> {
@@ -99,12 +94,18 @@ async function resolveSenderForTenant(
     );
   }
 
-  // Prefer configured support email as reply-to, fall back to company_email.
-  const replyToCandidate = isValidEmail(brandSettings?.brand_support_email)
-    ? brandSettings!.brand_support_email
-    : isValidEmail(companySettings?.company_email)
-      ? companySettings!.company_email
-      : platformDefaults.replyTo || undefined;
+  // If tenant has enabled reply forwarding, prefer routing address so replies
+  // can be forwarded to their chosen inbox.
+  const routingReplyTo = await resolveTenantReplyToRoutingAddress(serviceClient, tenantId);
+
+  // Otherwise prefer configured support email as reply-to, fall back to company_email.
+  const replyToCandidate = routingReplyTo
+    ? routingReplyTo
+    : isValidEmail(brandSettings?.brand_support_email)
+      ? brandSettings!.brand_support_email
+      : isValidEmail(companySettings?.company_email)
+        ? companySettings!.company_email
+        : platformDefaults.replyTo || undefined;
 
   return replyToCandidate
     ? { fromEmail, fromName, replyTo: replyToCandidate }

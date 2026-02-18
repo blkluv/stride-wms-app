@@ -37,6 +37,7 @@ import { DueDateRulesSettingsTab } from './DueDateRulesSettingsTab';
 import { PreferencesContent } from './preferences/PreferencesContent';
 import { LegalLinksSection } from './preferences/LegalLinksSection';
 import { EmailDomainSection } from './preferences/EmailDomainSection';
+import { EmailReplyForwardingSection } from './preferences/EmailReplyForwardingSection';
 import { SmsAddonActivationCard } from './SmsAddonActivationCard';
 import { SmsConsentPanel } from './SmsConsentPanel';
 
@@ -347,7 +348,7 @@ export function OrganizationSettingsTab() {
                         <FormItem>
                           <FormLabel>Website</FormLabel>
                           <FormControl>
-                            <Input placeholder="https://www.example.com" {...field} />
+                            <Input type="url" placeholder="https://www.example.com" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -361,7 +362,7 @@ export function OrganizationSettingsTab() {
                         <FormItem>
                           <FormLabel>Portal URL</FormLabel>
                           <FormControl>
-                            <Input placeholder="https://app.yourcompany.com" {...field} />
+                            <Input type="url" placeholder="https://app.yourcompany.com" {...field} />
                           </FormControl>
                           <FormDescription>
                             Client portal URL used in email links and notifications
@@ -481,6 +482,9 @@ export function OrganizationSettingsTab() {
 
               {/* Email Domain Configuration */}
               <EmailDomainSection />
+
+              {/* Reply Forwarding (platform-managed inbound) */}
+              <EmailReplyForwardingSection />
 
               {/* SMS Add-On Activation */}
               <SmsAddonActivationCard settings={tenantSettings} />
