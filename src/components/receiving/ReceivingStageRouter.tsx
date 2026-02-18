@@ -22,6 +22,7 @@ import { downloadReceivingPdf, storeReceivingPdf, type ReceivingPdfData } from '
 import { queueReceivingDiscrepancyAlert } from '@/lib/alertQueue';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
+import { ShipmentNotesSection } from '@/components/shipments/ShipmentNotesSection';
 
 interface ShipmentData {
   id: string;
@@ -56,9 +57,12 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   const [shipment, setShipment] = useState<ShipmentData | null>(null);
   const [accountName, setAccountName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'receiving' | 'exceptions'>(
-    searchParams.get('tab') === 'exceptions' ? 'exceptions' : 'receiving'
-  );
+  const [activeTab, setActiveTab] = useState<'receiving' | 'exceptions' | 'notes'>(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'exceptions') return 'exceptions';
+    if (tab === 'notes') return 'notes';
+    return 'receiving';
+  });
   const [mobileMatchingOpen, setMobileMatchingOpen] = useState(false);
   const [pdfRetrying, setPdfRetrying] = useState(false);
   const { openCount } = useShipmentExceptions(shipmentId);
@@ -124,13 +128,14 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
   useEffect(() => {
     const tab = searchParams.get('tab');
-    setActiveTab(tab === 'exceptions' ? 'exceptions' : 'receiving');
+    setActiveTab(tab === 'exceptions' ? 'exceptions' : tab === 'notes' ? 'notes' : 'receiving');
   }, [searchParams]);
 
-  const setTab = (tab: 'receiving' | 'exceptions') => {
+  const setTab = (tab: 'receiving' | 'exceptions' | 'notes') => {
     setActiveTab(tab);
     const next = new URLSearchParams(searchParams);
     if (tab === 'exceptions') next.set('tab', 'exceptions');
+    else if (tab === 'notes') next.set('tab', 'notes');
     else next.delete('tab');
     setSearchParams(next, { replace: true });
   };
@@ -527,6 +532,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   onItemMatchingParamsChange={handleItemMatchingParamsChange}
                   onEntryCountChange={setEntryCount}
                   onOpenExceptions={() => setTab('exceptions')}
+                  onOpenNotes={() => setTab('notes')}
                   onBillingRefresh={() => setBillingRefreshKey((prev) => prev + 1)}
                 />
               </CollapsibleContent>
@@ -634,6 +640,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   onItemMatchingParamsChange={handleItemMatchingParamsChange}
                   onEntryCountChange={setEntryCount}
                   onOpenExceptions={() => setTab('exceptions')}
+                  onOpenNotes={() => setTab('notes')}
                   onBillingRefresh={() => setBillingRefreshKey((prev) => prev + 1)}
                   readOnly={!closedEditMode}
                   showCompleteButton={false}
@@ -664,7 +671,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
           onClick={() => setTab('exceptions')}
         />
       </div>
-    <Tabs value={activeTab} onValueChange={(value) => setTab(value as 'receiving' | 'exceptions')}>
+    <Tabs value={activeTab} onValueChange={(value) => setTab(value as 'receiving' | 'exceptions' | 'notes')}>
       <TabsList className="flex-wrap h-auto gap-1 mb-4">
         <TabsTrigger value="receiving" className="gap-2">
           <MaterialIcon name="inventory_2" size="sm" />
@@ -678,6 +685,10 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               {openCount}
             </Badge>
           )}
+        </TabsTrigger>
+        <TabsTrigger value="notes" className="gap-2">
+          <MaterialIcon name="chat" size="sm" />
+          Notes
         </TabsTrigger>
       </TabsList>
 
@@ -735,6 +746,12 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
       <TabsContent value="exceptions">
         <ExceptionsTab shipmentId={shipmentId} />
+      </TabsContent>
+
+      <TabsContent value="notes">
+        {shipment ? (
+          <ShipmentNotesSection shipmentId={shipmentId} accountId={shipment.account_id} />
+        ) : null}
       </TabsContent>
     </Tabs>
     </div>

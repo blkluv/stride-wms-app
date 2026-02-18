@@ -93,6 +93,8 @@ interface Stage2DetailedReceivingProps {
   /** Called whenever Stage 2 row count changes (Entry Count) */
   onEntryCountChange?: (count: number) => void;
   onOpenExceptions?: () => void;
+  /** Navigate to Notes tab (used for exception-note enforcement). */
+  onOpenNotes?: () => void;
   /** Bump Stage 1 BillingCalculator refresh (preview updates as items autosave). */
   onBillingRefresh?: () => void;
   /** Render in read-only mode (view-only). */
@@ -111,6 +113,7 @@ export function Stage2DetailedReceiving({
   onItemMatchingParamsChange,
   onEntryCountChange,
   onOpenExceptions,
+  onOpenNotes,
   onBillingRefresh,
   readOnly = false,
   showCompleteButton = true,
@@ -549,6 +552,79 @@ export function Stage2DetailedReceiving({
       return;
     }
 
+    // Enforce exception notes (all open exception chips should have a client-visible exception note).
+    // Exclude auto-matching discrepancy codes (manifest vs expected mismatches) per intake Q&A.
+    if (profile?.tenant_id) {
+      const MATCHING_DISCREPANCY_CODES = new Set<ShipmentExceptionCode>([
+        'PIECES_MISMATCH',
+        'VENDOR_MISMATCH',
+        'DESCRIPTION_MISMATCH',
+        'SIDEMARK_MISMATCH',
+        'SHIPPER_MISMATCH',
+        'TRACKING_MISMATCH',
+        'REFERENCE_MISMATCH',
+      ]);
+
+      try {
+        const { data: openExRows, error: openExErr } = await (supabase as any)
+          .from('shipment_exceptions')
+          .select('code, note')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('shipment_id', shipmentId)
+          .eq('status', 'open');
+
+        if (openExErr) throw openExErr;
+
+        const openExceptionCodes = ((openExRows || []) as Array<{ code: ShipmentExceptionCode; note: string | null }>)
+          .map((r) => r.code)
+          .filter((code) => !MATCHING_DISCREPANCY_CODES.has(code));
+
+        if (openExceptionCodes.length > 0) {
+          // Pull exception notes from shipment_notes (preferred) + shipment_exceptions.note (legacy denormalized)
+          const codesWithNotes = new Set<ShipmentExceptionCode>();
+
+          for (const row of (openExRows || []) as Array<{ code: ShipmentExceptionCode; note: string | null }>) {
+            if (!MATCHING_DISCREPANCY_CODES.has(row.code) && (row.note || '').trim()) {
+              codesWithNotes.add(row.code);
+            }
+          }
+
+          const { data: noteRows, error: notesErr } = await (supabase as any)
+            .from('shipment_notes')
+            .select('exception_code, note')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('note_type', 'exception')
+            .is('deleted_at', null)
+            .in('exception_code', openExceptionCodes);
+
+          if (notesErr) throw notesErr;
+
+          for (const n of (noteRows || []) as Array<{ exception_code: ShipmentExceptionCode | null; note: string | null }>) {
+            const code = n.exception_code;
+            if (!code) continue;
+            if ((n.note || '').trim()) codesWithNotes.add(code);
+          }
+
+          const missing = openExceptionCodes.filter((c) => !codesWithNotes.has(c));
+          if (missing.length > 0) {
+            toast({
+              variant: 'destructive',
+              title: 'Exception Notes Required',
+              description: `Add a client-visible exception note for: ${missing
+                .map((c) => SHIPMENT_EXCEPTION_CODE_META[c]?.label || c)
+                .join(', ')}.`,
+            });
+            onOpenNotes?.();
+            return;
+          }
+        }
+      } catch (err: any) {
+        console.warn('[Stage2] exception note enforcement check failed:', err);
+        // Fail open (do not block receiving completion if we can't validate).
+      }
+    }
+
     // Stage 2 mismatch gating (Dock vs Entry): allow proceed only if corrected OR has exception+note.
     if (profile?.tenant_id) {
       const dock = Number(dockCount) || 0;
@@ -564,8 +640,47 @@ export function Stage2DetailedReceiving({
             (document.activeElement as HTMLElement | null)?.blur?.();
           }
 
-          const fetchNote = async () => {
-            const { data, error } = await (supabase as any)
+          // Ensure the required exception chip exists (Stage 2 mismatch is not live-synced)
+          const { data: existingChip } = await (supabase as any)
+            .from('shipment_exceptions')
+            .select('id, note')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('status', 'open')
+            .eq('code', requiredCode)
+            .maybeSingle();
+
+          if (!existingChip) {
+            await (supabase as any)
+              .from('shipment_exceptions')
+              .insert({
+                tenant_id: profile.tenant_id,
+                shipment_id: shipmentId,
+                code: requiredCode,
+                note: null,
+                status: 'open',
+                created_by: profile.id ?? null,
+              });
+          }
+
+          const fetchAnyNote = async () => {
+            // Prefer shipment_notes exception-type notes (Notes tab), but allow legacy shipment_exceptions.note too.
+            const { data: noteRows, error: noteErr } = await (supabase as any)
+              .from('shipment_notes')
+              .select('note')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('note_type', 'exception')
+              .eq('exception_code', requiredCode)
+              .is('deleted_at', null)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            if (noteErr) throw noteErr;
+
+            const noteFromNotes = (((noteRows?.[0]?.note as string | null) ?? '') as string).trim();
+            if (noteFromNotes) return noteFromNotes;
+
+            const { data: exRows, error: exErr } = await (supabase as any)
               .from('shipment_exceptions')
               .select('note')
               .eq('tenant_id', profile.tenant_id)
@@ -573,23 +688,23 @@ export function Stage2DetailedReceiving({
               .eq('status', 'open')
               .eq('code', requiredCode)
               .limit(1);
-
-            if (error) throw error;
-            return (((data?.[0]?.note as string | null) ?? '') as string).trim();
+            if (exErr) throw exErr;
+            return (((exRows?.[0]?.note as string | null) ?? '') as string).trim();
           };
 
           // If the user just typed a note and clicked Complete, the save can still be in-flight; retry once.
-          let note = await fetchNote();
+          let note = await fetchAnyNote();
           if (!note) {
             await new Promise((resolve) => setTimeout(resolve, 400));
-            note = await fetchNote();
+            note = await fetchAnyNote();
           }
           if (!note) {
             toast({
               variant: 'destructive',
               title: 'Counts Mismatch',
-              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note.`,
+              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note in Notes.`,
             });
+            onOpenNotes?.();
             return;
           }
         } catch (err: any) {

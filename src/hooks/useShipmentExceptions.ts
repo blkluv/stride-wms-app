@@ -127,6 +127,66 @@ export function useShipmentExceptions(
       const normalizedNote = note?.trim() || null;
       const existingOpen = exceptions.find((e) => e.code === code && e.status === 'open');
 
+      // Keep a chip-generated Exception note row in shipment_notes in sync.
+      // This supports the shipment-level Notes system (All/Public/Internal/Exception)
+      // while preserving shipment_exceptions.note as the primary quick-entry field.
+      const syncChipGeneratedExceptionNote = async () => {
+        try {
+          const nowIso = new Date().toISOString();
+
+          const { data: existingNote } = await (supabase.from('shipment_notes') as any)
+            .select('id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('note_type', 'exception')
+            .eq('exception_code', code)
+            .eq('is_chip_generated', true)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!normalizedNote) {
+            // Note removed/cleared → soft-delete chip-generated note rows for this code
+            await (supabase.from('shipment_notes') as any)
+              .update({ deleted_at: nowIso })
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('note_type', 'exception')
+              .eq('exception_code', code)
+              .eq('is_chip_generated', true)
+              .is('deleted_at', null);
+            return;
+          }
+
+          if (existingNote?.id) {
+            await (supabase.from('shipment_notes') as any)
+              .update({
+                note: normalizedNote,
+                visibility: 'public',
+                updated_at: nowIso,
+              })
+              .eq('id', existingNote.id);
+          } else {
+            await (supabase.from('shipment_notes') as any).insert({
+              tenant_id: profile.tenant_id,
+              shipment_id: shipmentId,
+              note: normalizedNote,
+              note_type: 'exception',
+              visibility: 'public',
+              exception_code: code,
+              is_chip_generated: true,
+              created_by: profile.id,
+              created_at: nowIso,
+              updated_at: nowIso,
+            });
+          }
+        } catch (noteErr) {
+          // Notes should never block exception save.
+          console.warn('[useShipmentExceptions] failed to sync shipment_notes exception note:', noteErr);
+        }
+      };
+
       if (existingOpen) {
         const previousNote = existingOpen.note ?? null;
         const { data, error } = await (supabase as any)
@@ -158,6 +218,9 @@ export function useShipmentExceptions(
             },
           });
         }
+
+        // Mirror to shipment_notes (chip-generated exception note)
+        void syncChipGeneratedExceptionNote();
         return data as ShipmentExceptionRow;
       }
 
@@ -191,6 +254,8 @@ export function useShipmentExceptions(
         },
       });
 
+      // Mirror to shipment_notes (chip-generated exception note)
+      void syncChipGeneratedExceptionNote();
       return data as ShipmentExceptionRow;
     } catch (err: any) {
       console.error('[useShipmentExceptions] upsert error:', err);
@@ -216,6 +281,22 @@ export function useShipmentExceptions(
 
       if (error) throw error;
       setExceptions((prev) => prev.filter((e) => !(e.code === code && e.status === 'open')));
+
+      // When a chip is removed, also remove (soft-delete) the chip-generated Exception note(s).
+      if (profile?.tenant_id) {
+        try {
+          await (supabase.from('shipment_notes') as any)
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('note_type', 'exception')
+            .eq('exception_code', code)
+            .eq('is_chip_generated', true)
+            .is('deleted_at', null);
+        } catch (noteErr) {
+          console.warn('[useShipmentExceptions] failed to cleanup shipment_notes for removed chip:', noteErr);
+        }
+      }
 
       void logActivity({
         entityType: 'shipment',
