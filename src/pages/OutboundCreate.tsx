@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useOutboundTypes, useAccountItems } from '@/hooks/useOutbound';
 import { useSidemarks } from '@/hooks/useSidemarks';
 import { useDocuments } from '@/hooks/useDocuments';
+import { useShipmentExceptions } from '@/hooks/useShipmentExceptions';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -159,6 +160,7 @@ export default function OutboundCreate() {
     documents,
     refetch: refetchDocuments,
   } = useDocuments({ contextType: 'shipment', contextId: draftShipmentId || undefined });
+  const { openCount: draftOpenExceptionCount } = useShipmentExceptions(draftShipmentId || undefined);
 
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
@@ -871,7 +873,14 @@ export default function OutboundCreate() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="public">Public</TabsTrigger>
                     <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                    <TabsTrigger value="exceptions" className="gap-2">
+                      Exceptions
+                      {draftOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="h-5 min-w-5 text-xs">
+                          {draftOpenExceptionCount}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
                   </TabsList>
                   <TabsContent value="public" className="mt-2 space-y-2">
                     <p className="text-xs text-muted-foreground">

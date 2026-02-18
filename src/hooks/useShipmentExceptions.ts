@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { logActivity } from '@/lib/activity/logActivity';
+import { queueReceivingExceptionAlert } from '@/lib/alertQueue';
 
 export type ShipmentExceptionCode =
   | 'PIECES_MISMATCH'
@@ -190,6 +191,26 @@ export function useShipmentExceptions(
           note: normalizedNote,
         },
       });
+
+      // Intake-style comms hook: alert that an exception was noted (best-effort).
+      // Non-blocking: exception save should succeed even if alert queue fails.
+      void (async () => {
+        try {
+          const { data: shipmentRow, error: shipmentError } = await (supabase
+            .from('shipments') as any)
+            .select('shipment_number')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('id', shipmentId)
+            .maybeSingle();
+
+          if (shipmentError) throw shipmentError;
+          const shipmentNumber = shipmentRow?.shipment_number || shipmentId;
+          const exceptionLabel = SHIPMENT_EXCEPTION_CODE_META[code]?.label || code;
+          await queueReceivingExceptionAlert(profile.tenant_id, shipmentId, shipmentNumber, exceptionLabel);
+        } catch (alertErr: any) {
+          console.warn('[useShipmentExceptions] queueReceivingExceptionAlert failed (non-blocking):', alertErr?.message || alertErr);
+        }
+      })();
 
       return data as ShipmentExceptionRow;
     } catch (err: any) {
