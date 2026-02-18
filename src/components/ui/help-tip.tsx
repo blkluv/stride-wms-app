@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useFieldHelpTooltip } from '@/hooks/useFieldHelpContent';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 interface HelpTipProps {
   /** The help text to display in the popover */
@@ -47,10 +48,11 @@ export function HelpTip({ tooltip, pageKey, fieldKey, children, side = 'top', cl
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-muted-foreground text-[10px] font-bold hover:bg-muted/80 transition shrink-0 cursor-help"
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition shrink-0 cursor-help"
                   tabIndex={-1}
+                  aria-label="Help"
                 >
-                  ?
+                  <MaterialIcon name="info" size="sm" className="text-[12px]" />
                 </button>
               </PopoverTrigger>
             </TooltipTrigger>

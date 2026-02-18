@@ -461,6 +461,7 @@ export default function ClientShipmentDetail() {
                 <DocumentList
                   contextType="shipment"
                   contextId={shipment.id}
+                  canDelete={false}
                 />
               </CardContent>
             </Card>

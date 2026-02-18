@@ -72,6 +72,7 @@ import ClientOutboundCreate from "./pages/ClientOutboundCreate";
 import ClientTaskCreate from "./pages/ClientTaskCreate";
 import ScanHub from "./pages/ScanHub";
 import ScanItemRedirect from "./pages/ScanItemRedirect";
+import ScanShipmentRedirect from "./pages/ScanShipmentRedirect";
 import PrintPreview from "./pages/PrintPreview";
 import Diagnostics from "./pages/Diagnostics";
 import BotQA from "./pages/admin/BotQA";
@@ -79,8 +80,9 @@ import StripeOps from "./pages/admin/StripeOps";
 import PricingOps from "./pages/admin/PricingOps";
 import SmsSenderOps from "./pages/admin/SmsSenderOps";
 import BillingOverridesOps from "./pages/admin/BillingOverridesOps";
+import EmailOps from "./pages/admin/EmailOps";
 import QACenter from "./pages/QACenter";
-import DecisionLedger from "./pages/DecisionLedger";
+// Removed: DecisionLedger — no longer a standalone page
 import Messages from "./pages/Messages";
 import ComponentsDemo from "./pages/ComponentsDemo";
 import MaterialIconsSample from "./pages/MaterialIconsSample";
@@ -117,7 +119,9 @@ const App = () => (
             <Route path="/inventory/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ItemDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><LocationDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/containers/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ContainerDetail /></RequireRole></ProtectedRoute>} />
-            <Route path="/incoming" element={<Navigate to="/shipments" replace />} />
+            {/* Incoming Manager (new inbound workflows) */}
+            <Route path="/incoming/manager" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><IncomingManager /></RequireRole></ProtectedRoute>} />
+            <Route path="/incoming" element={<Navigate to="/incoming/manager" replace />} />
             <Route path="/incoming/manifest/new" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><ShipmentCreate /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
             <Route path="/incoming/manifest/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><InboundManifestDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/incoming/expected/new" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><ShipmentCreate /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
@@ -125,7 +129,8 @@ const App = () => (
             <Route path="/incoming/dock-intake/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><SubscriptionGatedRoute><DockIntakeReceiving /></SubscriptionGatedRoute></RequireRole></ProtectedRoute>} />
             <Route path="/shipments" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><Shipments /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/list" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
-            <Route path="/shipments/incoming" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
+            {/* Legacy entry point: keep URL working but route to new Incoming Manager */}
+            <Route path="/shipments/incoming" element={<Navigate to="/incoming/manager?tab=intakes" replace />} />
             <Route path="/shipments/outbound" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/received" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
             <Route path="/shipments/released" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ShipmentsList /></RequireRole></ProtectedRoute>} />
@@ -138,6 +143,7 @@ const App = () => (
             <Route path="/tasks/:id" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><TaskDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/scan" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ScanHub /></RequireRole></ProtectedRoute>} />
             <Route path="/scan/item/:codeOrId" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ScanItemRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/scan/shipment/:numberOrId" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><ScanShipmentRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'warehouse_user']}><Messages /></RequireRole></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><RequireRole role="tenant_admin"><Billing /></RequireRole></ProtectedRoute>} />
             <Route path="/billing/reports" element={<ProtectedRoute><RequireRole role="tenant_admin"><BillingReports /></RequireRole></ProtectedRoute>} />
@@ -161,9 +167,9 @@ const App = () => (
             <Route path="/technicians" element={<ProtectedRoute><RequireRole role="tenant_admin"><Technicians /></RequireRole></ProtectedRoute>} />
             <Route path="/repair-quotes" element={<ProtectedRoute><RequireRole role="tenant_admin"><RepairQuotes /></RequireRole></ProtectedRoute>} />
             <Route path="/repair-quotes/:id" element={<ProtectedRoute><RequireRole role="tenant_admin"><RepairQuoteDetail /></RequireRole></ProtectedRoute>} />
-            <Route path="/quotes" element={<ProtectedRoute><RequireRole role="tenant_admin"><Quotes /></RequireRole></ProtectedRoute>} />
-            <Route path="/quotes/new" element={<ProtectedRoute><RequireRole role="tenant_admin"><QuoteBuilder /></RequireRole></ProtectedRoute>} />
-            <Route path="/quotes/:id" element={<ProtectedRoute><RequireRole role="tenant_admin"><QuoteBuilder /></RequireRole></ProtectedRoute>} />
+            <Route path="/quotes" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><Quotes /></RequireRole></ProtectedRoute>} />
+            <Route path="/quotes/new" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><QuoteBuilder /></RequireRole></ProtectedRoute>} />
+            <Route path="/quotes/:id" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><QuoteBuilder /></RequireRole></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><RequireRole role="tenant_admin"><Settings /></RequireRole></ProtectedRoute>} />
             {/* QA/Dev tooling: allow system-level admin_dev access */}
             <Route path="/diagnostics" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'admin_dev']}><Diagnostics /></RequireRole></ProtectedRoute>} />
@@ -172,8 +178,9 @@ const App = () => (
             <Route path="/admin/pricing-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><PricingOps /></RequireRole></ProtectedRoute>} />
             <Route path="/admin/sms-sender-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><SmsSenderOps /></RequireRole></ProtectedRoute>} />
             <Route path="/admin/billing-overrides-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><BillingOverridesOps /></RequireRole></ProtectedRoute>} />
+            <Route path="/admin/email-ops" element={<ProtectedRoute><RequireRole role={['admin_dev']}><EmailOps /></RequireRole></ProtectedRoute>} />
             <Route path="/qa" element={<ProtectedRoute><QACenter /></ProtectedRoute>} />
-            <Route path="/decision-ledger" element={<ProtectedRoute><RequireRole role="admin_dev"><DecisionLedger /></RequireRole></ProtectedRoute>} />
+            {/* Removed: /decision-ledger route */}
             <Route path="/repair-access" element={<RepairTechAccess />} />
             <Route path="/quote/tech" element={<TechQuoteSubmit />} />
             <Route path="/quote/review" element={<ClientQuoteReview />} />

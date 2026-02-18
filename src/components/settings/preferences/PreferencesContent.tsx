@@ -14,6 +14,7 @@ import { DisplaySettingsSection } from './DisplaySettingsSection';
 import { LabelCustomizationSection } from './LabelCustomizationSection';
 import { AccountTypesSection } from './AccountTypesSection';
 import { SpaceTrackingSection } from './SpaceTrackingSection';
+import { ItemDisplaySettingsSection } from './ItemDisplaySettingsSection';
 import { SortableCard } from './SortableCard';
 import { useOrgPreferences } from '@/hooks/useOrgPreferences';
 import type { SpaceTrackingMode, ContainerVolumeMode } from '@/hooks/useOrgPreferences';
@@ -40,6 +41,7 @@ import {
 const DEFAULT_CARD_ORDER = [
   'space-tracking',
   'storage-inspection',
+  'item-display-settings',
   'display-settings',
   'label-customization',
   'account-types',
@@ -194,6 +196,11 @@ export function PreferencesContent() {
           onShouldAutoAssemblyChange={(value) => setFormData(prev => ({ ...prev, auto_assembly_on_receiving: value }))}
           onShouldAutoRepairChange={(value) => setFormData(prev => ({ ...prev, auto_repair_on_damage: value }))}
         />
+      </SortableCard>
+    ),
+    'item-display-settings': (
+      <SortableCard id="item-display-settings" key="item-display-settings">
+        <ItemDisplaySettingsSection />
       </SortableCard>
     ),
     'display-settings': (

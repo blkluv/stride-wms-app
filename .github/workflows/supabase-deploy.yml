@@ -125,7 +125,24 @@ jobs:
             if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
               BEFORE_SHA="$(git rev-parse HEAD~1)"
             fi
-            mapfile -t FUNCTIONS < <(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | awk -F/ '/^supabase\/functions\/[^/]+\// { if ($3 !~ /^_/) print $3 }' | sort -u)
+            CHANGED_FILES="$(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}")"
+
+            # If shared function code changed, deploy ALL functions.
+            # Otherwise the changed functions won't pick up the new shared module.
+            if echo "$CHANGED_FILES" | grep -q '^supabase/functions/_shared/'; then
+              shopt -s nullglob
+              mapfile -t FUNCTIONS < <(
+                for d in supabase/functions/*/; do
+                  FUNCTION_NAME="$(basename "$d")"
+                  case "$FUNCTION_NAME" in
+                    _*) continue ;;
+                  esac
+                  printf "%s\n" "$FUNCTION_NAME"
+                done | sort -u
+              )
+            else
+              mapfile -t FUNCTIONS < <(echo "$CHANGED_FILES" | awk -F/ '/^supabase\/functions\/[^/]+\// { if ($3 !~ /^_/) print $3 }' | sort -u)
+            fi
           fi
 
           if [ "${#FUNCTIONS[@]}" -eq 0 ]; then

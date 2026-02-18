@@ -6,10 +6,15 @@ export interface SendEmailParams {
   html: string;
 }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  tenantId?: string
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const { data, error } = await supabase.functions.invoke("send-email", {
-      body: { to, subject, html },
+      body: { to, subject, html, ...(tenantId ? { tenant_id: tenantId } : {}) },
     });
     
     if (error) {

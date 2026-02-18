@@ -36,6 +36,7 @@ import { ItemFlagsSection } from '@/components/items/ItemFlagsSection';
 import { ItemBillingEventsSection } from '@/components/items/ItemBillingEventsSection';
 import { ItemNotesSection } from '@/components/items/ItemNotesSection';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { RepairQuoteSection } from '@/components/items/RepairQuoteSection';
 import { ItemPhotoGallery } from '@/components/items/ItemPhotoGallery';
 import { ItemHistoryTab } from '@/components/items/ItemHistoryTab';
@@ -58,6 +59,14 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { QuickReleaseDialog } from '@/components/inventory/QuickReleaseDialog';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 interface ReceivingShipment {
   id: string;
@@ -71,6 +80,7 @@ interface ItemDetail {
   id: string;
   item_code: string;
   description: string | null;
+  sku: string | null;
   status: string;
   quantity: number;
   client_account: string | null;
@@ -97,6 +107,7 @@ interface ItemDetail {
   coverage_type: string | null;
   declared_value: number | null;
   weight_lbs: number | null;
+  metadata: Record<string, unknown> | null;
   // Receiving shipment
   receiving_shipment_id: string | null;
   receiving_shipment?: ReceivingShipment | null;
@@ -247,6 +258,7 @@ export default function ItemDetail() {
 
   // Inline edit state for autocomplete fields
   const [editVendor, setEditVendor] = useState('');
+  const [editSku, setEditSku] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editSidemark, setEditSidemark] = useState('');
   const [editRoom, setEditRoom] = useState('');
@@ -270,9 +282,111 @@ export default function ItemDetail() {
 
   // Field suggestions for autocomplete
   const { suggestions: vendorSuggestions, addOrUpdateSuggestion: addVendorSuggestion } = useFieldSuggestions('vendor');
+  const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
   const { suggestions: descriptionSuggestions, addOrUpdateSuggestion: addDescSuggestion } = useFieldSuggestions('description');
   const { sidemarks } = useAccountSidemarks(item?.account_id);
   const { rooms } = useAccountRoomSuggestions(item?.account_id);
+
+  // Tenant-managed custom item fields + views
+  const { settings: itemDisplaySettings } = useItemDisplaySettings();
+  const customFieldsForDetail = itemDisplaySettings.custom_fields.filter((f) => f.enabled && f.show_on_detail);
+  const [customFieldDraft, setCustomFieldDraft] = useState<Record<string, unknown>>({});
+
+  // Sync draft values from item.metadata.custom_fields
+  useEffect(() => {
+    if (!item) return;
+    const meta = item.metadata;
+    const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+    const base: Record<string, unknown> = (custom && typeof custom === 'object') ? { ...(custom as any) } : {};
+    setCustomFieldDraft(base);
+  }, [item?.id, item?.metadata]);
+
+  const saveCustomField = async (fieldKey: string, rawValue: unknown) => {
+    if (!item) return false;
+
+    const existingMeta = item.metadata && typeof item.metadata === 'object' ? (item.metadata as Record<string, unknown>) : {};
+    const existingCustom =
+      (existingMeta as any).custom_fields && typeof (existingMeta as any).custom_fields === 'object'
+        ? { ...(existingMeta as any).custom_fields }
+        : {};
+
+    const prevValue = (existingCustom as any)[fieldKey] ?? null;
+
+    const def = itemDisplaySettings.custom_fields.find((f) => f.key === fieldKey);
+
+    // Normalize: empty strings clear the value; coerce numbers/checkboxes
+    let nextValue: unknown = rawValue;
+    if (def?.type === 'checkbox') {
+      if (typeof nextValue === 'string') {
+        const normalized = nextValue.trim().toLowerCase();
+        nextValue = ['true', 'yes', 'y', '1', 'checked'].includes(normalized);
+      } else {
+        nextValue = !!nextValue;
+      }
+    } else if (def?.type === 'number') {
+      if (typeof nextValue === 'string') {
+        const trimmed = nextValue.trim();
+        if (!trimmed) nextValue = null;
+        else {
+          const n = Number(trimmed);
+          nextValue = Number.isFinite(n) ? n : null;
+        }
+      } else if (typeof nextValue === 'number') {
+        nextValue = Number.isFinite(nextValue) ? nextValue : null;
+      } else if (nextValue === null || nextValue === undefined) {
+        nextValue = null;
+      } else {
+        nextValue = null;
+      }
+    } else {
+      if (typeof nextValue === 'string') {
+        const trimmed = nextValue.trim();
+        nextValue = trimmed ? trimmed : null;
+      }
+    }
+
+    // No-op short-circuit to avoid extra writes.
+    if (nextValue === prevValue) return true;
+
+    if (nextValue === null || nextValue === undefined) {
+      delete (existingCustom as any)[fieldKey];
+    } else {
+      (existingCustom as any)[fieldKey] = nextValue;
+    }
+
+    const nextMeta: Record<string, unknown> = { ...(existingMeta as any) };
+    if (Object.keys(existingCustom).length > 0) {
+      (nextMeta as any).custom_fields = existingCustom;
+    } else {
+      delete (nextMeta as any).custom_fields;
+    }
+
+    try {
+      const { error } = await (supabase.from('items') as any)
+        .update({ metadata: nextMeta })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      if (profile?.tenant_id && nextValue !== prevValue) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: item.id,
+          actorUserId: profile.id,
+          eventType: 'item_custom_field_updated',
+          eventLabel: `${def?.label || fieldKey} updated`,
+          details: { field_key: fieldKey, label: def?.label, from: prevValue, to: nextValue ?? null },
+        });
+      }
+
+      setItem({ ...item, metadata: nextMeta });
+      return true;
+    } catch (err: any) {
+      console.error('Error updating custom field:', err);
+      toast({ title: 'Error', description: err?.message || 'Failed to update custom field', variant: 'destructive' });
+      return false;
+    }
+  };
 
   // Fetch active indicator flags for this item
   const fetchIndicatorFlags = async () => {
@@ -314,11 +428,12 @@ export default function ItemDetail() {
   useEffect(() => {
     if (item) {
       setEditVendor(item.vendor || '');
+      setEditSku(item.sku || '');
       setEditDescription(item.description || '');
       setEditSidemark(item.sidemark || '');
       setEditRoom(item.room || '');
     }
-  }, [item?.vendor, item?.description, item?.sidemark, item?.room]);
+  }, [item?.vendor, item?.sku, item?.description, item?.sidemark, item?.room]);
 
   // Fetch account settings when item is loaded
   useEffect(() => {
@@ -380,6 +495,8 @@ export default function ItemDetail() {
 
       setItem({
         ...data,
+        sku: data.sku ?? null,
+        metadata: data.metadata ?? null,
         location: data.locations,
         warehouse: data.warehouses,
         item_type: data.item_types,
@@ -618,6 +735,34 @@ export default function ItemDetail() {
     } catch (error) {
       console.error('Error updating vendor:', error);
       toast({ title: 'Error', description: 'Failed to update vendor', variant: 'destructive' });
+      return false;
+    }
+  };
+
+  const handleSkuSave = async (newValue: string): Promise<boolean> => {
+    if (!item) return false;
+    try {
+      const { error } = await (supabase.from('items') as any)
+        .update({ sku: newValue || null })
+        .eq('id', item.id);
+
+      if (error) throw error;
+      if (profile?.tenant_id && (newValue || null) !== (item.sku || null)) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: item.id,
+          actorUserId: profile.id,
+          eventType: 'item_field_updated',
+          eventLabel: `SKU updated`,
+          details: { field: 'sku', from: item.sku, to: newValue || null },
+        });
+      }
+      setItem({ ...item, sku: newValue || null });
+      if (newValue) addSkuSuggestion(newValue);
+      return true;
+    } catch (error) {
+      console.error('Error updating sku:', error);
+      toast({ title: 'Error', description: 'Failed to update SKU', variant: 'destructive' });
       return false;
     }
   };
@@ -941,6 +1086,26 @@ export default function ItemDetail() {
                         />
                       )}
                     </div>
+                    {/* SKU */}
+                    <div>
+                      <span className="text-muted-foreground">SKU</span>
+                      {isClientUser ? (
+                        <p className="font-medium">{item.sku || '-'}</p>
+                      ) : (
+                        <AutocompleteInput
+                          value={editSku}
+                          onChange={setEditSku}
+                          onBlur={() => {
+                            if (editSku !== (item.sku || '')) {
+                              handleSkuSave(editSku);
+                            }
+                          }}
+                          suggestions={skuSuggestions.map(s => ({ value: s.value }))}
+                          placeholder="Add SKU"
+                          className="h-7 mt-1 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                        />
+                      )}
+                    </div>
                     {/* Description - inline editable with autocomplete */}
                     <div>
                       <span className="text-muted-foreground">Description</span>
@@ -961,6 +1126,72 @@ export default function ItemDetail() {
                         />
                       )}
                     </div>
+                    {/* Custom fields */}
+                    {customFieldsForDetail.length > 0 && (
+                      <div className="col-span-2 pt-2">
+                        <Separator className="my-2" />
+                        <div className="text-xs font-medium text-muted-foreground mb-2">Custom Fields</div>
+                        <div className="grid grid-cols-2 gap-4">
+                          {customFieldsForDetail.map((f) => {
+                            const raw = (customFieldDraft as any)[f.key];
+                            const stringVal = raw === null || raw === undefined ? '' : String(raw);
+                            const dateVal = stringVal && stringVal.includes('T') ? stringVal.slice(0, 10) : stringVal;
+                            const checked = raw === true || raw === 'true' || raw === 1 || raw === '1';
+
+                            return (
+                              <div key={f.id} className="space-y-1">
+                                <span className="text-muted-foreground">{f.label}</span>
+                                {isClientUser ? (
+                                  <p className="font-medium">{stringVal || '-'}</p>
+                                ) : f.type === 'select' ? (
+                                  <Select
+                                    value={stringVal || '__none__'}
+                                    onValueChange={(val) => {
+                                      const next = val === '__none__' ? '' : val;
+                                      setCustomFieldDraft((prev) => ({ ...prev, [f.key]: next }));
+                                      void saveCustomField(f.key, next);
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8">
+                                      <SelectValue placeholder="Select…" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">-</SelectItem>
+                                      {(f.options || []).map((opt) => (
+                                        <SelectItem key={opt} value={opt}>
+                                          {opt}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : f.type === 'checkbox' ? (
+                                  <div className="h-8 flex items-center">
+                                    <Switch
+                                      checked={checked}
+                                      onCheckedChange={(val) => {
+                                        setCustomFieldDraft((prev) => ({ ...prev, [f.key]: val }));
+                                        void saveCustomField(f.key, val);
+                                      }}
+                                    />
+                                  </div>
+                                ) : (
+                                  <Input
+                                    value={f.type === 'date' ? dateVal : stringVal}
+                                    type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                                    onChange={(e) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                                    onBlur={(e) => {
+                                      void saveCustomField(f.key, e.target.value);
+                                    }}
+                                    placeholder="-"
+                                    className="h-7 mt-1 text-sm"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {/* Account */}
                     <div>
                       <span className="text-muted-foreground">Account</span>
@@ -1189,24 +1420,14 @@ export default function ItemDetail() {
           <TabsContent value="documents" className="mt-6">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <span>📄</span>
-                      Documents
-                    </CardTitle>
-                    <CardDescription>
-                      Scanned documents and files for this item
-                    </CardDescription>
-                  </div>
-                  {!isClientUser && (
-                    <ScanDocumentButton
-                      context={{ type: 'item', itemId: item.id, description: item.description || undefined }}
-                      onSuccess={() => {
-                        toast({ title: 'Document saved' });
-                      }}
-                    />
-                  )}
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <span>📄</span>
+                    Documents
+                  </CardTitle>
+                  <CardDescription>
+                    Scanned documents and files for this item
+                  </CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1214,7 +1435,19 @@ export default function ItemDetail() {
                   contextType="item"
                   contextId={item.id}
                   showSearch
+                  canDelete={!isClientUser}
                 />
+                {/* Action button - centered at bottom */}
+                {!isClientUser && (
+                  <div className="flex justify-center mt-6 pt-4 border-t">
+                    <ScanDocumentButton
+                      context={{ type: 'item', itemId: item.id, description: item.description || undefined }}
+                      onSuccess={() => {
+                        toast({ title: 'Document saved' });
+                      }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1288,6 +1521,7 @@ export default function ItemDetail() {
         items={item ? [{
           id: item.id,
           itemCode: item.item_code,
+          sku: item.sku || '',
           description: item.description || '',
           vendor: item.vendor || '',
           account: item.account?.account_name || '',

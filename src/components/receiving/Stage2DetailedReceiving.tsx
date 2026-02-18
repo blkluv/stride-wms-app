@@ -31,16 +31,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { HelpTip } from '@/components/ui/help-tip';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useClasses } from '@/hooks/useClasses';
 import { useServiceEvents } from '@/hooks/useServiceEvents';
+import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
+import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
+import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 
@@ -75,37 +77,62 @@ interface Stage2DetailedReceivingProps {
     account_id: string | null;
     warehouse_id: string | null;
     signed_pieces: number | null;
+    received_pieces: number | null;
     vendor_name: string | null;
     sidemark_id: string | null;
     shipment_exception_type?: string | null;
   };
+  /** Optional live Dock Count (from Stage 1 edits while Stage 2 is open) */
+  dockCount?: number | null;
   onComplete: () => void;
   onRefresh: () => void;
   /** Called when item details change to refine matching panel candidates */
   onItemMatchingParamsChange?: (params: ItemMatchingParams) => void;
+  /** Called whenever Stage 2 row count changes (Entry Count) */
+  onEntryCountChange?: (count: number) => void;
   onOpenExceptions?: () => void;
+  /** Render in read-only mode (view-only). */
+  readOnly?: boolean;
+  /** Show the Stage 2 completion flow/button. */
+  showCompleteButton?: boolean;
 }
 
 export function Stage2DetailedReceiving({
   shipmentId,
   shipmentNumber,
   shipment,
+  dockCount: dockCountOverride,
   onComplete,
   onRefresh,
   onItemMatchingParamsChange,
+  onEntryCountChange,
   onOpenExceptions,
+  readOnly = false,
+  showCompleteButton = true,
 }: Stage2DetailedReceivingProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { isAdmin } = usePermissions();
   const { ensureUnidentifiedAccount } = useUnidentifiedAccount();
+  const canEdit = !readOnly;
 
   // Items
   const [items, setItems] = useState<ReceivedItem[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [receivedPieces, setReceivedPieces] = useState<number>(0);
+  const entryCount = items.length;
+  const dockCount = dockCountOverride ?? shipment.received_pieces ?? null;
   const { classes, loading: classesLoading } = useClasses();
   const { flagServiceEvents, loading: flagServicesLoading } = useServiceEvents();
+  const { locations: allLocations } = useLocations(shipment.warehouse_id || undefined);
+
+  // Fallback location when RPC can't resolve default
+  const [fallbackLocationId, setFallbackLocationId] = useState<string | null>(null);
+  const [needsReceivingLocation, setNeedsReceivingLocation] = useState(false);
+
+  // Emit Entry Count (row count) for Stage 1 display.
+  useEffect(() => {
+    onEntryCountChange?.(entryCount);
+  }, [entryCount, onEntryCountChange]);
 
   // Emit item-level matching params whenever items change
   useEffect(() => {
@@ -181,12 +208,12 @@ export function Stage2DetailedReceiving({
         packages: 1,
       }));
       setItems(mapped);
-      setReceivedPieces(mapped.reduce((sum, i) => sum + i.received_quantity, 0));
     }
   };
 
   // Add manual item
   const addManualItem = () => {
+    if (!canEdit) return;
     const newItem: ReceivedItem = {
       id: crypto.randomUUID(),
       description: '',
@@ -205,6 +232,7 @@ export function Stage2DetailedReceiving({
 
   // Add from manifest
   const handleAddFromManifest = (manifestItems: any[]) => {
+    if (!canEdit) return;
     const newItems: ReceivedItem[] = manifestItems.map((item) => ({
       id: crypto.randomUUID(),
       shipment_item_id: undefined,
@@ -220,19 +248,15 @@ export function Stage2DetailedReceiving({
       sourceShipmentItemId: item.id,
       packages: 1,
     }));
-    setItems(prev => {
-      const next = [...prev, ...newItems];
-      updateReceivedPieces(next);
-      return next;
-    });
+    setItems((prev) => [...prev, ...newItems]);
   };
 
   // Update item field
   const updateItem = (id: string, field: keyof ReceivedItem, value: unknown) => {
+    if (!canEdit) return;
     setItems(prev => {
       const updated = prev.map(i => (i.id === id ? { ...i, [field]: value } : i));
       if (field === 'received_quantity') {
-        updateReceivedPieces(updated);
         // Show container placement prompt when qty > 1
         const qty = value as number;
         if (qty > 1) {
@@ -246,6 +270,7 @@ export function Stage2DetailedReceiving({
   };
 
   const duplicateItem = (id: string) => {
+    if (!canEdit) return;
     setItems((prev) => {
       const source = prev.find((row) => row.id === id);
       if (!source) return prev;
@@ -258,9 +283,7 @@ export function Stage2DetailedReceiving({
         sourceShipmentItemId: undefined,
         allocationId: undefined,
       };
-      const next = [...prev, copy];
-      updateReceivedPieces(next);
-      return next;
+      return [...prev, copy];
     });
   };
 
@@ -274,6 +297,7 @@ export function Stage2DetailedReceiving({
   };
 
   const toggleItemFlag = (id: string, serviceCode: string) => {
+    if (!canEdit) return;
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
@@ -296,6 +320,7 @@ export function Stage2DetailedReceiving({
 
   // Remove item (allocation-aware)
   const removeItem = async (item: ReceivedItem) => {
+    if (!canEdit || !showCompleteButton) return;
     // If sourced from allocation, reverse via deallocation RPC
     if (item.allocationId) {
       try {
@@ -342,7 +367,6 @@ export function Stage2DetailedReceiving({
 
     setItems(prev => {
       const updated = prev.filter(i => i.id !== item.id);
-      updateReceivedPieces(updated);
       return updated;
     });
     setExpandedRows(prev => {
@@ -354,15 +378,13 @@ export function Stage2DetailedReceiving({
     toast({ title: 'Removed', description: 'Item removed from receiving.' });
   };
 
-  const updateReceivedPieces = (currentItems: ReceivedItem[]) => {
-    const total = currentItems.reduce((sum, i) => sum + i.received_quantity, 0);
-    setReceivedPieces(total);
-  };
-
   // Validate before completion
   const validateCompletion = (): string[] => {
     const errors: string[] = [];
-    if (receivedPieces <= 0) errors.push('Received pieces must be greater than 0');
+    const dock = Number(dockCount) || 0;
+    if (dock <= 0) {
+      errors.push('Dock Count must be greater than 0 (set in Stage 1)');
+    }
     if (items.length === 0 && !isAdmin) {
       errors.push('At least 1 item line is required (admin can override)');
     }
@@ -381,11 +403,12 @@ export function Stage2DetailedReceiving({
   };
 
   // Handle complete button
-  const handleCompleteClick = () => {
+  const handleCompleteClick = async () => {
+    if (!canEdit || !showCompleteButton) return;
     const errors = validateCompletion();
 
     // Allow admin override if only issue is no items
-    if (items.length === 0 && isAdmin) {
+    if (items.length === 0 && isAdmin && errors.length === 0) {
       setShowAdminOverride(true);
       return;
     }
@@ -399,6 +422,62 @@ export function Stage2DetailedReceiving({
       return;
     }
 
+    // Stage 2 mismatch gating (Dock vs Entry): allow proceed only if corrected OR has exception+note.
+    if (profile?.tenant_id) {
+      const dock = Number(dockCount) || 0;
+      const entry = Number(entryCount) || 0;
+      const mismatch = dock > 0 && entry > 0 && dock !== entry;
+
+      if (mismatch) {
+        const requiredCode: ShipmentExceptionCode = entry > dock ? 'OVERAGE' : 'SHORTAGE';
+
+        try {
+          // Ensure any in-focus exception textarea persists its note before we validate against DB.
+          if (typeof document !== 'undefined') {
+            (document.activeElement as HTMLElement | null)?.blur?.();
+          }
+
+          const fetchNote = async () => {
+            const { data, error } = await (supabase as any)
+              .from('shipment_exceptions')
+              .select('note')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('status', 'open')
+              .eq('code', requiredCode)
+              .limit(1);
+
+            if (error) throw error;
+            return (((data?.[0]?.note as string | null) ?? '') as string).trim();
+          };
+
+          // If the user just typed a note and clicked Complete, the save can still be in-flight; retry once.
+          let note = await fetchNote();
+          if (!note) {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            note = await fetchNote();
+          }
+          if (!note) {
+            toast({
+              variant: 'destructive',
+              title: 'Counts Mismatch',
+              description: `Dock Count (${dock}) and Entry Count (${entry}) do not match. Fix the counts or add a ${SHIPMENT_EXCEPTION_CODE_META[requiredCode].label} exception note.`,
+            });
+            return;
+          }
+        } catch (err: any) {
+          console.error('[Stage2] mismatch check error:', err);
+          toast({
+            variant: 'destructive',
+            title: 'Could not validate mismatch',
+            description: err?.message || 'Failed to validate Dock vs Entry mismatch. Try again.',
+          });
+          return;
+        }
+      }
+    }
+
+    setNeedsReceivingLocation(false);
     setShowCompleteDialog(true);
   };
 
@@ -457,11 +536,16 @@ export function Stage2DetailedReceiving({
         console.warn('[Stage2] could not resolve receiving location');
       }
 
+      if (!receivingLocationId && fallbackLocationId) {
+        receivingLocationId = fallbackLocationId;
+      }
+
       if (!receivingLocationId) {
+        setNeedsReceivingLocation(true);
         toast({
           variant: 'destructive',
           title: 'No Receiving Location',
-          description: 'Could not resolve a default receiving location. Please configure one.',
+          description: 'Please select a receiving location below before completing.',
         });
         setCompleting(false);
         return;
@@ -707,7 +791,8 @@ export function Stage2DetailedReceiving({
         .from('shipments')
         .update({
           inbound_status: 'closed',
-          received_pieces: receivedPieces,
+          // User-facing shipment lifecycle: Stage 2 completion == received.
+          status: 'received',
           received_at: new Date().toISOString(),
         } as any)
         .eq('id', shipmentId);
@@ -733,7 +818,8 @@ export function Stage2DetailedReceiving({
         eventType: 'receiving_completed',
         eventLabel: 'Receiving completed (Stage 2)',
         details: {
-          received_pieces: receivedPieces,
+          dock_count: dockCount ?? null,
+          entry_count: entryCount,
           items_count: items.length,
         },
       });
@@ -796,46 +882,17 @@ export function Stage2DetailedReceiving({
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-sm">
-                Signed: {shipment.signed_pieces ?? '-'}
+                Carrier: {shipment.signed_pieces ?? '-'}
               </Badge>
-              <Badge variant={receivedPieces > 0 ? 'default' : 'outline'} className="text-sm">
-                Received: {receivedPieces}
+              <Badge variant="secondary" className="text-sm">
+                Dock: {dockCount ?? '-'}
+              </Badge>
+              <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="text-sm">
+                Entry: {entryCount}
               </Badge>
             </div>
           </div>
         </CardHeader>
-      </Card>
-
-      {/* Received Pieces */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <MaterialIcon name="pin" size="sm" />
-            Received Pieces <span className="text-red-500">*</span>
-            <HelpTip
-              tooltip="Total number of pieces received at dock intake stage 2."
-              pageKey="receiving.stage2"
-              fieldKey="received_pieces"
-            />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Input
-              type="number"
-              min={0}
-              value={receivedPieces || ''}
-              onChange={(e) => setReceivedPieces(parseInt(e.target.value) || 0)}
-              className="w-32"
-            />
-            {shipment.signed_pieces && receivedPieces !== shipment.signed_pieces && receivedPieces > 0 && (
-              <Badge variant="destructive" className="gap-1">
-                <MaterialIcon name="warning" size="sm" />
-                {receivedPieces > shipment.signed_pieces ? 'Over' : 'Short'} by {Math.abs(receivedPieces - shipment.signed_pieces)}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
       </Card>
 
       {/* Items Table */}
@@ -847,11 +904,11 @@ export function Stage2DetailedReceiving({
               Items ({items.length})
             </CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowManifestSelector(true)}>
+              <Button variant="outline" size="sm" onClick={() => setShowManifestSelector(true)} disabled={!canEdit}>
                 <MaterialIcon name="content_paste_go" size="sm" className="mr-1" />
                 Add From Manifest
               </Button>
-              <Button variant="outline" size="sm" onClick={addManualItem}>
+              <Button variant="outline" size="sm" onClick={addManualItem} disabled={!canEdit}>
                 <MaterialIcon name="add" size="sm" className="mr-1" />
                 Add Item
               </Button>
@@ -865,11 +922,11 @@ export function Stage2DetailedReceiving({
               <p>No items added yet.</p>
               <p className="text-sm mt-1">Add items from a linked manifest or enter manually.</p>
               <div className="flex gap-2 justify-center mt-4">
-                <Button variant="outline" onClick={() => setShowManifestSelector(true)}>
+                <Button variant="outline" onClick={() => setShowManifestSelector(true)} disabled={!canEdit}>
                   <MaterialIcon name="content_paste_go" size="sm" className="mr-1" />
                   Add From Manifest
                 </Button>
-                <Button variant="outline" onClick={addManualItem}>
+                <Button variant="outline" onClick={addManualItem} disabled={!canEdit}>
                   <MaterialIcon name="add" size="sm" className="mr-1" />
                   Add Item
                 </Button>
@@ -881,12 +938,12 @@ export function Stage2DetailedReceiving({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-24 text-right">Quantity</TableHead>
-                    <TableHead className="w-40">Vendor</TableHead>
+                    <TableHead className="min-w-[160px]">Vendor</TableHead>
                     <TableHead className="min-w-[220px]">Description</TableHead>
-                    <TableHead className="w-44">Class</TableHead>
-                    <TableHead className="w-40">Side Mark</TableHead>
-                    <TableHead className="w-36">Room</TableHead>
-                    <TableHead className="w-40">Actions</TableHead>
+                    <TableHead className="min-w-[180px]">Class</TableHead>
+                    <TableHead className="min-w-[160px]">Side Mark</TableHead>
+                    <TableHead className="min-w-[140px]">Room</TableHead>
+                    <TableHead className="min-w-[140px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -899,7 +956,8 @@ export function Stage2DetailedReceiving({
                             min={0}
                             value={item.received_quantity}
                             onChange={(e) => updateItem(item.id, 'received_quantity', parseInt(e.target.value) || 0)}
-                            className="w-20 h-8 text-right ml-auto"
+                            className="w-20 h-9 text-right ml-auto"
+                            disabled={!canEdit}
                           />
                         </TableCell>
                         <TableCell>
@@ -907,7 +965,8 @@ export function Stage2DetailedReceiving({
                             value={item.vendor}
                             onChange={(e) => updateItem(item.id, 'vendor', e.target.value)}
                             placeholder="Vendor"
-                            className="h-8"
+                            className="h-9"
+                            disabled={!canEdit}
                           />
                         </TableCell>
                         <TableCell>
@@ -915,15 +974,17 @@ export function Stage2DetailedReceiving({
                             value={item.description}
                             onChange={(e) => updateItem(item.id, 'description', e.target.value)}
                             placeholder="Description"
-                            className="h-8"
+                            className="h-9"
+                            disabled={!canEdit}
                           />
                         </TableCell>
                         <TableCell>
                           <Select
                             value={item.class_id || '__none__'}
                             onValueChange={(value) => updateItem(item.id, 'class_id', value === '__none__' ? null : value)}
+                            disabled={!canEdit}
                           >
-                            <SelectTrigger className="h-8">
+                            <SelectTrigger className="h-9">
                               <SelectValue placeholder={classesLoading ? 'Loading...' : 'Select class'} />
                             </SelectTrigger>
                             <SelectContent>
@@ -941,7 +1002,8 @@ export function Stage2DetailedReceiving({
                             value={item.sidemark}
                             onChange={(e) => updateItem(item.id, 'sidemark', e.target.value)}
                             placeholder="Side Mark"
-                            className="h-8"
+                            className="h-9"
+                            disabled={!canEdit}
                           />
                         </TableCell>
                         <TableCell>
@@ -949,7 +1011,8 @@ export function Stage2DetailedReceiving({
                             value={item.room}
                             onChange={(e) => updateItem(item.id, 'room', e.target.value)}
                             placeholder="Room"
-                            className="h-8"
+                            className="h-9"
+                            disabled={!canEdit}
                           />
                         </TableCell>
                         <TableCell>
@@ -976,6 +1039,7 @@ export function Stage2DetailedReceiving({
                               onClick={() => duplicateItem(item.id)}
                               className="h-8 w-8 p-0"
                               title="Duplicate item"
+                              disabled={!canEdit}
                             >
                               <MaterialIcon name="content_copy" size="sm" />
                             </Button>
@@ -985,6 +1049,7 @@ export function Stage2DetailedReceiving({
                               onClick={() => removeItem(item)}
                               className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                               title="Remove item"
+                              disabled={!canEdit || !showCompleteButton}
                             >
                               <MaterialIcon name="delete" size="sm" />
                             </Button>
@@ -1002,29 +1067,67 @@ export function Stage2DetailedReceiving({
                                 </span>
                                 <span>Flag tray</span>
                               </div>
-                              {flagServicesLoading ? (
-                                <div className="text-sm text-muted-foreground">Loading flags...</div>
-                              ) : flagServiceEvents.length === 0 ? (
-                                <div className="text-sm text-muted-foreground">No flag services configured.</div>
-                              ) : (
-                                <div className="flex flex-wrap gap-x-5 gap-y-2">
-                                  {flagServiceEvents.map((flag) => {
-                                    const checked = item.flags.includes(flag.service_code);
-                                    return (
-                                      <label
-                                        key={`${item.id}-${flag.service_code}`}
-                                        className="flex items-center gap-2 text-sm cursor-pointer"
-                                      >
-                                        <Checkbox
-                                          checked={checked}
-                                          onCheckedChange={() => toggleItemFlag(item.id, flag.service_code)}
-                                        />
-                                        <span>{flag.service_name}</span>
-                                      </label>
-                                    );
-                                  })}
+                              <div className="space-y-4">
+                                {/* Built-in item exceptions */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <MaterialIcon name="verified" size="sm" />
+                                    Item exceptions (built-in)
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                                    {BUILTIN_ITEM_EXCEPTION_FLAGS.map((f) => {
+                                      const checked = item.flags.includes(f.code);
+                                      return (
+                                        <label
+                                          key={`${item.id}-${f.code}`}
+                                          className="flex items-center gap-2 text-sm cursor-pointer"
+                                          title={f.description}
+                                        >
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={() => toggleItemFlag(item.id, f.code)}
+                                            disabled={!canEdit}
+                                          />
+                                          <span>{f.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              )}
+
+                                {/* Pricing/service flags */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <MaterialIcon name="tune" size="sm" />
+                                    Service flags (from Pricing)
+                                  </div>
+                                  {flagServicesLoading ? (
+                                    <div className="text-sm text-muted-foreground">Loading flags…</div>
+                                  ) : flagServiceEvents.length === 0 ? (
+                                    <div className="text-sm text-muted-foreground">No service flags configured.</div>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-x-5 gap-y-2">
+                                      {flagServiceEvents.map((flag) => {
+                                        const checked = item.flags.includes(flag.service_code);
+                                        return (
+                                          <label
+                                            key={`${item.id}-${flag.service_code}`}
+                                            className="flex items-center gap-2 text-sm cursor-pointer"
+                                            title={flag.notes || undefined}
+                                          >
+                                            <Checkbox
+                                              checked={checked}
+                                              onCheckedChange={() => toggleItemFlag(item.id, flag.service_code)}
+                                              disabled={!canEdit}
+                                            />
+                                            <span>{flag.service_name}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1039,21 +1142,23 @@ export function Stage2DetailedReceiving({
       </Card>
 
       {/* Complete Button */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-end">
-        <Button
-          size="lg"
-          onClick={handleCompleteClick}
-          disabled={completing}
-          className="gap-2"
-        >
-          {completing ? (
-            <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-          ) : (
-            <MaterialIcon name="check_circle" size="sm" />
-          )}
-          Complete Receiving
-        </Button>
-      </div>
+      {showCompleteButton ? (
+        <div className="flex flex-col sm:flex-row gap-3 justify-end">
+          <Button
+            size="lg"
+            onClick={() => void handleCompleteClick()}
+            disabled={completing || !canEdit}
+            className="gap-2"
+          >
+            {completing ? (
+              <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+            ) : (
+              <MaterialIcon name="check_circle" size="sm" />
+            )}
+            Complete Receiving
+          </Button>
+        </div>
+      ) : null}
 
       {/* Full-screen manifest selector */}
       <AddFromManifestSelector
@@ -1069,49 +1174,82 @@ export function Stage2DetailedReceiving({
       />
 
       {/* Complete Confirmation Dialog */}
-      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Complete Receiving?</DialogTitle>
-            <DialogDescription>
-              This will close the shipment and create inventory units for all received items.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="flex justify-between text-sm">
-              <span>Signed Pieces:</span>
-              <span className="font-medium">{shipment.signed_pieces ?? '-'}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Received Pieces:</span>
-              <span className="font-medium">{receivedPieces}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Items:</span>
-              <span className="font-medium">{items.length}</span>
-            </div>
-            {receivedPieces !== shipment.signed_pieces && shipment.signed_pieces && (
-              <div className="p-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
-                <MaterialIcon name="warning" size="sm" className="inline mr-1" />
-                Signed and received piece counts are different.
+      {showCompleteButton ? (
+        <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Complete Receiving?</DialogTitle>
+              <DialogDescription>
+                This will close the shipment and create inventory units for all received items.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="flex justify-between text-sm">
+                <span>Carrier count:</span>
+                <span className="font-medium">{shipment.signed_pieces ?? '-'}</span>
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCompleteDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => handleComplete(false)} disabled={completing}>
-              {completing ? (
-                <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
-              ) : (
-                <MaterialIcon name="check_circle" size="sm" className="mr-2" />
+              <div className="flex justify-between text-sm">
+                <span>Dock Count:</span>
+                <span className="font-medium">{dockCount ?? '-'}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Entry Count:</span>
+                <span className="font-medium">{entryCount}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Items:</span>
+                <span className="font-medium">{items.length}</span>
+              </div>
+              {typeof dockCount === 'number' && dockCount > 0 && entryCount > 0 && entryCount !== dockCount && (
+                <div className="p-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
+                  <MaterialIcon name="warning" size="sm" className="inline mr-1" />
+                  Dock Count and Entry Count are different.
+                </div>
               )}
-              Complete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {needsReceivingLocation || !!fallbackLocationId ? (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Receiving Location</Label>
+                    <Select
+                      value={fallbackLocationId || ''}
+                      onValueChange={(val) => setFallbackLocationId(val)}
+                      disabled={!canEdit || completing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select location..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allLocations.map((loc) => (
+                          <SelectItem key={loc.id} value={loc.id}>
+                            {loc.code} — {loc.name || loc.location_type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Choose where received items will be placed. Configure a default in warehouse settings to skip this step.
+                    </p>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCompleteDialog(false)} disabled={completing}>
+                Cancel
+              </Button>
+              <Button onClick={() => handleComplete(false)} disabled={completing || !canEdit}>
+                {completing ? (
+                  <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                ) : (
+                  <MaterialIcon name="check_circle" size="sm" className="mr-2" />
+                )}
+                Complete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {/* Container Placement Dialog */}
       <Dialog

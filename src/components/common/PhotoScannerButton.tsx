@@ -40,6 +40,7 @@ export function PhotoScannerButton({
   return (
     <>
       <Button
+        type="button"
         variant={variant}
         size={size}
         onClick={() => setScannerOpen(true)}

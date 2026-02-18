@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { queueAlert } from '@/lib/alertQueue';
 import { Badge } from '@/components/ui/badge';
+import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 
 interface ReleaseDialogProps {
   open: boolean;
@@ -166,6 +167,19 @@ export function ReleaseDialog({ open, onOpenChange, selectedItems, onSuccess }: 
         .single();
 
       if (shipmentError) throw shipmentError;
+      let effectiveShipmentNumber: string | null = shipment.shipment_number;
+
+      // Coerce legacy SHP-###### → OUT-##### for new outbound shipments (best-effort).
+      const coerced = coerceOutboundShipmentNumber(effectiveShipmentNumber);
+      if (coerced) {
+        const { error: renumberError } = await (supabase.from('shipments') as any)
+          .update({ shipment_number: coerced })
+          .eq('tenant_id', profile.tenant_id)
+          .eq('id', shipment.id);
+        if (!renumberError) {
+          effectiveShipmentNumber = coerced;
+        }
+      }
 
       // Create shipment items linking to actual inventory items
       const shipmentItems = selectedItems.map(item => ({
@@ -188,12 +202,12 @@ export function ReleaseDialog({ open, onOpenChange, selectedItems, onSuccess }: 
         alertType: 'release.created',
         entityType: 'shipment',
         entityId: shipment.id,
-        subject: `📦 ${releaseType === 'will_call' ? 'Will Call' : 'Disposal'} ${shipment.shipment_number} created`,
+        subject: `📦 ${releaseType === 'will_call' ? 'Will Call' : 'Disposal'} ${effectiveShipmentNumber} created`,
       });
 
       toast({
         title: 'Release created',
-        description: `${releaseType === 'will_call' ? 'Will Call' : 'Disposal'} ${shipment.shipment_number} created with ${selectedItems.length} item(s).`,
+        description: `${releaseType === 'will_call' ? 'Will Call' : 'Disposal'} ${effectiveShipmentNumber} created with ${selectedItems.length} item(s).`,
       });
 
       onSuccess();

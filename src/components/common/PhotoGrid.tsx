@@ -17,14 +17,12 @@ interface PhotoGridProps {
   photos: string[];
   onPhotosChange?: (urls: string[]) => void;
   readonly?: boolean;
-  columns?: 3 | 4;
 }
 
 export function PhotoGrid({
   photos,
   onPhotosChange,
   readonly = false,
-  columns = 4,
 }: PhotoGridProps) {
   const { toast } = useToast();
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -78,11 +76,9 @@ export function PhotoGrid({
     return null;
   }
 
-  const gridCols = columns === 3 ? 'grid-cols-3' : 'grid-cols-4';
-
   return (
     <>
-      <div className={`grid ${gridCols} gap-2`}>
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
         {photos.map((url, index) => (
           <div
             key={url}
@@ -131,15 +127,15 @@ export function PhotoGrid({
 
       {/* Lightbox */}
       <Dialog open={!!lightboxUrl} onOpenChange={() => setLightboxUrl(null)}>
-        <DialogContent className="max-w-4xl p-2">
+        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100dvh-1.5rem)] max-w-6xl max-h-[calc(100dvh-1.5rem)] overflow-hidden p-3 sm:p-4">
           {lightboxUrl && (
-            <div className="relative">
+            <div className="relative flex flex-col min-h-0 flex-1">
               <img
                 src={lightboxUrl}
                 alt="Photo"
-                className="w-full max-h-[80vh] object-contain rounded-lg"
+                className="w-full flex-1 min-h-0 object-contain rounded-lg bg-muted"
               />
-              <div className="flex gap-2 mt-3 justify-end">
+              <div className="flex gap-2 mt-3 justify-center sm:justify-end flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"

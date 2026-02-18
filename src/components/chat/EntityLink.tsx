@@ -80,6 +80,8 @@ export interface EntityLinkProps {
   id?: string;
   exists?: boolean;
   summary?: string;
+  /** Display style: "chip" (default) or "inline" (activity feed style) */
+  variant?: 'chip' | 'inline';
 }
 
 export function EntityLink({
@@ -88,6 +90,7 @@ export function EntityLink({
   id,
   exists = true,
   summary,
+  variant = 'chip',
 }: EntityLinkProps) {
   const config = ENTITY_CONFIG[type];
   const materialIconName = ICON_MAP[config.icon] || 'description';
@@ -112,9 +115,42 @@ export function EntityLink({
     );
   }
 
-  const linkContent = (
+  // Compute navigation target.
+  // Some entities have multiple "detail" routes (e.g., inbound shipments),
+  // and some screens don't have a dedicated detail route by number.
+  const upper = number.toUpperCase();
+  let to = id ? `${config.route}/${id}` : config.route;
+
+  if (type === 'item') {
+    // ItemDetail route expects UUID; fall back to scan redirect for item_code-only links.
+    to = id ? `/inventory/${id}` : `/scan/item/${encodeURIComponent(upper)}`;
+  }
+
+  if (type === 'shipment') {
+    const prefix = upper.split('-')[0] || 'SHP';
+    const base =
+      prefix === 'MAN' ? '/incoming/manifest'
+      : prefix === 'EXP' ? '/incoming/expected'
+      : prefix === 'INT' ? '/incoming/dock-intake'
+      : '/shipments';
+
+    // Prefer direct UUID route when available; otherwise use scan redirect by shipment_number.
+    to = id ? `${base}/${id}` : `/scan/shipment/${encodeURIComponent(upper)}`;
+  }
+
+  const linkContent = variant === 'inline' ? (
     <Link
-      to={`${config.route}/${id || number}`}
+      to={to}
+      className={cn(
+        'inline-flex items-baseline whitespace-nowrap font-medium underline underline-offset-2 decoration-primary/40',
+        'text-primary hover:decoration-primary focus:outline-none focus:ring-2 focus:ring-primary/40 rounded-sm px-0.5'
+      )}
+    >
+      {number}
+    </Link>
+  ) : (
+    <Link
+      to={to}
       className={cn(
         'inline-flex items-center px-2 py-0.5 rounded text-sm font-medium transition-colors focus:outline-none focus:ring-2',
         colors.bg,

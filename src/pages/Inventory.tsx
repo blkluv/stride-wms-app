@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, type ReactNode } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -53,6 +53,16 @@ import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantPreferences } from '@/hooks/useTenantPreferences';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getDefaultViewId,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 import {
   MobileDataCard,
   MobileDataCardHeader,
@@ -64,6 +74,7 @@ import {
 interface Item {
   id: string;
   item_code: string;
+  sku: string | null;
   description: string | null;
   status: string;
   quantity: number;
@@ -79,10 +90,20 @@ interface Item {
   account_id: string | null;
   received_at: string | null;
   primary_photo_url: string | null;
+  metadata?: Record<string, unknown> | null;
   has_indicator_flags?: boolean;
 }
 
-type SortField = 'item_code' | 'vendor' | 'description' | 'quantity' | 'location_code' | 'client_account' | 'sidemark' | 'room';
+type SortField =
+  | 'item_code'
+  | 'sku'
+  | 'vendor'
+  | 'description'
+  | 'quantity'
+  | 'location_code'
+  | 'client_account'
+  | 'sidemark'
+  | 'room';
 type SortDirection = 'asc' | 'desc' | null;
 
 export default function Inventory() {
@@ -123,6 +144,25 @@ export default function Inventory() {
   const { preferences } = useTenantPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
 
+  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const [activeViewId, setActiveViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeViewId && defaultItemViewId) {
+      setActiveViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeViewId]);
+
+  const activeView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeViewId, defaultItemViewId]);
+
+  const visibleColumns = useMemo(() => (activeView ? getVisibleColumnsForView(activeView) : []), [activeView]);
+
   // Compute unique suggestions for inline editing autocomplete
   const vendorSuggestions = useMemo(() => {
     const set = new Set<string>();
@@ -151,7 +191,7 @@ export default function Inventory() {
   // Handle inline field updates
   const handleInlineUpdate = async (
     itemId: string,
-    field: 'quantity' | 'vendor' | 'description' | 'sidemark' | 'room',
+    field: 'quantity' | 'vendor' | 'sku' | 'description' | 'sidemark' | 'room',
     value: string
   ) => {
     // Convert to appropriate type for database
@@ -183,7 +223,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, description, status, quantity, client_account, sidemark, vendor, room,
+          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, metadata,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -199,6 +239,7 @@ export default function Inventory() {
       const transformedData: Item[] = (data || []).map((item: any) => ({
         id: item.id,
         item_code: item.item_code,
+        sku: item.sku ?? null,
         description: item.description,
         status: item.status,
         quantity: item.quantity,
@@ -215,6 +256,7 @@ export default function Inventory() {
         account_id: item.account_id,
         received_at: item.received_at,
         primary_photo_url: item.primary_photo_url,
+        metadata: item.metadata ?? null,
       }));
 
       // Batch-fetch indicator flags for displayed items
@@ -246,10 +288,11 @@ export default function Inventory() {
 
   const filteredAndSortedItems = useMemo(() => {
     let result = items.filter((item) => {
-      // Enhanced search - includes vendor, sidemark, description, item_code, client_account
+      // Enhanced search - includes vendor, sidemark, description, item_code, SKU, client_account
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery ||
         item.item_code.toLowerCase().includes(searchLower) ||
+        item.sku?.toLowerCase().includes(searchLower) ||
         item.description?.toLowerCase().includes(searchLower) ||
         item.client_account?.toLowerCase().includes(searchLower) ||
         item.sidemark?.toLowerCase().includes(searchLower) ||
@@ -304,6 +347,285 @@ export default function Inventory() {
     return <MaterialIcon name={sortDirection === 'asc' ? 'expand_less' : 'expand_more'} size="sm" />;
   };
 
+  type ColumnDef = {
+    sortField?: SortField;
+    headClassName?: string;
+    cellClassName?: string;
+    /** Stops row navigation click when interacting with cell content */
+    stopPropagation?: boolean;
+    /** Renders the body cell content */
+    renderCell: (item: Item) => ReactNode;
+    /** Header label container class (for align) */
+    headLabelClassName?: string;
+  };
+
+  const customFieldDefsByKey = useMemo(() => {
+    const map = new Map<string, { type: string }>();
+    itemDisplaySettings.custom_fields.forEach((f) => {
+      map.set(f.key, { type: f.type });
+    });
+    return map;
+  }, [itemDisplaySettings.custom_fields]);
+
+  const getCustomFieldValue = (item: Item, fieldKey: string): string | number | null => {
+    const meta = item.metadata;
+    if (!meta || typeof meta !== 'object') return null;
+    const custom = (meta as any).custom_fields;
+    if (!custom || typeof custom !== 'object') return null;
+    const val = (custom as any)[fieldKey];
+    if (val === undefined || val === null || val === '') return null;
+    if (typeof val === 'string' || typeof val === 'number') return val;
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    return String(val);
+  };
+
+  const saveCustomFieldValue = async (itemId: string, fieldKey: string, rawValue: string): Promise<void> => {
+    const item = items.find((i) => i.id === itemId);
+    const existingMeta = (item?.metadata && typeof item.metadata === 'object') ? (item.metadata as Record<string, unknown>) : {};
+
+    const existingCustom =
+      (existingMeta as any).custom_fields && typeof (existingMeta as any).custom_fields === 'object'
+        ? { ...(existingMeta as any).custom_fields }
+        : {};
+
+    const fieldType = customFieldDefsByKey.get(fieldKey)?.type || 'text';
+    const trimmed = rawValue.trim();
+
+    let nextValue: unknown = trimmed;
+    if (!trimmed) {
+      nextValue = null;
+    } else if (fieldType === 'number') {
+      const n = Number(trimmed);
+      nextValue = Number.isFinite(n) ? n : null;
+    } else if (fieldType === 'checkbox') {
+      const normalized = trimmed.toLowerCase();
+      nextValue = ['true', 'yes', 'y', '1', 'checked'].includes(normalized);
+    }
+
+    if (nextValue === null) {
+      delete (existingCustom as any)[fieldKey];
+    } else {
+      (existingCustom as any)[fieldKey] = nextValue;
+    }
+
+    const nextMeta: Record<string, unknown> = { ...(existingMeta as any) };
+    if (Object.keys(existingCustom).length > 0) {
+      (nextMeta as any).custom_fields = existingCustom;
+    } else {
+      delete (nextMeta as any).custom_fields;
+    }
+
+    const { error } = await (supabase.from('items') as any)
+      .update({ metadata: nextMeta })
+      .eq('id', itemId);
+
+    if (error) {
+      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+      throw error;
+    }
+
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, metadata: nextMeta } : i)));
+  };
+
+  const builtinColumnDefs: Record<BuiltinItemColumnKey, ColumnDef> = {
+    photo: {
+      headClassName: 'w-12',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <ItemPreviewCard itemId={item.id}>
+          {item.primary_photo_url ? (
+            <img src={item.primary_photo_url} alt={item.item_code} className="h-8 w-8 rounded object-cover cursor-pointer" />
+          ) : (
+            <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+          )}
+        </ItemPreviewCard>
+      ),
+    },
+    item_code: {
+      sortField: 'item_code',
+      renderCell: (item) => (
+        <ItemPreviewCard itemId={item.id}>
+          <span
+            className="text-primary hover:underline cursor-pointer inline-flex items-center gap-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/inventory/${item.id}`);
+            }}
+          >
+            {item.has_indicator_flags && <span title="Has indicator flags">{'\u26A0\uFE0F'}</span>}
+            {item.item_code}
+          </span>
+        </ItemPreviewCard>
+      ),
+      cellClassName: 'font-medium',
+    },
+    sku: {
+      sortField: 'sku',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.sku}
+          onSave={(val) => handleInlineUpdate(item.id, 'sku', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+    quantity: {
+      sortField: 'quantity',
+      headClassName: 'text-right',
+      headLabelClassName: 'flex items-center justify-end gap-1',
+      cellClassName: 'text-right',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.quantity}
+          type="number"
+          onSave={(val) => handleInlineUpdate(item.id, 'quantity', val)}
+          placeholder="0"
+          align="right"
+          showEditIcon={false}
+        />
+      ),
+    },
+    vendor: {
+      sortField: 'vendor',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.vendor}
+          suggestions={vendorSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'vendor', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+    description: {
+      sortField: 'description',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.description}
+          suggestions={descriptionSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'description', val)}
+          placeholder="-"
+          className="max-w-[200px]"
+          showEditIcon={false}
+        />
+      ),
+    },
+    location: {
+      sortField: 'location_code',
+      renderCell: (item) =>
+        item.location_code ? (
+          <span className="text-sm">
+            {item.location_code}
+            {showWarehouseInLocation && item.warehouse_name && <span className="text-muted-foreground ml-1">({item.warehouse_name})</span>}
+          </span>
+        ) : (
+          '-'
+        ),
+    },
+    client_account: {
+      sortField: 'client_account',
+      renderCell: (item) => item.client_account || '-',
+    },
+    sidemark: {
+      sortField: 'sidemark',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.sidemark}
+          suggestions={sidemarkSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'sidemark', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+    room: {
+      sortField: 'room',
+      stopPropagation: true,
+      renderCell: (item) => (
+        <InlineEditableCell
+          value={item.room}
+          suggestions={roomSuggestions}
+          onSave={(val) => handleInlineUpdate(item.id, 'room', val)}
+          placeholder="-"
+          showEditIcon={false}
+        />
+      ),
+    },
+  };
+
+  const getColumnDef = (key: ItemColumnKey): ColumnDef => {
+    const cfKey = parseCustomFieldColumnKey(key);
+    if (cfKey) {
+      const fieldType = customFieldDefsByKey.get(cfKey)?.type || 'text';
+      return {
+        stopPropagation: true,
+        sortField: undefined,
+        renderCell: (item) => (
+          <InlineEditableCell
+            value={getCustomFieldValue(item, cfKey)}
+            type={fieldType === 'number' ? 'number' : 'text'}
+            onSave={(val) => saveCustomFieldValue(item.id, cfKey, val)}
+            placeholder="-"
+            showEditIcon={false}
+          />
+        ),
+      };
+    }
+
+    return builtinColumnDefs[key as BuiltinItemColumnKey];
+  };
+
+  const renderTableHead = (key: ItemColumnKey) => {
+    const def = getColumnDef(key);
+    const isSortable = !!def.sortField;
+
+    const labelWrapClass =
+      def.headLabelClassName || (def.headClassName?.includes('text-right') ? 'flex items-center justify-end gap-1' : 'flex items-center gap-1');
+
+    return (
+      <TableHead
+        key={key}
+        className={[
+          def.headClassName,
+          isSortable ? 'cursor-pointer hover:bg-muted/50' : null,
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        onClick={isSortable ? () => handleSort(def.sortField as SortField) : undefined}
+      >
+        <div className={labelWrapClass}>
+          {getColumnLabel(itemDisplaySettings, key)}
+          {def.sortField && <SortIcon field={def.sortField} />}
+        </div>
+      </TableHead>
+    );
+  };
+
+  const renderTableCell = (key: ItemColumnKey, item: Item) => {
+    const def = getColumnDef(key);
+    return (
+      <TableCell
+        key={key}
+        className={def.cellClassName}
+        onClick={
+          def.stopPropagation
+            ? (e) => {
+                e.stopPropagation();
+              }
+            : undefined
+        }
+      >
+        {def.renderCell(item)}
+      </TableCell>
+    );
+  };
+
   const toggleItemSelection = (itemId: string) => {
     const newSelected = new Set(selectedItems);
     if (newSelected.has(itemId)) newSelected.delete(itemId);
@@ -326,12 +648,29 @@ export default function Inventory() {
   const hasMultipleWarehouses = getSelectedItemsWarehouses().size > 1;
 
   const getSelectedItemsForLabels = (): ItemLabelData[] => items.filter(item => selectedItems.has(item.id)).map(item => ({
-    id: item.id, itemCode: item.item_code, description: item.description || '', vendor: item.vendor || '', account: item.client_account || '', sidemark: item.sidemark || '', room: item.room || '', warehouseName: item.warehouse_name || '', locationCode: item.location_code || '',
+    id: item.id,
+    itemCode: item.item_code,
+    sku: item.sku || '',
+    description: item.description || '',
+    vendor: item.vendor || '',
+    account: item.client_account || '',
+    sidemark: item.sidemark || '',
+    room: item.room || '',
+    warehouseName: item.warehouse_name || '',
+    locationCode: item.location_code || '',
   }));
 
   const handleExportExcel = () => {
     const selectedData = items.filter(item => selectedItems.has(item.id)).map(item => ({
-      'Item Code': item.item_code, 'Vendor': item.vendor || '', 'Description': item.description || '', 'Qty': item.quantity, 'Location': item.location_code || '', 'Client': item.client_account || '', 'Sidemark': item.sidemark || '', 'Room': item.room || '',
+      'Item Code': item.item_code,
+      'SKU': item.sku || '',
+      'Vendor': item.vendor || '',
+      'Description': item.description || '',
+      'Qty': item.quantity,
+      'Location': item.location_code || '',
+      'Client': item.client_account || '',
+      'Sidemark': item.sidemark || '',
+      'Room': item.room || '',
     }));
     const ws = XLSX.utils.json_to_sheet(selectedData);
     const wb = XLSX.utils.book_new();
@@ -384,7 +723,7 @@ export default function Inventory() {
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="relative flex-1">
                 <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search item code, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
+                <Input placeholder="Search item code, SKU, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
               </div>
               <Select 
                 value={filters.locationId || '__all__'} 
@@ -416,93 +755,103 @@ export default function Inventory() {
                   <SelectItem value="disposed">Disposed</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={activeViewId || defaultItemViewId || 'default'}
+                onValueChange={setActiveViewId}
+                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+              >
+                <SelectTrigger className="w-full sm:w-44">
+                  <div className="flex items-center gap-2">
+                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                    <SelectValue placeholder="View" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {itemDisplaySettings.views.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name}
+                      {v.is_default ? ' (default)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
             </div>
 
             {loading ? (<div className="flex items-center justify-center h-48"><MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" /></div>
             ) : filteredAndSortedItems.length === 0 ? (<div className="text-center py-12"><MaterialIcon name="inventory_2" size="xl" className="mx-auto text-muted-foreground" /><h3 className="mt-4 text-lg font-semibold">No items found</h3><p className="text-muted-foreground">{searchQuery || statusFilter !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first item'}</p></div>
             ) : isMobile ? (
-              <div className="space-y-3">{filteredAndSortedItems.map((item) => (<MobileDataCard key={item.id} onClick={() => navigate(`/inventory/${item.id}`)} selected={selectedItems.has(item.id)}><MobileDataCardHeader><div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-5 w-5" /><div className="flex-1 min-w-0"><MobileDataCardTitle>{item.has_indicator_flags && <span>{'\u26A0\uFE0F'} </span>}{item.item_code}</MobileDataCardTitle><MobileDataCardDescription className="truncate">{item.description || '-'}</MobileDataCardDescription></div></div></MobileDataCardHeader><MobileDataCardContent><div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs"><div className="flex justify-between"><span className="text-muted-foreground">Qty:</span><span className="font-medium">{item.quantity}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Vendor:</span><span className="truncate ml-1">{item.vendor || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Account:</span><span className="truncate ml-1">{item.client_account || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Sidemark:</span><span className="truncate ml-1">{item.sidemark || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Room:</span><span className="truncate ml-1">{item.room || '-'}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Location:</span><span className="truncate ml-1">{item.location_code || '-'}</span></div></div></MobileDataCardContent></MobileDataCard>))}</div>
+              <div className="space-y-3">
+                {filteredAndSortedItems.map((item) => (
+                  <MobileDataCard
+                    key={item.id}
+                    onClick={() => navigate(`/inventory/${item.id}`)}
+                    selected={selectedItems.has(item.id)}
+                  >
+                    <MobileDataCardHeader>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedItems.has(item.id)}
+                          onCheckedChange={() => toggleItemSelection(item.id)}
+                          className="h-5 w-5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <MobileDataCardTitle>
+                            {item.has_indicator_flags && <span>{'\u26A0\uFE0F'} </span>}
+                            {item.item_code}
+                          </MobileDataCardTitle>
+                          <MobileDataCardDescription className="truncate">{item.description || '-'}</MobileDataCardDescription>
+                        </div>
+                      </div>
+                    </MobileDataCardHeader>
+                    <MobileDataCardContent>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Qty:</span>
+                          <span className="font-medium">{item.quantity}</span>
+                        </div>
+                        {visibleColumns.includes('sku') && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">SKU:</span>
+                            <span className="truncate ml-1">{item.sku || '-'}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Vendor:</span>
+                          <span className="truncate ml-1">{item.vendor || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Account:</span>
+                          <span className="truncate ml-1">{item.client_account || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Sidemark:</span>
+                          <span className="truncate ml-1">{item.sidemark || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Room:</span>
+                          <span className="truncate ml-1">{item.room || '-'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Location:</span>
+                          <span className="truncate ml-1">{item.location_code || '-'}</span>
+                        </div>
+                      </div>
+                    </MobileDataCardContent>
+                  </MobileDataCard>
+                ))}
+              </div>
             ) : (
               <div className="overflow-x-auto rounded-md border">
                 <Table>
                   <TableHeader><TableRow>
                     <TableHead className="w-10"><Checkbox checked={selectedItems.size === filteredAndSortedItems.length && filteredAndSortedItems.length > 0} onCheckedChange={toggleSelectAll} className="h-3.5 w-3.5" /></TableHead>
-                    <TableHead className="w-12">Photo</TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('item_code')}><div className="flex items-center gap-1">Item Code<SortIcon field="item_code" /></div></TableHead>
-                    <TableHead className="text-right cursor-pointer hover:bg-muted/50" onClick={() => handleSort('quantity')}><div className="flex items-center justify-end gap-1">Qty<SortIcon field="quantity" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('vendor')}><div className="flex items-center gap-1">Vendor<SortIcon field="vendor" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('description')}><div className="flex items-center gap-1">Description<SortIcon field="description" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('location_code')}><div className="flex items-center gap-1">Location<SortIcon field="location_code" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('client_account')}><div className="flex items-center gap-1">Account<SortIcon field="client_account" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('sidemark')}><div className="flex items-center gap-1">Sidemark<SortIcon field="sidemark" /></div></TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('room')}><div className="flex items-center gap-1">Room<SortIcon field="room" /></div></TableHead>
+                    {visibleColumns.map(renderTableHead)}
                   </TableRow></TableHeader>
                   <TableBody>{filteredAndSortedItems.map((item) => (
                     <TableRow key={item.id} className={`cursor-pointer hover:bg-muted/50 ${selectedItems.has(item.id) ? 'bg-muted/30' : ''}`} onClick={() => navigate(`/inventory/${item.id}`)}>
                       <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-3.5 w-3.5" /></TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <ItemPreviewCard itemId={item.id}>
-                          {item.primary_photo_url ? <img src={item.primary_photo_url} alt={item.item_code} className="h-8 w-8 rounded object-cover cursor-pointer" /> : <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>}
-                        </ItemPreviewCard>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <ItemPreviewCard itemId={item.id}>
-                          <span className="text-primary hover:underline cursor-pointer inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); navigate(`/inventory/${item.id}`); }}>
-                            {item.has_indicator_flags && <span title="Has indicator flags">{'\u26A0\uFE0F'}</span>}
-                            {item.item_code}
-                          </span>
-                        </ItemPreviewCard>
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.quantity}
-                          type="number"
-                          onSave={(val) => handleInlineUpdate(item.id, 'quantity', val)}
-                          placeholder="0"
-                          align="right"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.vendor}
-                          suggestions={vendorSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'vendor', val)}
-                          placeholder="-"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.description}
-                          suggestions={descriptionSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'description', val)}
-                          placeholder="-"
-                          className="max-w-[200px]"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell>{item.location_code ? <span className="text-sm">{item.location_code}{showWarehouseInLocation && item.warehouse_name && <span className="text-muted-foreground ml-1">({item.warehouse_name})</span>}</span> : '-'}</TableCell>
-                      <TableCell>{item.client_account || '-'}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.sidemark}
-                          suggestions={sidemarkSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'sidemark', val)}
-                          placeholder="-"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <InlineEditableCell
-                          value={item.room}
-                          suggestions={roomSuggestions}
-                          onSave={(val) => handleInlineUpdate(item.id, 'room', val)}
-                          placeholder="-"
-                          showEditIcon={false}
-                        />
-                      </TableCell>
+                      {visibleColumns.map((key) => renderTableCell(key, item))}
                     </TableRow>
                   ))}</TableBody>
                 </Table>
