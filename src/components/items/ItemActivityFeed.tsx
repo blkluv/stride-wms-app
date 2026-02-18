@@ -3,7 +3,6 @@
  * Shows all logged events from item_activity with filters, actor name, and time.
  */
 
-import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +14,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { parseMessageWithLinks } from '@/utils/parseEntityLinks';
 import { useEntityMap } from '@/hooks/useEntityMap';
 import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
+import { useMemo, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -63,7 +63,12 @@ function matchesCategory(eventType: string, category: Exclude<ItemActivityFilter
     case 'tasks':
       return eventType.startsWith('task_');
     case 'shipments':
-      return eventType.startsWith('item_shipment_');
+      return (
+        eventType.startsWith('item_shipment_') ||
+        eventType.startsWith('item_manifest_') ||
+        eventType.includes('received_in_shipment') ||
+        eventType.includes('released_in_shipment')
+      );
     case 'notes':
       return eventType.startsWith('item_note_');
     case 'billing':
@@ -76,7 +81,12 @@ function matchesCategory(eventType: string, category: Exclude<ItemActivityFilter
         eventType === 'item_scan_charge_applied'
       );
     case 'photos_docs':
-      return eventType.startsWith('item_photo_') || eventType.startsWith('item_document_');
+      return (
+        eventType.startsWith('item_photo_') ||
+        eventType.startsWith('item_document_') ||
+        eventType.startsWith('document_') ||
+        eventType.includes('document')
+      );
     case 'status_account':
       return (
         eventType.startsWith('item_status_') ||
@@ -89,7 +99,11 @@ function matchesCategory(eventType: string, category: Exclude<ItemActivityFilter
         eventType === 'item_coverage_changed'
       );
     case 'repair':
-      return eventType.startsWith('item_repair_quote_');
+      return (
+        eventType.startsWith('item_repair_quote_') ||
+        eventType.startsWith('repair_quote_') ||
+        eventType.startsWith('item_repair_')
+      );
   }
 }
 
@@ -98,10 +112,29 @@ function getEventIcon(eventType: string): string {
   if (eventType.startsWith('item_scan') || eventType.startsWith('billing')) return 'attach_money';
   if (eventType.startsWith('item_note')) return 'sticky_note_2';
   if (eventType.startsWith('item_photo')) return 'photo_camera';
-  if (eventType.startsWith('item_document')) return 'description';
-  if (eventType.startsWith('item_shipment') || eventType.startsWith('item_manifest')) return 'local_shipping';
-  if (eventType.startsWith('item_repair_quote') || eventType.startsWith('repair_quote')) return 'handyman';
-  if (eventType.startsWith('item_coverage')) return 'verified_user';
+  if (
+    eventType.startsWith('item_document') ||
+    eventType.startsWith('document_') ||
+    eventType.includes('document')
+  ) {
+    return 'description';
+  }
+  if (
+    eventType.startsWith('item_shipment') ||
+    eventType.startsWith('item_manifest') ||
+    eventType.includes('received_in_shipment') ||
+    eventType.includes('released_in_shipment')
+  ) {
+    return 'local_shipping';
+  }
+  if (
+    eventType.startsWith('item_repair_quote') ||
+    eventType.startsWith('repair_quote') ||
+    eventType.startsWith('item_repair_')
+  ) {
+    return 'handyman';
+  }
+  if (eventType.startsWith('item_coverage') || eventType.includes('coverage')) return 'verified_user';
   if (eventType.startsWith('item_status')) return 'swap_horiz';
   if (eventType.startsWith('item_account')) return 'business';
   if (eventType.startsWith('item_class')) return 'category';
@@ -127,12 +160,20 @@ function getEventColor(eventType: string): string {
     return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
   if (eventType.includes('photo') || eventType.includes('document'))
     return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-  if (eventType.includes('shipment') || eventType.includes('manifest'))
+  if (
+    eventType.includes('shipment') ||
+    eventType.includes('manifest') ||
+    eventType.includes('received_in_shipment') ||
+    eventType.includes('released_in_shipment')
+  ) {
     return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-  if (eventType.includes('repair_quote'))
+  }
+  if (eventType.includes('repair_quote') || eventType.startsWith('item_repair_')) {
     return 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200';
-  if (eventType.includes('coverage'))
+  }
+  if (eventType.includes('coverage')) {
     return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200';
+  }
   if (eventType.includes('status') || eventType.includes('account') || eventType.includes('class') || eventType.includes('field'))
     return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
   if (eventType.includes('billing_charge_added'))
@@ -143,22 +184,14 @@ function getEventColor(eventType: string): string {
 }
 
 function getEventCategory(eventType: string): string {
-  if (eventType.includes('flag') || eventType.includes('billing') || eventType.includes('scan_charge') || eventType.includes('indicator'))
-    return 'billing';
-  if (eventType.includes('moved') || eventType.includes('location'))
-    return 'movement';
-  if (eventType.startsWith('task_'))
-    return 'task';
-  if (eventType.includes('shipment') || eventType.includes('manifest'))
-    return 'shipment';
-  if (eventType.includes('note'))
-    return 'note';
-  if (eventType.includes('photo') || eventType.includes('document'))
-    return 'media';
-  if (eventType.includes('repair_quote'))
-    return 'repair';
-  if (eventType.includes('coverage'))
-    return 'coverage';
+  if (matchesCategory(eventType, 'movements')) return 'movements';
+  if (matchesCategory(eventType, 'tasks')) return 'tasks';
+  if (matchesCategory(eventType, 'shipments')) return 'shipments';
+  if (matchesCategory(eventType, 'notes')) return 'notes';
+  if (matchesCategory(eventType, 'billing')) return 'billing';
+  if (matchesCategory(eventType, 'photos_docs')) return 'photos & docs';
+  if (matchesCategory(eventType, 'status_account')) return 'status/account';
+  if (matchesCategory(eventType, 'repair')) return 'repair';
   return 'update';
 }
 
@@ -174,7 +207,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
 
   const entityMap = useEntityMap(filteredActivities, '[ItemActivityFeed] entity resolution failed:');
 
-  const activeFilterCount = selectedCategories.includes('all') ? 0 : selectedCategories.length;
+  const activeFilterCount = selectedCategories.filter((c) => c !== 'all').length;
 
   const toggleCategory = (cat: ItemActivityFilterCategory, nextChecked: boolean) => {
     setSelectedCategories((prev) => {
