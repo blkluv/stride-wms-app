@@ -16,7 +16,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
-import { logItemActivity } from '@/lib/activity/logItemActivity';
 import { logActivity } from '@/lib/activity/logActivity';
 
 interface Shipment {
@@ -134,31 +133,35 @@ export function LinkToShipmentDialog({
 
       const selectedShipment = shipments.find(s => s.id === selectedShipmentId);
 
-      // Activity log (item + shipment)
-      if (selectedShipment) {
-        logItemActivity({
+      // Activity logging (best-effort; never blocks UI)
+      if (profile?.tenant_id) {
+        const shipmentNumber = selectedShipment?.shipment_number || 'Unknown';
+        void logActivity({
+          entityType: 'item',
           tenantId: profile.tenant_id,
-          itemId,
+          entityId: itemId,
           actorUserId: profile.id,
           eventType: 'item_shipment_linked',
-          eventLabel: `Linked to shipment ${selectedShipment.shipment_number}`,
+          eventLabel: `Linked to shipment ${shipmentNumber}`,
           details: {
-            shipment_id: selectedShipment.id,
-            shipment_number: selectedShipment.shipment_number,
-            shipment_type: selectedShipment.shipment_type,
-            shipment_status: selectedShipment.status,
+            shipment_id: selectedShipmentId,
+            shipment_number: shipmentNumber,
+            shipment_type: selectedShipment?.shipment_type,
+            shipment_status: selectedShipment?.status,
           },
         });
 
-        // Also log at the shipment level (for shipment activity timelines)
         void logActivity({
           entityType: 'shipment',
           tenantId: profile.tenant_id,
-          entityId: selectedShipment.id,
+          entityId: selectedShipmentId,
           actorUserId: profile.id,
           eventType: 'item_added',
           eventLabel: `Item ${itemCode} linked`,
-          details: { item_id: itemId, item_code: itemCode },
+          details: {
+            item_id: itemId,
+            item_code: itemCode,
+          },
         });
       }
 

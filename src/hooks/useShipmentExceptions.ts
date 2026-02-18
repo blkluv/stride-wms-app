@@ -45,7 +45,7 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   OTHER: { label: 'Other', icon: 'more_horiz', requiresNote: true },
 };
 
-const MATCHING_DISCREPANCY_CODES: ReadonlySet<ShipmentExceptionCode> = new Set([
+export const MATCHING_DISCREPANCY_CODES: ReadonlySet<ShipmentExceptionCode> = new Set([
   'PIECES_MISMATCH',
   'VENDOR_MISMATCH',
   'DESCRIPTION_MISMATCH',
@@ -135,7 +135,7 @@ export function useShipmentExceptions(
         try {
           const nowIso = new Date().toISOString();
 
-          const { data: existingNote } = await (supabase.from('shipment_notes') as any)
+          const { data: existingNote } = await (supabase as any).from('shipment_notes')
             .select('id')
             .eq('tenant_id', profile.tenant_id)
             .eq('shipment_id', shipmentId)
@@ -149,7 +149,7 @@ export function useShipmentExceptions(
 
           if (!normalizedNote) {
             // Note removed/cleared → soft-delete chip-generated note rows for this code
-            await (supabase.from('shipment_notes') as any)
+            await (supabase as any).from('shipment_notes')
               .update({ deleted_at: nowIso })
               .eq('tenant_id', profile.tenant_id)
               .eq('shipment_id', shipmentId)
@@ -161,7 +161,7 @@ export function useShipmentExceptions(
           }
 
           if (existingNote?.id) {
-            await (supabase.from('shipment_notes') as any)
+            await (supabase as any).from('shipment_notes')
               .update({
                 note: normalizedNote,
                 visibility: 'public',
@@ -169,7 +169,7 @@ export function useShipmentExceptions(
               })
               .eq('id', existingNote.id);
           } else {
-            await (supabase.from('shipment_notes') as any).insert({
+            await (supabase as any).from('shipment_notes').insert({
               tenant_id: profile.tenant_id,
               shipment_id: shipmentId,
               note: normalizedNote,
@@ -320,7 +320,7 @@ export function useShipmentExceptions(
       // When a chip is removed, also remove (soft-delete) the chip-generated Exception note(s).
       if (profile?.tenant_id) {
         try {
-          await (supabase.from('shipment_notes') as any)
+          await (supabase as any).from('shipment_notes')
             .update({ deleted_at: new Date().toISOString() })
             .eq('tenant_id', profile.tenant_id)
             .eq('shipment_id', shipmentId)

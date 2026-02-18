@@ -4,15 +4,15 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import type { 
-  DocumentContext, 
+import { logActivity, type ActivityEntityType } from '@/lib/activity/logActivity';
+import type {
+  DocumentContext,
   DocumentContextType,
-  ScanOutput, 
-  OcrResult, 
+  ScanOutput,
+  OcrResult,
   UploadProgress,
-  Document 
+  Document,
 } from './types';
-import { logActivity } from '@/lib/activity/logActivity';
 
 export interface UploadOptions {
   fileName?: string;
@@ -28,6 +28,13 @@ export interface UploadResult {
   documentId: string;
   storageKey: string;
   publicUrl?: string;
+}
+
+function toActivityEntityType(contextType: DocumentContextType): ActivityEntityType | null {
+  if (contextType === 'item') return 'item';
+  if (contextType === 'shipment') return 'shipment';
+  if (contextType === 'task') return 'task';
+  return null;
 }
 
 /**
@@ -331,6 +338,28 @@ export async function getDocumentSignedUrl(
  * Delete a document (soft delete)
  */
 export async function deleteDocument(documentId: string): Promise<void> {
+  // Fetch document metadata for activity logging
+  let doc: {
+    id: string;
+    tenant_id: string;
+    context_type: string;
+    context_id: string | null;
+    file_name: string;
+    label: string | null;
+    storage_key: string;
+  } | null = null;
+
+  try {
+    const { data } = await supabase
+      .from('documents')
+      .select('id, tenant_id, context_type, context_id, file_name, label, storage_key')
+      .eq('id', documentId)
+      .single();
+    doc = (data as any) || null;
+  } catch {
+    // Continue; deletion still proceeds
+  }
+
   const { error } = await supabase
     .from('documents')
     .update({ deleted_at: new Date().toISOString() })
@@ -338,6 +367,35 @@ export async function deleteDocument(documentId: string): Promise<void> {
   
   if (error) {
     throw new Error(`Failed to delete document: ${error.message}`);
+  }
+
+  // Activity logging for supported entity types
+  try {
+    if (!doc?.tenant_id || !doc.context_id) return;
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id;
+    if (!userId) return;
+
+    const contextType = doc.context_type as DocumentContextType;
+    const entityType = toActivityEntityType(contextType);
+    if (!entityType) return;
+
+    void logActivity({
+      entityType,
+      tenantId: doc.tenant_id,
+      entityId: doc.context_id,
+      actorUserId: userId,
+      eventType: 'document_removed',
+      eventLabel: `Document removed: ${doc.file_name}`,
+      details: {
+        document_id: doc.id,
+        file_name: doc.file_name,
+        label: doc.label,
+        storage_key: doc.storage_key,
+      },
+    });
+  } catch {
+    // Ignore activity logging errors
   }
 }
 

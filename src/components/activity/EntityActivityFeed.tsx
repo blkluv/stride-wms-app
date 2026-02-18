@@ -217,7 +217,7 @@ async function fetchClaimComprehensiveActivity(claimId: string): Promise<Activit
 
   // 3) billing events linked to claim
   try {
-    const { data: billingEvents, error } = await supabase
+    const { data: billingEvents, error } = await (supabase as any)
       .from('billing_events')
       .select('id, charge_type, description, total_amount, created_at')
       .eq('claim_id', claimId)

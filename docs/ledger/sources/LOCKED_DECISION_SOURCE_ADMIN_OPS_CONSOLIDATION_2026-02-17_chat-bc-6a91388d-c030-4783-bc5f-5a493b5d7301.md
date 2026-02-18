@@ -119,3 +119,8 @@ User decision (fallback sender domain not finalized yet):
 - The app’s domain (and therefore the fallback sender domain/subdomain) has not been picked yet because the product is still in development.
 - Do not hardcode a final domain value into code; this should remain configurable and can be set later in admin Email Ops.
 
+### QA-2026-02-17-ADMINOPS-022
+User decision (Email Ops config format for fallback sender domain):
+- In `/admin/saas-ops` → Email Ops, configure the platform-managed fallback sender as a domain/subdomain value only (example: `mail.yourapp.com`), not as a full pattern like `{tenant_slug}@mail.yourapp.com`.
+- The app will generate the full From email automatically as: `{tenant_slug}@<configured_domain>`.
+

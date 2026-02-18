@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `21`
+- Q&A items extracted: `22`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -46,6 +46,7 @@
 | DL-2026-02-17-024 | Platform-managed fallback From address is per-tenant (tenantid@subdomain.stridewms.com style) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-019` | - | - |
 | DL-2026-02-17-025 | Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020` | - | - |
 | DL-2026-02-17-026 | Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021` | - | - |
+| DL-2026-02-17-027 | Admin Email Ops config stores fallback sender as domain-only; app generates tenant-slug@domain | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-022` | - | - |
 
 ## Detailed Decision Entries
 
@@ -557,6 +558,26 @@ This avoids rework and prevents shipping assumptions about the final production 
 - Add an admin-dev configurable setting for the platform-managed sender base domain/subdomain (used to build per-tenant From addresses).
 - Tenant-facing UI should display whatever is currently configured, and if it is unset, show a clear “not configured yet” status rather than implying a fixed production domain.
 
+### DL-2026-02-17-027: Admin Email Ops config stores fallback sender as domain-only; app generates tenant-slug@domain
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-022`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+In `/admin/saas-ops` → Email Ops, the platform-managed fallback sender configuration will store the base domain/subdomain value only (example: `mail.yourapp.com`). The app will generate the full fallback From email automatically as `{tenant_slug}@<configured_domain>`.
+
+#### Why
+This keeps the operator-facing configuration simple and avoids exposing or maintaining a templating/pattern system for the From address format.
+
+#### Implementation impact
+- Admin Email Ops should store/validate a single domain/subdomain string (no pattern).
+- App code should generate the fallback From email as `{tenant_slug}@<configured_domain>`.
+- If the configured domain is unset, tenant-facing UI should show “not configured yet” and sending should use a safe fallback policy until configured.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -584,3 +605,4 @@ This avoids rework and prevents shipping assumptions about the final production 
 | DLE-2026-02-17-023 | 2026-02-17 | DL-2026-02-17-024 | planned | - | builder | Implement per-tenant platform-managed fallback From address and admin-dev configuration for the base domain/subdomain. |
 | DLE-2026-02-17-024 | 2026-02-17 | DL-2026-02-17-025 | planned | - | builder | Use tenant code/slug as the local-part identifier for platform-managed per-tenant fallback sender addresses. |
 | DLE-2026-02-17-025 | 2026-02-17 | DL-2026-02-17-026 | planned | - | builder | Keep fallback sender base domain/subdomain admin-configurable (do not hardcode final production domain while app domain is TBD). |
+| DLE-2026-02-17-026 | 2026-02-17 | DL-2026-02-17-027 | planned | - | builder | Store fallback sender config as domain-only in Email Ops; app generates `{tenant_slug}@domain` automatically. |
