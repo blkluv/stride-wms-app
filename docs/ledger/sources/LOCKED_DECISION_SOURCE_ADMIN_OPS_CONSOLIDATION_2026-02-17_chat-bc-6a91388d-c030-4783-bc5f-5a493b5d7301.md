@@ -196,3 +196,12 @@ User decision (when to show warnings + tenant UI toggle):
   - When checked: show the custom domain setup fields (DNS instructions + verification).
   - When unchecked: hide custom domain fields and show only platform sender info (their platform-created From address) plus the Reply-To/inbound address fields.
 
+### QA-2026-02-17-ADMINOPS-035
+User decision (toggle label):
+- Use toggle label option 1: “Send emails from my company domain”.
+
+### QA-2026-02-17-ADMINOPS-036
+User requirement/clarification (switching back to platform sender):
+- If a tenant starts the custom domain setup and then unchecks the toggle (switches back to platform sender), the app should automatically use the platform sender mode.
+- Once they set their Reply-To/inbound address, replies should route to that address (no additional setup steps required for the tenant beyond saving the field).
+

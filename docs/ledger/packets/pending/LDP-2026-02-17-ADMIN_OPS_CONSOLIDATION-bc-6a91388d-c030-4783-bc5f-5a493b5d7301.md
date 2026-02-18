@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `34`
+- Q&A items extracted: `36`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -59,6 +59,8 @@
 | DL-2026-02-17-037 | Email Ops warning badges include DMARC missing/misconfigured | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-032` | - | - |
 | DL-2026-02-17-038 | DMARC warning triggers on missing OR p=none with distinct badge labels | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-033` | - | - |
 | DL-2026-02-17-039 | Only show warnings/custom-domain fields when tenant opts into using their own email; toggle controls UI | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-034` | - | - |
+| DL-2026-02-17-040 | Tenant email settings toggle label is “Send emails from my company domain” | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-035` | - | - |
+| DL-2026-02-17-041 | Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036` | - | - |
 
 ## Detailed Decision Entries
 
@@ -857,6 +859,43 @@ Keep platform-sender mode as simple as possible for non-technical users; don’t
 - Map the toggle state to a persisted field (preferably reusing an existing boolean like `use_default_email` if present).
 - Email Ops should only compute/display DKIM/SPF/DMARC warnings when the tenant is in “custom sender” mode (or has started custom sender setup).
 
+### DL-2026-02-17-040: Tenant email settings toggle label is “Send emails from my company domain”
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-035`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The tenant-facing checkbox/toggle label will be: “Send emails from my company domain”.
+
+#### Why
+This phrasing is simple and directly describes the benefit in plain language for non-technical users.
+
+#### Implementation impact
+- Use this label anywhere the tenant toggles between platform sender and custom domain sender setup.
+
+### DL-2026-02-17-041: Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant starts custom domain setup and then unchecks the toggle (switches back to platform sender), platform sender mode should apply automatically. Once the tenant has saved their Reply-To / inbound address, email replies should route to that defined Reply-To address without requiring any DNS setup or additional steps from the tenant.
+
+#### Why
+Tenants should be able to back out of advanced setup without getting “stuck” and still have a working email flow using the platform sender with replies going to their inbox.
+
+#### Implementation impact
+- Switching the toggle off should immediately switch sending to platform sender mode.
+- Ensure the Reply-To field is saved and used as the Reply-To header in platform sender mode (with fallback per `DL-2026-02-17-021`).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -897,3 +936,5 @@ Keep platform-sender mode as simple as possible for non-technical users; don’t
 | DLE-2026-02-17-036 | 2026-02-17 | DL-2026-02-17-037 | planned | - | builder | Add DMARC warning badge (presence/validity check) for tenant custom sender domains. |
 | DLE-2026-02-17-037 | 2026-02-17 | DL-2026-02-17-038 | planned | - | builder | Implement DMARC parsing to distinguish “missing” vs “p=none” warnings with distinct badge labels. |
 | DLE-2026-02-17-038 | 2026-02-17 | DL-2026-02-17-039 | planned | - | builder | Show custom-domain fields and warnings only when tenant opts into using their own email/domain; add checkbox/toggle to switch modes. |
+| DLE-2026-02-17-039 | 2026-02-17 | DL-2026-02-17-040 | planned | - | builder | Implement tenant toggle label copy: “Send emails from my company domain”. |
+| DLE-2026-02-17-040 | 2026-02-17 | DL-2026-02-17-041 | planned | - | builder | Ensure toggling back to platform sender auto-applies platform sending and Reply-To routes to the tenant’s saved Reply-To/inbound address. |
