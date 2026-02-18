@@ -67,33 +67,33 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [ ] 58. No migration needed for legacy quote attachments (none exist).
 - [ ] 59. Quote Builder is staff-only (admin + manager); clients cannot access Quotes or Quote Builder pages.
 - [ ] 60. "Closed" = `shipments.inbound_status = 'closed'` after Stage 2 completion; `received_at` set; intake workflow finished.
-- [ ] 61. Stage 2 completion sets `shipments.status = 'received'`; Received Today uses `received_at` today.
+- [x] 61. Stage 2 completion sets `shipments.status = 'received'`; Received Today uses `received_at` today.
 - [ ] 62. Quote Builder documents: upload-only; UI + preview match Intake.
 - [ ] 63. Quote Builder documents header: single full-width Upload button.
-- [ ] 64. User-facing status label after Stage 2 completion: "Received".
-- [ ] 65. Hub expanded card row clicks originally specified Shipment Details for all rows (superseded by #79).
-- [ ] 66. "Intakes In Progress" excludes `inbound_status = closed`; include only draft/stage1_complete/receiving.
-- [ ] 67. "Intakes In Progress" row status label: always "In Progress".
-- [ ] 68. "Received Today" should not combine dock intakes with expected/manifest receipts (keep separate).
-- [ ] 69. Shipments Hub "Received Today" shows only dock intakes received today.
-- [ ] 70. Shipments Hub "Expected Today" shows scheduled expected shipments regardless of status/stage.
-- [ ] 71. `/shipments/received` shows only received dock intakes.
-- [ ] 72. `/shipments/received`: show all received dock intakes; default sort by received date (newest first).
-- [ ] 73. `/shipments/received`: search + sort only (no quick date filters).
-- [ ] 74. "Expected Today" date field = `expected_arrival_date`.
-- [ ] 75. "Expected Today" includes expected + manifests.
-- [ ] 76. Expanding "Expected Today" includes only scheduled inbound for today (expected + manifests), not unlinked dock intakes.
-- [ ] 77. "Expected Today" row click navigates to inbound detail pages (expected/manifest), not generic Shipment Details.
-- [ ] 78. "Received Today" (dock intakes) row click navigates to Dock Intake page (`/incoming/dock-intake/:id`).
-- [ ] 79. Hub expanded list clicks are card-specific: Expected Today -> inbound detail; Intakes In Progress -> Shipment Details; Received Today -> Dock Intake page.
-- [ ] 80. "Shipped Today" uses `completed_at` as the "today" timestamp.
-- [ ] 81. "Shipped Today" includes outbound statuses released + completed + shipped.
-- [ ] 82. "Shipped Today" expanded list row click navigates to outbound shipment details.
-- [ ] 83. Outbound shipment details page route is `/shipments/:id` for the OUT# clicked.
-- [ ] 84. Tapping "Shipped Today" card navigates to `/shipments/released` showing all (not limited to today), default newest completed first, search + sort only.
-- [ ] 85. Tapping "Received Today" card navigates to dock intakes list page showing all intakes.
-- [ ] 86. Dock intakes list page = Incoming Manager (`/incoming/manager`).
-- [ ] 87. Tapping "Intakes In Progress" card navigates to Incoming Manager on intakes view.
-- [ ] 88. Tapping "Expected Today" card navigates to Incoming Manager on expected view.
-- [ ] 89. Tapping "Shipped Today" card navigates to `/shipments/released`.
+- [x] 64. User-facing status label after Stage 2 completion: "Received".
+- [x] 65. Hub expanded card row clicks originally specified Shipment Details for all rows (superseded by #79).
+- [x] 66. "Intakes In Progress" excludes `inbound_status = closed`; include only draft/stage1_complete/receiving.
+- [x] 67. "Intakes In Progress" row status label: always "In Progress".
+- [x] 68. "Received Today" should not combine dock intakes with expected/manifest receipts (keep separate).
+- [x] 69. Shipments Hub "Received Today" shows only dock intakes received today.
+- [x] 70. Shipments Hub "Expected Today" shows scheduled expected shipments regardless of status/stage.
+- [x] 71. `/shipments/received` shows only received dock intakes.
+- [x] 72. `/shipments/received`: show all received dock intakes; default sort by received date (newest first).
+- [x] 73. `/shipments/received`: search + sort only (no quick date filters).
+- [x] 74. "Expected Today" date field = `expected_arrival_date`.
+- [x] 75. "Expected Today" includes expected + manifests.
+- [x] 76. Expanding "Expected Today" includes only scheduled inbound for today (expected + manifests), not unlinked dock intakes.
+- [x] 77. "Expected Today" row click navigates to inbound detail pages (expected/manifest), not generic Shipment Details.
+- [x] 78. "Received Today" (dock intakes) row click navigates to Dock Intake page (`/incoming/dock-intake/:id`).
+- [x] 79. Hub expanded list clicks are card-specific: Expected Today -> inbound detail; Intakes In Progress -> Shipment Details; Received Today -> Dock Intake page.
+- [x] 80. "Shipped Today" uses `completed_at` as the "today" timestamp.
+- [x] 81. "Shipped Today" includes outbound statuses released + completed + shipped.
+- [x] 82. "Shipped Today" expanded list row click navigates to outbound shipment details.
+- [x] 83. Outbound shipment details page route is `/shipments/:id` for the OUT# clicked.
+- [x] 84. Tapping "Shipped Today" card navigates to `/shipments/released` showing all (not limited to today), default newest completed first, search + sort only.
+- [x] 85. Tapping "Received Today" card navigates to dock intakes list page showing all intakes.
+- [x] 86. Dock intakes list page = Incoming Manager (`/incoming/manager`).
+- [x] 87. Tapping "Intakes In Progress" card navigates to Incoming Manager on intakes view.
+- [x] 88. Tapping "Expected Today" card navigates to Incoming Manager on expected view.
+- [x] 89. Tapping "Shipped Today" card navigates to `/shipments/released`.
 

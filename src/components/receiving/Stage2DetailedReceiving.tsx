@@ -764,6 +764,8 @@ export function Stage2DetailedReceiving({
         .from('shipments')
         .update({
           inbound_status: 'closed',
+          // User-facing shipment lifecycle: Stage 2 completion == received.
+          status: 'received',
           received_at: new Date().toISOString(),
         } as any)
         .eq('id', shipmentId);
