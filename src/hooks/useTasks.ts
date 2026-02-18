@@ -47,6 +47,7 @@ export interface Task {
   account_id: string | null;
   related_item_id: string | null;
   parent_task_id: string | null;
+  duration_minutes: number | null;
   completed_at: string | null;
   completed_by: string | null;
   billing_status: string | null;

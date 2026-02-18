@@ -44,6 +44,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { WillCallCompletionDialog } from '@/components/tasks/WillCallCompletionDialog';
@@ -597,12 +598,15 @@ export default function Tasks() {
                   <TableHead className="cursor-pointer select-none" onClick={() => handleSort('assigned_to')}>
                     Assigned To<SortIndicator field="assigned_to" />
                   </TableHead>
+                  <TableHead>
+                    Actual Time
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
+                    <TableCell colSpan={7} className="text-center py-12">
                       <div className="flex flex-col items-center gap-2">
                         <div className="text-5xl opacity-30">📝</div>
                         <p className="text-muted-foreground font-medium">
@@ -672,6 +676,15 @@ export default function Tasks() {
                           </span>
                         ) : (
                           <span className="text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {task.duration_minutes != null && task.duration_minutes > 0 ? (
+                          <span className="tabular-nums whitespace-nowrap">
+                            {formatMinutesShort(task.duration_minutes)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                     </TableRow>
