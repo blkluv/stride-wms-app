@@ -38,6 +38,7 @@ import { useInboundManifestDetail, type ManifestItem } from '@/hooks/useInboundM
 import { useExternalRefs, type RefType } from '@/hooks/useExternalRefs';
 import { useAllocation } from '@/hooks/useAllocation';
 import { useClasses } from '@/hooks/useClasses';
+import { logActivity } from '@/lib/activity/logActivity';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -166,6 +167,23 @@ export default function InboundManifestDetail() {
 
       if (error) throw error;
 
+      if (profile?.tenant_id && profile?.id && id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: id,
+          actorUserId: profile.id,
+          eventType: 'item_added',
+          eventLabel: `Manifest item duplicated: ${item.expected_description || 'Item'}`,
+          details: {
+            expected_description: item.expected_description || null,
+            expected_vendor: item.expected_vendor || null,
+            expected_sidemark: item.expected_sidemark || null,
+            expected_quantity: item.expected_quantity || 1,
+          },
+        });
+      }
+
       toast({ title: 'Item Duplicated' });
       refetch();
     } catch (err: unknown) {
@@ -193,6 +211,18 @@ export default function InboundManifestDetail() {
         .eq('id', item.id);
 
       if (error) throw error;
+
+      if (profile?.tenant_id && profile?.id && id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: id,
+          actorUserId: profile.id,
+          eventType: 'item_removed',
+          eventLabel: 'Manifest item removed',
+          details: { shipment_item_id: item.id },
+        });
+      }
 
       setSelectedItems((prev) => {
         const next = new Set(prev);

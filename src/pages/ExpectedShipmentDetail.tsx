@@ -38,6 +38,7 @@ import { isValidUuid } from '@/lib/utils';
 import { useExpectedShipmentDetail } from '@/hooks/useExpectedShipmentDetail';
 import { useExternalRefs, type RefType } from '@/hooks/useExternalRefs';
 import { useClasses } from '@/hooks/useClasses';
+import { logActivity } from '@/lib/activity/logActivity';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -133,6 +134,23 @@ export default function ExpectedShipmentDetail() {
 
       if (error) throw error;
 
+      if (profile?.tenant_id && profile?.id && id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: id,
+          actorUserId: profile.id,
+          eventType: 'item_added',
+          eventLabel: `Expected item duplicated: ${item.expected_description || 'Item'}`,
+          details: {
+            expected_description: item.expected_description || null,
+            expected_vendor: item.expected_vendor || null,
+            expected_sidemark: item.expected_sidemark || null,
+            expected_quantity: item.expected_quantity || 1,
+          },
+        });
+      }
+
       toast({ title: 'Item Duplicated' });
       refetch();
     } catch (err: unknown) {
@@ -161,6 +179,18 @@ export default function ExpectedShipmentDetail() {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      if (profile?.tenant_id && profile?.id && id) {
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: id,
+          actorUserId: profile.id,
+          eventType: 'item_removed',
+          eventLabel: 'Expected item removed',
+          details: { shipment_item_id: itemId },
+        });
+      }
 
       toast({ title: 'Item Removed' });
       refetch();
@@ -228,6 +258,23 @@ export default function ExpectedShipmentDetail() {
           notes: addItemNotes || null,
         });
       if (error) throw error;
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: profile.tenant_id,
+        entityId: id,
+        actorUserId: profile.id,
+        eventType: 'item_added',
+        eventLabel: `Expected item added: ${addItemDesc || 'Item'}`,
+        details: {
+          expected_description: addItemDesc || null,
+          expected_vendor: addItemVendor || null,
+          expected_sidemark: addItemSidemark || null,
+          room: addItemRoom || null,
+          expected_quantity: Number(addItemQty) || 1,
+        },
+      });
+
       toast({ title: 'Item Added' });
       setShowAddItemDialog(false);
       setAddItemDesc('');

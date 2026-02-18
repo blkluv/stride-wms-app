@@ -63,6 +63,7 @@ import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
 import { validateTaskCompletion, TaskCompletionValidationResult } from '@/lib/billing/taskCompletionValidation';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { logActivity } from '@/lib/activity/logActivity';
 import { queueRepairUnableToCompleteAlert } from '@/lib/alertQueue';
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { updateBillingEventFields } from '@/services/billing';
@@ -518,6 +519,29 @@ export default function TaskDetailPage() {
         })
         .eq('id', id);
       if (error) throw error;
+
+      // Activity logs (task + linked items)
+      void logActivity({
+        entityType: 'task',
+        tenantId: profile.tenant_id,
+        entityId: id,
+        actorUserId: profile.id,
+        eventType: 'task_unable',
+        eventLabel: 'Task marked unable to complete',
+        details: { note },
+      });
+
+      for (const ti of taskItems) {
+        if (!ti.item_id) continue;
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: ti.item_id,
+          actorUserId: profile.id,
+          eventType: 'task_unable',
+          eventLabel: `Task marked unable to complete: ${task?.task_type || 'Task'}`,
+          details: { task_id: id, task_type: task?.task_type || null, note },
+        });
+      }
 
       // For Repair tasks: send unrepairable item alert (damage/quarantine remain)
       if (task?.task_type === 'Repair') {

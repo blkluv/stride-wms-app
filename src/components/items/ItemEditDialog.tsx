@@ -272,6 +272,22 @@ export function ItemEditDialog({
 
       // Log activity for key field changes
       if (profile?.tenant_id) {
+        // Custom field diffs (stored under metadata.custom_fields)
+        for (const f of customFieldsForForm) {
+          const fromVal = (existingCustom as any)[f.key] ?? null;
+          const toVal = (nextCustom as any)[f.key] ?? null;
+          if (fromVal === toVal) continue;
+
+          logItemActivity({
+            tenantId: profile.tenant_id,
+            itemId: item.id,
+            actorUserId: profile.id,
+            eventType: 'item_custom_field_updated',
+            eventLabel: `${f.label} updated`,
+            details: { field_key: f.key, label: f.label, from: fromVal, to: toVal },
+          });
+        }
+
         if (data.status !== item.status) {
           logItemActivity({
             tenantId: profile.tenant_id,

@@ -20,6 +20,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { useAuth } from '@/contexts/AuthContext';
+import { logActivity } from '@/lib/activity/logActivity';
 
 interface ClassOption {
   id: string;
@@ -53,6 +55,7 @@ export function AddShipmentItemDialog({
   classOptional = false,
 }: AddShipmentItemDialogProps) {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
 
   // Form state
@@ -136,6 +139,51 @@ export function AddShipmentItemDialog({
       });
 
       if (error) throw error;
+
+      // Activity log (best-effort)
+      if (profile?.tenant_id && profile?.id) {
+        let shipmentNumber: string | null = null;
+        try {
+          const { data: shipRow } = await (supabase.from('shipments') as any)
+            .select('shipment_number, shipment_type')
+            .eq('id', shipmentId)
+            .maybeSingle();
+          shipmentNumber = shipRow?.shipment_number || null;
+        } catch {
+          // ignore
+        }
+
+        if (itemId) {
+          void logActivity({
+            entityType: 'item',
+            tenantId: profile.tenant_id,
+            entityId: itemId,
+            actorUserId: profile.id,
+            eventType: 'item_shipment_linked',
+            eventLabel: `Added to shipment ${shipmentNumber || 'SHP'}`,
+            details: {
+              shipment_id: shipmentId,
+              shipment_number: shipmentNumber,
+              expected_description: description.trim(),
+              expected_quantity: itemQuantity,
+            },
+          });
+        }
+
+        void logActivity({
+          entityType: 'shipment',
+          tenantId: profile.tenant_id,
+          entityId: shipmentId,
+          actorUserId: profile.id,
+          eventType: 'item_added',
+          eventLabel: `Expected item added: ${description.trim()}`,
+          details: {
+            item_id: itemId,
+            expected_description: description.trim(),
+            expected_quantity: itemQuantity,
+          },
+        });
+      }
 
       // Record field usage for future suggestions
       if (vendor) addVendorSuggestion(vendor);

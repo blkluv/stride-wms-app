@@ -34,6 +34,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpButton } from '@/components/prompts';
 import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
+import { logActivity } from '@/lib/activity/logActivity';
 
 // ============================================
 // TYPES
@@ -616,6 +617,81 @@ export default function OutboundCreate() {
         .update({ deleted_at: null })
         .eq('id', draftShipmentId);
       if (finalizeError) throw finalizeError;
+
+      // 5b) Activity log: items linked/unlinked to shipment
+      // Do this after finalize so activity doesn't point to a "hidden" draft.
+      try {
+        const shipmentNumberForLog = draftShipmentNumber || 'OUT';
+
+        // Resolve item codes in one query (best-effort)
+        const itemCodeMap = new Map<string, string>();
+        if (itemIds.length > 0) {
+          const { data: itemRows } = await (supabase.from('items') as any)
+            .select('id, item_code')
+            .in('id', itemIds);
+          (itemRows || []).forEach((r: any) => {
+            if (r?.id && r?.item_code) itemCodeMap.set(r.id, r.item_code);
+          });
+        }
+
+        // Linked (selected items)
+        void Promise.allSettled(
+          itemIds.map((iid) =>
+            logActivity({
+              entityType: 'item',
+              tenantId: profile.tenant_id,
+              entityId: iid,
+              actorUserId: profile.id,
+              eventType: 'item_shipment_linked',
+              eventLabel: `Added to outbound shipment ${shipmentNumberForLog}`,
+              details: {
+                shipment_id: draftShipmentId,
+                shipment_number: shipmentNumberForLog,
+                shipment_type: 'outbound',
+                item_code: itemCodeMap.get(iid) || null,
+              },
+            })
+          )
+        );
+
+        // Unlinked (deselected items)
+        if (removedItemIds.length > 0) {
+          void Promise.allSettled(
+            removedItemIds.map((iid) =>
+              logActivity({
+                entityType: 'item',
+                tenantId: profile.tenant_id,
+                entityId: iid,
+                actorUserId: profile.id,
+                eventType: 'item_shipment_unlinked',
+                eventLabel: `Removed from outbound shipment ${shipmentNumberForLog}`,
+                details: {
+                  shipment_id: draftShipmentId,
+                  shipment_number: shipmentNumberForLog,
+                  shipment_type: 'outbound',
+                },
+              })
+            )
+          );
+        }
+
+        // Shipment-level activity (selected items)
+        void Promise.allSettled(
+          itemIds.map((iid) =>
+            logActivity({
+              entityType: 'shipment',
+              tenantId: profile.tenant_id,
+              entityId: draftShipmentId,
+              actorUserId: profile.id,
+              eventType: 'item_added',
+              eventLabel: `Item ${itemCodeMap.get(iid) || iid} added`,
+              details: { item_id: iid, item_code: itemCodeMap.get(iid) || null },
+            })
+          )
+        );
+      } catch {
+        // Non-blocking: activity logging must not break shipment creation
+      }
 
       // 6) Mark selected items as allocated (after the shipment is visible)
       if (itemIds.length > 0) {
