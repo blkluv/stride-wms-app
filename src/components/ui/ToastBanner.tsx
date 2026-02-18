@@ -91,7 +91,7 @@ export function ToastBanner() {
         'fixed left-1/2 z-[60] w-[calc(100%-2rem)] max-w-md',
         'origin-bottom',
         toast.closing ? 'animate-banner-roll-down-to-bottom' : 'animate-banner-roll-up-from-bottom',
-        toast.navigateTo ? 'cursor-pointer' : 'cursor-pointer',
+        toast.navigateTo ? 'cursor-pointer' : 'cursor-default',
       )}
       style={{
         bottom: 'max(1rem, env(safe-area-inset-bottom))',
