@@ -13,6 +13,7 @@ import {
   getViewById,
   getVisibleColumnsForView,
 } from '@/lib/items/itemDisplaySettings';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { isValidUuid, cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -184,7 +185,13 @@ export default function ShipmentDetail() {
   const { hasPermission, hasRole } = usePermissions();
 
   // Tenant-managed item list views (systemwide)
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -2879,26 +2886,35 @@ export default function ShipmentDetail() {
                   <span className="sm:hidden">Add</span>
                 </Button>
               )}
-              <Select
-                value={activeItemViewId || defaultItemViewId || 'default'}
-                onValueChange={setActiveItemViewId}
-                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-              >
-                <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
-                  <div className="flex items-center gap-2">
-                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                    <SelectValue placeholder="View" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {itemDisplaySettings.views.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                      {v.is_default ? ' (default)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={activeItemViewId || defaultItemViewId || 'default'}
+                  onValueChange={setActiveItemViewId}
+                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                >
+                  <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
+                    <div className="flex items-center gap-2">
+                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                      <SelectValue placeholder="View" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {itemDisplaySettings.views.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                        {v.is_default ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <ItemColumnsPopover
+                  settings={itemDisplaySettings}
+                  viewId={activeItemViewId || defaultItemViewId || 'default'}
+                  disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                  onSave={saveItemDisplaySettings}
+                />
+              </div>
             {/* Create Task from selected items */}
             {selectedItemIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-2">

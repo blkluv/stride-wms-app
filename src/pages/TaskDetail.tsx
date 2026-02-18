@@ -41,6 +41,7 @@ import { formatItemSize } from '@/lib/items/formatItemSize';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -141,7 +142,13 @@ export default function TaskDetailPage() {
   const { toast } = useToast();
 
   // Tenant-managed item list views (systemwide)
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -1194,13 +1201,13 @@ export default function TaskDetailPage() {
                       <MaterialIcon name="assignment" size="sm" />
                       Items ({taskItems.length})
                     </CardTitle>
-                    <div className="w-full sm:w-56">
+                    <div className="w-full sm:w-56 flex items-center gap-2">
                       <Select
                         value={activeItemViewId || defaultItemViewId || 'default'}
                         onValueChange={setActiveItemViewId}
                         disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
                       >
-                        <SelectTrigger className="h-8">
+                        <SelectTrigger className="h-10 flex-1">
                           <SelectValue placeholder="View" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1212,6 +1219,13 @@ export default function TaskDetailPage() {
                           ))}
                         </SelectContent>
                       </Select>
+
+                      <ItemColumnsPopover
+                        settings={itemDisplaySettings}
+                        viewId={activeItemViewId || defaultItemViewId || 'default'}
+                        disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                        onSave={saveItemDisplaySettings}
+                      />
                     </div>
                   </div>
                 </CardHeader>
