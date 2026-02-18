@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { LabelConfig, LabelFieldConfig } from '@/hooks/useTenantPreferences';
 
 interface LocationLabelData {
+  id: string;
   code: string;
   name: string;
   type: string;
@@ -69,7 +70,7 @@ function createItemQRPayload(item: ItemLabelData): string {
 function createLocationQRPayload(location: LocationLabelData): string {
   const payload: QRPayload = {
     type: 'location',
-    id: location.code, // Using code as ID for locations
+    id: location.id,
     code: location.code,
     v: 1,
   };
