@@ -967,8 +967,6 @@ export default function ItemDetail() {
                 <SelectItem value="notes">💬 Notes{notesCount > 0 ? ` (${notesCount})` : ''}</SelectItem>
                 {!isClientUser && <SelectItem value="coverage">🛡️ Coverage</SelectItem>}
                 {!isClientUser && <SelectItem value="activity">📊 Activity</SelectItem>}
-                {!isClientUser && <SelectItem value="history">📜 History</SelectItem>}
-                {!isClientUser && <SelectItem value="advanced">⚙️ Advanced</SelectItem>}
                 {item.needs_repair && <SelectItem value="repair">🔧 Repair</SelectItem>}
               </SelectContent>
             </Select>
@@ -1004,8 +1002,6 @@ export default function ItemDetail() {
               </TabsTrigger>
               {!isClientUser && <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>}
               {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
-              {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
-              {!isClientUser && <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>}
               {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
             </ScrollableTabsList>
           </div>
