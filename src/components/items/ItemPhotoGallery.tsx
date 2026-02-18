@@ -306,64 +306,17 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
       >
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <span>📸</span>
-                Photos ({allPhotos.length})
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {taskPhotos.length > 0
-                  ? `Item photos and ${taskPhotos.length} from tasks`
-                  : 'Photos for this item'}
-                {needsAttentionPhotos.length > 0 && ` · ${needsAttentionPhotos.length} need attention`}
-              </p>
-            </div>
-
-            {!isClientUser && (
-              <div className="flex gap-2">
-                <Button
-                  variant={filterNeedsAttention ? 'secondary' : 'outline'}
-                  size="default"
-                  onClick={() => setFilterNeedsAttention(!filterNeedsAttention)}
-                >
-                  <MaterialIcon name="filter_list" size="sm" className="mr-2" />
-                  Filter
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="default"
-                  onClick={() => setScannerOpen(true)}
-                  disabled={uploading}
-                >
-                  <MaterialIcon name="photo_camera" size="sm" className="mr-2" />
-                  Take Photo
-                </Button>
-
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <Button
-                  size="default"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                >
-                  {uploading ? (
-                    <MaterialIcon name="progress_activity" size="sm" className="animate-spin mr-2" />
-                  ) : (
-                    <MaterialIcon name="upload" size="sm" className="mr-2" />
-                  )}
-                  Upload
-                </Button>
-              </div>
-            )}
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <span>📸</span>
+              Photos ({allPhotos.length})
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {taskPhotos.length > 0
+                ? `Item photos and ${taskPhotos.length} from tasks`
+                : 'Photos for this item'}
+              {needsAttentionPhotos.length > 0 && ` · ${needsAttentionPhotos.length} need attention`}
+            </p>
           </div>
         </CardHeader>
         <CardContent className="pb-6">
@@ -408,6 +361,49 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                 {renderPhotoGrid(getFilteredPhotos('repair'))}
               </TabsContent>
             </Tabs>
+          )}
+
+          {/* Action buttons - centered at bottom */}
+          {!isClientUser && (
+            <div className="flex justify-center gap-3 mt-6 pt-4 border-t">
+              <Button
+                variant={filterNeedsAttention ? 'secondary' : 'outline'}
+                onClick={() => setFilterNeedsAttention(!filterNeedsAttention)}
+              >
+                <MaterialIcon name="filter_list" size="sm" className="mr-2" />
+                Filter
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => setScannerOpen(true)}
+                disabled={uploading}
+              >
+                <MaterialIcon name="photo_camera" size="sm" className="mr-2" />
+                Take Photo
+              </Button>
+
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <MaterialIcon name="progress_activity" size="sm" className="animate-spin mr-2" />
+                ) : (
+                  <MaterialIcon name="upload" size="sm" className="mr-2" />
+                )}
+                Upload
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
