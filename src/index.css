@@ -257,19 +257,33 @@
   }
 }
 
-/* Global interactive icon hover animation */
-button svg,
-a svg,
-[role="button"] svg,
-.cursor-pointer svg {
-  transition: transform 0.2s ease-out;
+/* Global interactive icon hover animation
+   Keep this subtle (more Apple-like) and only on true-hover devices. */
+@media (hover: hover) and (pointer: fine) {
+  button svg,
+  a svg,
+  [role="button"] svg,
+  .cursor-pointer svg {
+    transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+  }
+
+  button:hover svg,
+  a:hover svg,
+  [role="button"]:hover svg,
+  .cursor-pointer:hover svg {
+    transform: scale(1.06);
+    opacity: 0.92;
+  }
 }
 
-button:hover svg,
-a:hover svg,
-[role="button"]:hover svg,
-.cursor-pointer:hover svg {
-  transform: scale(1.15);
+@media (prefers-reduced-motion: reduce) {
+  button svg,
+  a svg,
+  [role="button"] svg,
+  .cursor-pointer svg {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 /* Prevent double-scaling for icons with explicit animations */
