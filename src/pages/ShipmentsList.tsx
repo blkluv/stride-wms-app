@@ -450,9 +450,9 @@ export default function ShipmentsList() {
 
         {/* Filters — outbound tab uses its own component */}
         {activeTab !== 'outbound' && (
-          <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center">
             {/* Search is always available (received/released are search + default sort only) */}
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative col-span-2 sm:flex-1 sm:min-w-[260px]">
               <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search shipments..."
@@ -465,39 +465,45 @@ export default function ShipmentsList() {
             {/* Incoming tab keeps additional filters; received/released are simplified */}
             {activeTab === 'incoming' && (
               <>
-                <Select value={accountFilter} onValueChange={setAccountFilter}>
-                  <SelectTrigger className="w-full sm:w-44">
-                    <SelectValue placeholder="All accounts" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All accounts</SelectItem>
-                    {uniqueAccounts.map(account => (
-                      <SelectItem key={account} value={account}>{account}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={carrierFilter} onValueChange={setCarrierFilter}>
-                  <SelectTrigger className="w-full sm:w-36">
-                    <SelectValue placeholder="All carriers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All carriers</SelectItem>
-                    {uniqueCarriers.map(carrier => (
-                      <SelectItem key={carrier} value={carrier}>{carrier}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-36">
-                    <SelectValue placeholder="All statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
-                    {uniqueStatuses.map(status => (
-                      <SelectItem key={status} value={status}>{status}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="col-span-1 sm:col-span-auto">
+                  <Select value={accountFilter} onValueChange={setAccountFilter}>
+                    <SelectTrigger className="w-full sm:w-44">
+                      <SelectValue placeholder="All accounts" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All accounts</SelectItem>
+                      {uniqueAccounts.map(account => (
+                        <SelectItem key={account} value={account}>{account}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-1 sm:col-span-auto">
+                  <Select value={carrierFilter} onValueChange={setCarrierFilter}>
+                    <SelectTrigger className="w-full sm:w-36">
+                      <SelectValue placeholder="All carriers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All carriers</SelectItem>
+                      {uniqueCarriers.map(carrier => (
+                        <SelectItem key={carrier} value={carrier}>{carrier}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2 sm:col-span-auto">
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-36">
+                      <SelectValue placeholder="All statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      {uniqueStatuses.map(status => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </>
             )}
           </div>
