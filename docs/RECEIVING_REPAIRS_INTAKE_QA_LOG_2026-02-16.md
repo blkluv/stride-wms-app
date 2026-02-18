@@ -284,3 +284,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 85. Q: Tapping the "Received Today" card (not expanding): where should it go?
     A: Go to the Dock Intakes list page showing all intakes (not just today's received).
 
+86. Q: Which route/page is the Dock Intakes list page?
+    A: Incoming Manager (`/incoming/manager`) (option B).
+
