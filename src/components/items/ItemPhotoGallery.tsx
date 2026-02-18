@@ -305,49 +305,42 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
         hint={!isClientUser ? 'Drag and drop photos here, or use the buttons above' : undefined}
       >
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <MaterialIcon name="photo_camera" size="md" />
-              Photos ({allPhotos.length})
-              {taskPhotos.length > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {taskPhotos.length} from tasks
-                </Badge>
-              )}
-              {needsAttentionPhotos.length > 0 && (
-                <Badge variant="destructive">
-                  {needsAttentionPhotos.length} need attention
-                </Badge>
-              )}
-            </CardTitle>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <span>📸</span>
+                Photos ({allPhotos.length})
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                {taskPhotos.length > 0
+                  ? `Item photos and ${taskPhotos.length} from tasks`
+                  : 'Photos for this item'}
+                {needsAttentionPhotos.length > 0 && ` · ${needsAttentionPhotos.length} need attention`}
+              </p>
+            </div>
 
             {!isClientUser && (
-              <div className="flex flex-wrap gap-2">
-                {/* Filter toggle */}
+              <div className="flex gap-2">
                 <Button
                   variant={filterNeedsAttention ? 'secondary' : 'outline'}
-                  size="sm"
+                  size="default"
                   onClick={() => setFilterNeedsAttention(!filterNeedsAttention)}
-                  className="text-xs sm:text-sm"
                 >
-                  <MaterialIcon name="filter_list" size="sm" className="sm:mr-1" />
-                  <span className="hidden sm:inline">Needs Attention</span>
+                  <MaterialIcon name="filter_list" size="sm" className="mr-2" />
+                  Filter
                 </Button>
 
-                {/* Camera button - opens PhotoScanner */}
                 <Button
-                  size="sm"
                   variant="outline"
+                  size="default"
                   onClick={() => setScannerOpen(true)}
                   disabled={uploading}
-                  className="text-xs sm:text-sm"
                 >
-                  <MaterialIcon name="photo_camera" size="sm" className="sm:mr-1" />
-                  <span className="hidden sm:inline">Camera</span>
+                  <MaterialIcon name="photo_camera" size="sm" className="mr-2" />
+                  Take Photo
                 </Button>
 
-                {/* Upload button */}
                 <Input
                   ref={fileInputRef}
                   type="file"
@@ -357,17 +350,17 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                   className="hidden"
                 />
                 <Button
-                  size="sm"
+                  size="default"
+                  variant="outline"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="text-xs sm:text-sm"
                 >
                   {uploading ? (
-                    <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                    <MaterialIcon name="progress_activity" size="sm" className="animate-spin mr-2" />
                   ) : (
-                    <MaterialIcon name="upload" size="sm" className="sm:mr-1" />
+                    <MaterialIcon name="upload" size="sm" className="mr-2" />
                   )}
-                  <span className="hidden sm:inline">Upload</span>
+                  Upload
                 </Button>
               </div>
             )}
@@ -377,10 +370,10 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
           {allPhotos.length === 0 ? (
             <div className="text-center py-8">
               <MaterialIcon name="photo_camera" className="mx-auto text-[48px] text-muted-foreground" />
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-2 text-muted-foreground">
                 {isClientUser
                   ? 'No photos available for this item.'
-                  : 'No photos yet. Take a photo or upload one.'}
+                  : 'No photos yet'}
               </p>
             </div>
           ) : (
