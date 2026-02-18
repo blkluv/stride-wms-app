@@ -8,6 +8,7 @@ import {
   type ItemColumnKey,
   type ItemDisplaySettingsV1,
 } from '@/lib/items/itemDisplaySettings';
+import { arraysEqual } from '@/lib/utils';
 
 const ITEM_DISPLAY_SETTINGS_USER_OVERRIDES_KEY = 'item_display_settings_overrides_v1';
 
@@ -34,14 +35,6 @@ function normalizeOverrides(raw: unknown): ItemDisplaySettingsUserOverridesV1 {
   }
 
   return { version: 1, views };
-}
-
-function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
 }
 
 function applyOverrides(

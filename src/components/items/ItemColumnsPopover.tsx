@@ -14,6 +14,7 @@ import {
   getColumnLabel,
   getViewById,
 } from '@/lib/items/itemDisplaySettings';
+import { arraysEqual } from '@/lib/utils';
 import {
   DndContext,
   closestCenter,
@@ -31,14 +32,6 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
 
 function SortableColumnRow({
   columnKey,
