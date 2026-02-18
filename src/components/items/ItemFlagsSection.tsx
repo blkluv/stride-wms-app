@@ -476,25 +476,6 @@ export function ItemFlagsSection({
     );
   }
 
-  // Empty state
-  if (flagServiceEvents.length === 0 && BUILTIN_ITEM_EXCEPTION_FLAGS.length === 0) {
-    return (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <MaterialIcon name="flag" size="md" />
-            Item Flags
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            No flags configured. Add services with "Add Flag" enabled in Settings → Pricing.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Check if any damage-related flag is enabled
   const allEnabledFlags = new Set([...enabledBillingFlags, ...enabledIndicatorFlags]);
   const hasDamage = Array.from(allEnabledFlags).some(code =>
