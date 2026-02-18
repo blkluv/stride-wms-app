@@ -45,7 +45,7 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   OTHER: { label: 'Other', icon: 'more_horiz', requiresNote: true },
 };
 
-const MATCHING_DISCREPANCY_CODES: ReadonlySet<ShipmentExceptionCode> = new Set([
+export const MATCHING_DISCREPANCY_CODES: ReadonlySet<ShipmentExceptionCode> = new Set([
   'PIECES_MISMATCH',
   'VENDOR_MISMATCH',
   'DESCRIPTION_MISMATCH',

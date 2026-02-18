@@ -40,7 +40,7 @@ import { useLocations } from '@/hooks/useLocations';
 import { useUnidentifiedAccount } from '@/hooks/useUnidentifiedAccount';
 import { AutosaveIndicator } from '@/components/receiving/AutosaveIndicator';
 import type { AutosaveStatus } from '@/hooks/useReceivingAutosave';
-import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
+import { MATCHING_DISCREPANCY_CODES, SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hooks/useShipmentExceptions';
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
@@ -567,16 +567,6 @@ export function Stage2DetailedReceiving({
     // Enforce exception notes (all open exception chips should have a client-visible exception note).
     // Exclude auto-matching discrepancy codes (manifest vs expected mismatches) per intake Q&A.
     if (profile?.tenant_id) {
-      const MATCHING_DISCREPANCY_CODES = new Set<ShipmentExceptionCode>([
-        'PIECES_MISMATCH',
-        'VENDOR_MISMATCH',
-        'DESCRIPTION_MISMATCH',
-        'SIDEMARK_MISMATCH',
-        'SHIPPER_MISMATCH',
-        'TRACKING_MISMATCH',
-        'REFERENCE_MISMATCH',
-      ]);
-
       try {
         const { data: openExRows, error: openExErr } = await (supabase as any)
           .from('shipment_exceptions')
