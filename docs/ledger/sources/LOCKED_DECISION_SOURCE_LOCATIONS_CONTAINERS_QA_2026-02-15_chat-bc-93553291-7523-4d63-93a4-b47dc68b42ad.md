@@ -176,6 +176,108 @@
 - Explicit answer/decision:
   - Use Option B: do not allow shipping a partial quantity directly from grouped parent; require split & relabel first so shipped units have their own labels.
 
+### QA-2026-02-15-027
+- Question/context: Outbound shipping when grouped parent qty is shipped in full.
+- Explicit answer/decision:
+  - Allow shipping the entire grouped parent quantity as-is (no split required).
+  - Scanning the grouped parent code once may fulfill/ship all N units (with a clear confirmation that qty N will ship).
+
+### QA-2026-02-15-028
+- Question/context: Outbound shipping when client/internal requests a partial quantity from a grouped parent (ship_qty < grouped_qty).
+- Explicit answer/decision:
+  - Partial outbound from grouped parent requires a split workflow (no direct partial decrement from the grouped parent without split).
+  - Split-required workflow can be triggered by both client portal users and internal users.
+  - Even when internal users trigger it, follow the same warehouse split-required task workflow (no bypass / no internal toggle).
+  - Requested split quantity must be valid; if invalid (e.g., requests all units), block and require correction.
+  - Allow split when grouped qty is 2 (split qty=1 is valid).
+
+### QA-2026-02-15-029
+- Question/context: When and how split-required workflow is created for client requests.
+- Explicit answer/decision:
+  - Client can save/proceed creating the outbound/task even when split is required.
+  - Create the split-required alert immediately when the client saves/creates the job (not only when staff starts it).
+  - When staff attempts to start the job, show a blocking warning that split must be completed before starting.
+  - Client can see a status indicating the job is waiting on warehouse split completion.
+
+### QA-2026-02-15-030
+- Question/context: Trackable work item for split-required and assignment defaults.
+- Explicit answer/decision:
+  - Create a trackable work item for split-required as a Task.
+  - Auto-assign to Warehouse and default to high priority (SLA) because it blocks the job.
+  - Task should link/reference the originating job for click-through.
+  - Completing the split-required task should automatically unblock the originating job.
+  - If job is later canceled/changed, the split stands; no automatic reversal.
+
+### QA-2026-02-15-031
+- Question/context: What warehouse staff actually does for partial outbound from grouped parent (split model).
+- Explicit answer/decision:
+  - Use a "split-off-leftover" model:
+    - The parent item code remains the job item code.
+    - Warehouse splits off the leftover quantity into new child labels.
+    - Parent quantity is set to the ship quantity (explicitly confirm this in the UI).
+  - The split-required task requested split quantity is the leftover amount (grouped_qty - ship_qty).
+  - Prompt warehouse/tenant users to verify correct item assignment and review any notes after split.
+
+### QA-2026-02-15-032
+- Question/context: Outbound scanning validation for split-off-leftover model.
+- Explicit answer/decision:
+  - Only item codes assigned to the outbound order can be scanned successfully.
+  - In this model, the outbound is fulfilled by scanning the parent item code.
+  - Any child codes not on the outbound must error "not this order."
+
+### QA-2026-02-15-033
+- Question/context: Default location/container handling for leftover child items created by split-off-leftover.
+- Explicit answer/decision:
+  - Default leftover child items' location to tenant default receiving location (not inherited from parent).
+  - Allow warehouse to override the leftover child target location in the split flow (no location scan required).
+  - Do not automatically place leftover child items into the parent's container (if any).
+  - Still allow split-required task even if the parent location changed since request; show current location and proceed.
+
+### QA-2026-02-15-034
+- Question/context: Atomicity and child-code generation behavior for split-required.
+- Explicit answer/decision:
+  - Split operation must be atomic (single transaction/RPC).
+  - Show a preview list of the exact new child codes before committing.
+  - Do not reuse child suffix numbers (monotonic sequence); item codes are sequential and never reused.
+
+### QA-2026-02-15-035
+- Question/context: Label printing, verification, and task completion for split-required.
+- Explicit answer/decision:
+  - Labels can always be reprinted multiple times; allow reprint without re-splitting.
+  - Do not require audit logging for label reprints.
+  - To complete split-required task, require scanning each newly created child label after attaching.
+  - Enforce scanning exactly N child labels (no partial scans / no manual override).
+  - Task must be completed in one session (no partial-progress resume).
+  - Child-label scans alone are sufficient for completion (parent scan is optional).
+
+### QA-2026-02-15-036
+- Question/context: Client portal prompt/notes behavior for split-required.
+- Explicit answer/decision:
+  - Client UI does not need extra confirmation beyond setting ship quantity, but must show a prompt/notice that split is required.
+  - Prompt must instruct client: if they need specific items/units from the carton, add details in notes.
+  - Customer notes must carry into both the client-created job and the auto-created split-required task.
+  - On split completion, notify client using an alert trigger and branded HTML email template; org can enable/disable.
+
+### QA-2026-02-15-037
+- Question/context: Alerts/templates for automated split-required vs manual-review.
+- Explicit answer/decision:
+  - Use separate alert triggers for:
+    - Split-required created (notify office/warehouse).
+    - Split completed (notify client).
+  - Manual review alerts are a separate type from automated split-required.
+  - Use existing branded HTML email template styles and tokenized text/in-app templates (example tokens like `[[task_type]]`, `[[item_code]]`, `[[account_name]]`).
+  - For split-required created alerts, include parent item code, current location, requested split qty, and outbound/task reference.
+
+### QA-2026-02-15-038
+- Question/context: Org toggle behavior when client partial-from-grouped requests are disabled.
+- Explicit answer/decision:
+  - Provide an org preference toggle: allow client portal partial-qty requests from grouped parent items (creates split-required task).
+  - If disabled, allow client to submit but mark job as "Pending review" (manual review flow).
+  - Manual review flow uses alerts only (no Task).
+  - Staff can start the job; starting transitions status out of Pending review.
+  - Show a magnifying-glass (review) icon by the job title indicating needs review and add a highlighted review note explaining what needs review (example: "client requested 2 of 4 from ITM-...; please review and split accordingly").
+  - Client-facing pop/notice should explain the `tenant_name` team will review and ask for detailed notes to help process the request.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.
