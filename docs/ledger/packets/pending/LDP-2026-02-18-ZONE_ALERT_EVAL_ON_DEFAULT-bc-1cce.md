@@ -20,7 +20,7 @@
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ZONE_ALERT_EVAL_ON_DEFAULT_2026-02-18_chat-bc-1cce.md#qa-alert-2026-02-18-001`
 - Supersedes: -
-- Superseded by: -
+- Superseded by: `DL-2026-02-18-010`
 
 #### Decision
 When an admin sets a map as the warehouse default, zone alert evaluation should run immediately so alerts reflect the newly-active map.
