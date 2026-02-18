@@ -768,12 +768,14 @@ export function Stage2DetailedReceiving({
       // Resolve default receiving location
       let receivingLocationId: string | null = null;
       try {
-        const { data: locResult } = await supabase.rpc('rpc_resolve_receiving_location', {
-          p_warehouse_id: shipment.warehouse_id || '',
-          p_account_id: effectiveShipmentAccountId,
-        });
-        const loc = locResult as any;
-        if (loc?.ok) receivingLocationId = loc.location_id;
+        if (shipment.warehouse_id) {
+          const { data: locResult } = await supabase.rpc('rpc_resolve_receiving_location', {
+            p_warehouse_id: shipment.warehouse_id,
+            p_account_id: effectiveShipmentAccountId || undefined,
+          });
+          const loc = locResult as any;
+          if (loc?.ok) receivingLocationId = loc.location_id;
+        }
       } catch {
         console.warn('[Stage2] could not resolve receiving location');
       }
