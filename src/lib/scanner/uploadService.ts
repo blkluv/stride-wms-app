@@ -57,6 +57,8 @@ function parseContext(context: DocumentContext): {
   switch (context.type) {
     case 'shipment':
       return { type: 'shipment', id: context.shipmentId };
+    case 'quote':
+      return { type: 'quote', id: context.quoteId };
     case 'employee':
       return { type: 'employee', id: context.employeeId };
     case 'delivery':
@@ -164,6 +166,9 @@ export async function uploadDocument(
     switch (context.type) {
       case 'shipment':
         label = context.vendor ? `Shipment - ${context.vendor}` : 'Shipment Document';
+        break;
+      case 'quote':
+        label = context.quoteNumber ? `Quote ${context.quoteNumber}` : 'Quote Document';
         break;
       case 'employee':
         label = context.employeeName ? `${context.employeeName} Document` : 'Employee Document';

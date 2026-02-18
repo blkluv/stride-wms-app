@@ -10,6 +10,7 @@ interface BigCounterProps {
   step?: number;
   label?: string;
   id?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -24,6 +25,7 @@ export function BigCounter({
   step = 1,
   label,
   id,
+  disabled = false,
 }: BigCounterProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(value));
@@ -45,15 +47,18 @@ export function BigCounter({
   }, [editing]);
 
   const decrement = () => {
+    if (disabled) return;
     const next = Math.max(min, value - step);
     onChange(next);
   };
 
   const increment = () => {
+    if (disabled) return;
     onChange(value + step);
   };
 
   const handleEditStart = () => {
+    if (disabled) return;
     setEditValue(String(value));
     setEditing(true);
   };
@@ -86,7 +91,7 @@ export function BigCounter({
           size="icon"
           className="min-h-12 min-w-12 rounded-full text-lg"
           onClick={decrement}
-          disabled={value <= min}
+          disabled={disabled || value <= min}
           aria-label="Decrease"
         >
           <MaterialIcon name="remove" size="md" />
@@ -104,13 +109,15 @@ export function BigCounter({
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={handleKeyDown}
+            disabled={disabled}
             className="w-24 text-center text-3xl font-bold h-16 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         ) : (
           <button
             type="button"
             onClick={handleEditStart}
-            className="min-w-20 text-center text-5xl font-bold tabular-nums cursor-pointer hover:text-primary transition-colors select-none"
+            disabled={disabled}
+            className="min-w-20 text-center text-5xl font-bold tabular-nums cursor-pointer hover:text-primary transition-colors select-none disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Tap to edit value"
           >
             {value}
@@ -123,6 +130,7 @@ export function BigCounter({
           size="icon"
           className="min-h-12 min-w-12 rounded-full text-lg"
           onClick={increment}
+          disabled={disabled}
           aria-label="Increase"
         >
           <MaterialIcon name="add" size="md" />

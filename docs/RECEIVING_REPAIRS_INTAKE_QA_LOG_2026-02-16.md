@@ -269,3 +269,30 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 80. Q: "Shipped Today" should use which timestamp to determine "today"?
     A: Use `completed_at` (option A). Treat completion timestamp as the shipped timestamp for dashboard purposes.
 
+81. Q: "Shipped Today" should include which outbound statuses?
+    A: Include outbound shipments in statuses released + completed + shipped (option A), using `completed_at` window.
+
+82. Q: "Shipped Today" expanded list row click destination?
+    A: Navigate to the outbound shipment details page for the order clicked.
+
+83. Q: Which route is the "outbound shipment details page" for shipped/outbound shipments?
+    A: Use the shipment details page for that shipment (`/shipments/:id`). (User-facing: "go to the shipment details page for the OUT# clicked"; route specifics not important.)
+
+84. Q: Tapping the "Shipped Today" card (not expanding): what should /shipments/released show?
+    A: Option A — all outbound shipments in released/completed/shipped (not limited to today), default sort newest completed first, search + sort only.
+
+85. Q: Tapping the "Received Today" card (not expanding): where should it go?
+    A: Go to the Dock Intakes list page showing all intakes (not just today's received).
+
+86. Q: Which route/page is the Dock Intakes list page?
+    A: Incoming Manager (`/incoming/manager`) (option B).
+
+87. Q: Tapping the "Intakes In Progress" card (not expanding): where should it go?
+    A: Incoming Manager (`/incoming/manager`) on the intakes view (option A).
+
+88. Q: Tapping the "Expected Today" card (not expanding): where should it go?
+    A: Incoming Manager (`/incoming/manager`) on the expected view (option A).
+
+89. Q: Tapping the "Shipped Today" card (not expanding): where should it go?
+    A: `/shipments/released` (option A).
+

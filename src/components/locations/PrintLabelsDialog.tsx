@@ -38,6 +38,7 @@ export function PrintLabelsDialog({
     return locations.map((location) => {
       const warehouse = warehouseMap.get(location.warehouse_id);
       return {
+        id: location.id,
         code: location.code,
         name: location.name || '',
         type: location.type,
