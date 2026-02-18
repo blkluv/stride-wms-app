@@ -482,17 +482,19 @@ export default function Tasks() {
             </SelectContent>
           </Select>
 
-          <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Warehouse" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Warehouses</SelectItem>
-              {warehouses.map(wh => (
-                <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="col-span-2 sm:col-span-auto">
+            <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Warehouses</SelectItem>
+                {warehouses.map(wh => (
+                  <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <Button variant="ghost" size="icon" className="col-span-2 sm:col-span-auto justify-self-start" onClick={refetch} disabled={isRefetching}>
             <span className={isRefetching ? 'animate-spin inline-block' : ''}>🔄</span>
