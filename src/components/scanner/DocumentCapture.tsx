@@ -223,7 +223,12 @@ export function DocumentCapture({
   };
 
   // "Real scan" is mobile/tablet-focused; desktop uses upload.
-  const effectiveScanEnabled = scanEnabled && isMobile;
+  const canWebScan =
+    isMobile ||
+    (typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches);
+  const effectiveScanEnabled = scanEnabled && canWebScan;
   const canAddMore = canEdit && documents.length < maxDocuments;
 
   return (
