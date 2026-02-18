@@ -486,6 +486,8 @@ export default function ScanHub() {
   const lookupItem = async (input: string): Promise<ScannedItem | null> => {
     const payload = parseScanPayload(input);
     if (!payload) return null;
+    // Prevent location labels (JSON payloads) from being treated as items.
+    if (payload.type === 'location') return null;
 
     let query = supabase
       .from('v_items_with_location')
@@ -516,6 +518,8 @@ export default function ScanHub() {
   const lookupItemForService = async (input: string): Promise<ServiceScannedItem | null> => {
     const payload = parseScanPayload(input);
     if (!payload) return null;
+    // Prevent location labels (JSON payloads) from being treated as items.
+    if (payload.type === 'location') return null;
 
     // Query items table directly to get class (via class_id join), account_id, sidemark_id, account_name
     let query = supabase
