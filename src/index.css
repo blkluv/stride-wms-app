@@ -436,9 +436,9 @@ a:hover svg,
   filter: none;
 }
 
-.stoplight-sm { width: 10px; height: 10px; }
-.stoplight-md { width: 12px; height: 12px; }
-.stoplight-lg { width: 14px; height: 14px; }
+.stoplight-sm { width: 12px; height: 12px; }
+.stoplight-md { width: 14px; height: 14px; }
+.stoplight-lg { width: 16px; height: 16px; }
 
 .stoplight-close {
   background: linear-gradient(180deg, #FF6058 0%, #E7483B 100%);

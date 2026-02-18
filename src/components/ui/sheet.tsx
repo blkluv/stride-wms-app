@@ -58,7 +58,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
       <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), 'overflow-y-auto', className)} {...props}>
         {children}
         <SheetPrimitive.Close asChild>
-          <div className="absolute left-4 top-4 z-10">
+          <div className="absolute left-2 top-2 z-10">
             <StoplightControls onClose={() => {}} showMinimize={false} showMaximize={false} size="sm" />
           </div>
         </SheetPrimitive.Close>

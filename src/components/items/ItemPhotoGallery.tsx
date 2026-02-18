@@ -411,7 +411,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
 
       {/* Lightbox Dialog */}
       <Dialog open={!!lightboxPhoto} onOpenChange={() => setLightboxPhoto(null)}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden p-3 sm:p-4 gap-3 sm:gap-4">
           <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
               Photo
@@ -457,7 +457,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative flex flex-col min-h-0">
+            <div className="relative flex flex-col flex-1 min-h-0">
               {/* Task info banner for task photos */}
               {isTaskPhoto(lightboxPhoto) && lightboxPhoto.source_task_title && (
                 <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm flex items-center gap-2">
@@ -477,13 +477,16 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                 alt={lightboxPhoto.file_name}
                 className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
-              <div className="flex gap-2 mt-4 justify-end flex-wrap">
+              <div className="mt-3 flex w-full flex-wrap items-center justify-evenly gap-2 sm:mt-4 sm:justify-end">
                 <Button
                   variant="outline"
+                  aria-label="Download"
+                  title="Download"
+                  className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                   onClick={() => handleDownload(lightboxPhoto)}
                 >
-                  <MaterialIcon name="download" size="sm" className="mr-2" />
-                  Download
+                  <MaterialIcon name="download" size="sm" className="sm:mr-2" />
+                  <span className="hidden sm:inline">Download</span>
                 </Button>
                 {/* Only show editing actions for non-task photos */}
                 {!isClientUser && !isTaskPhoto(lightboxPhoto) && (
@@ -491,49 +494,61 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                     {!lightboxPhoto.is_primary && (
                       <Button
                         variant="outline"
+                        aria-label="Set as Primary"
+                        title="Set as Primary"
+                        className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                         onClick={() => {
                           handleSetPrimary(lightboxPhoto.id);
                           setLightboxPhoto(null);
                         }}
                       >
-                        <MaterialIcon name="star" size="sm" className="mr-2" />
-                        Set as Primary
+                        <MaterialIcon name="star" size="sm" className="sm:mr-2" />
+                        <span className="hidden sm:inline">Set as Primary</span>
                       </Button>
                     )}
                     {/* Add flag buttons only shown when flags are NOT set */}
                     {!lightboxPhoto.needs_attention && (
                       <Button
                         variant="outline"
+                        aria-label="Flag: attention"
+                        title="Flag: attention"
+                        className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                         onClick={() => {
                           handleToggleAttention(lightboxPhoto.id, false);
                           setLightboxPhoto(null);
                         }}
                       >
-                        <MaterialIcon name="warning" size="sm" className="mr-2" />
-                        attention
+                        <MaterialIcon name="warning" size="sm" className="sm:mr-2" />
+                        <span className="hidden sm:inline">attention</span>
                       </Button>
                     )}
                     {!lightboxPhoto.is_repair && (
                       <Button
                         variant="outline"
+                        aria-label="Tag: repair"
+                        title="Tag: repair"
+                        className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                         onClick={() => {
                           handleToggleRepair(lightboxPhoto.id, false);
                           setLightboxPhoto(null);
                         }}
                       >
-                        <MaterialIcon name="build" size="sm" className="mr-2" />
-                        repair
+                        <MaterialIcon name="build" size="sm" className="sm:mr-2" />
+                        <span className="hidden sm:inline">repair</span>
                       </Button>
                     )}
                     <Button
                       variant="destructive"
+                      aria-label="Delete"
+                      title="Delete"
+                      className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                       onClick={() => {
                         handleDelete(lightboxPhoto.id);
                         setLightboxPhoto(null);
                       }}
                     >
-                      <MaterialIcon name="close" size="sm" className="mr-2" />
-                      Delete
+                      <MaterialIcon name="close" size="sm" className="sm:mr-2" />
+                      <span className="hidden sm:inline">Delete</span>
                     </Button>
                   </>
                 )}

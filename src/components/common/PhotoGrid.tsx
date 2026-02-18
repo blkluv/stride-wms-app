@@ -129,35 +129,41 @@ export function PhotoGrid({
       <Dialog open={!!lightboxUrl} onOpenChange={() => setLightboxUrl(null)}>
         <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden p-3 sm:p-4">
           {lightboxUrl && (
-            <div className="relative flex flex-col min-h-0">
+            <div className="relative flex flex-col flex-1 min-h-0">
               <img
                 src={lightboxUrl}
                 alt="Photo"
                 className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
-              <div className="flex gap-2 mt-3 justify-end">
+              <div className="mt-3 flex w-full flex-wrap items-center justify-evenly gap-2 sm:justify-end">
                 <Button
                   variant="outline"
                   size="sm"
+                  aria-label="Download"
+                  title="Download"
+                  className="touch-target h-11 w-11 px-0 sm:h-9 sm:w-auto sm:px-3"
                   onClick={() => {
                     const index = photos.indexOf(lightboxUrl);
                     handleDownload(lightboxUrl, index >= 0 ? index : 0);
                   }}
                 >
-                  <MaterialIcon name="download" size="sm" className="mr-1" />
-                  Download
+                  <MaterialIcon name="download" size="sm" className="sm:mr-1" />
+                  <span className="hidden sm:inline">Download</span>
                 </Button>
                 {!readonly && onPhotosChange && (
                   <Button
                     variant="destructive"
                     size="sm"
+                    aria-label="Delete"
+                    title="Delete"
+                    className="touch-target h-11 w-11 px-0 sm:h-9 sm:w-auto sm:px-3"
                     onClick={() => {
                       handleDelete(lightboxUrl);
                       setLightboxUrl(null);
                     }}
                   >
-                    <MaterialIcon name="close" size="sm" className="mr-1" />
-                    Delete
+                    <MaterialIcon name="close" size="sm" className="sm:mr-1" />
+                    <span className="hidden sm:inline">Delete</span>
                   </Button>
                 )}
               </div>

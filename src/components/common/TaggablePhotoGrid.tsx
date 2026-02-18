@@ -265,7 +265,7 @@ export function TaggablePhotoGrid({
 
       {/* Lightbox */}
       <Dialog open={!!lightboxPhoto} onOpenChange={() => setLightboxPhoto(null)}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden p-3 sm:p-4 gap-3 sm:gap-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               Photo
@@ -281,70 +281,91 @@ export function TaggablePhotoGrid({
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative flex flex-col min-h-0">
+            <div className="relative flex flex-col flex-1 min-h-0">
               <img
                 src={lightboxPhoto.url}
                 alt="Photo"
                 className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
-              <div className="flex gap-2 mt-4 justify-end flex-wrap">
+              <div className="mt-3 flex w-full flex-wrap items-center justify-evenly gap-2 sm:mt-4 sm:justify-end">
                 <Button
                   variant="outline"
+                  aria-label="Download"
+                  title="Download"
+                  className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                   onClick={() => {
                     const index = normalizedPhotos.findIndex(p => p.url === lightboxPhoto.url);
                     handleDownload(lightboxPhoto.url, index >= 0 ? index : 0);
                   }}
                 >
-                  <MaterialIcon name="download" size="sm" className="mr-2" />
-                  Download
+                  <MaterialIcon name="download" size="sm" className="sm:mr-2" />
+                  <span className="hidden sm:inline">Download</span>
                 </Button>
                 {enableTagging && !readonly && onPhotosChange && (
                   <>
                     {!lightboxPhoto.isPrimary && (
                       <Button
                         variant="outline"
+                        aria-label="Set as Primary"
+                        title="Set as Primary"
+                        className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                         onClick={() => {
                           handleSetPrimary(lightboxPhoto.url);
                           setLightboxPhoto(null);
                         }}
                       >
-                        <MaterialIcon name="star" size="sm" className="mr-2" />
-                        Set as Primary
+                        <MaterialIcon name="star" size="sm" className="sm:mr-2" />
+                        <span className="hidden sm:inline">Set as Primary</span>
                       </Button>
                     )}
                     <Button
                       variant={lightboxPhoto.needsAttention ? 'secondary' : 'outline'}
+                      aria-label={lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
+                      title={lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
+                      className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                       onClick={() => {
                         handleToggleAttention(lightboxPhoto.url);
                         setLightboxPhoto(null);
                       }}
                     >
-                      <MaterialIcon name="warning" size="sm" className="mr-2" />
-                      {lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
+                      <MaterialIcon name="warning" size="sm" className="sm:mr-2" />
+                      <span className="hidden sm:inline">
+                        {lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
+                      </span>
                     </Button>
                     <Button
                       variant={lightboxPhoto.isRepair ? 'secondary' : 'outline'}
-                      className={lightboxPhoto.isRepair ? 'bg-green-100 hover:bg-green-200 text-green-700' : ''}
+                      aria-label={lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
+                      title={lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
+                      className={cn(
+                        "touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4",
+                        lightboxPhoto.isRepair ? 'bg-green-100 hover:bg-green-200 text-green-700' : ''
+                      )}
                       onClick={() => {
                         handleToggleRepair(lightboxPhoto.url);
                         setLightboxPhoto(null);
                       }}
                     >
-                      <MaterialIcon name="build" size="sm" className="mr-2" />
-                      {lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
+                      <MaterialIcon name="build" size="sm" className="sm:mr-2" />
+                      <span className="hidden sm:inline">
+                        {lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
+                      </span>
                     </Button>
                   </>
                 )}
                 {!readonly && onPhotosChange && (
                   <Button
                     variant="destructive"
+                    aria-label="Delete"
+                    title="Delete"
+                    className="touch-target h-11 w-11 px-0 sm:h-10 sm:w-auto sm:px-4"
                     onClick={() => {
                       handleDelete(lightboxPhoto.url);
                       setLightboxPhoto(null);
                     }}
                   >
-                    <MaterialIcon name="close" size="sm" className="mr-2" />
-                    Delete
+                    <MaterialIcon name="close" size="sm" className="sm:mr-2" />
+                    <span className="hidden sm:inline">Delete</span>
                   </Button>
                 )}
               </div>
