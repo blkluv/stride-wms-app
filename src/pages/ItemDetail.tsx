@@ -856,6 +856,13 @@ export default function ItemDetail() {
                   sideOffset={8}
                   // Glass + constrained height so long menus remain usable on mobile
                   className="w-[min(20rem,calc(100vw-1.5rem))] bg-popover/90 backdrop-blur-xl"
+                  onPointerDownOutside={(e) => {
+                    // On mobile/tablet, keep the menu open so the user can scroll/peek at the page
+                    // behind it while deciding what to select.
+                    if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches) {
+                      e.preventDefault();
+                    }
+                  }}
                 >
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Create Task</div>
                   <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
