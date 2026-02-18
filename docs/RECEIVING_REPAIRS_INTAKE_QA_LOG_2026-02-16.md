@@ -278,3 +278,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 83. Q: Which route is the "outbound shipment details page" for shipped/outbound shipments?
     A: Use the shipment details page for that shipment (`/shipments/:id`). (User-facing: "go to the shipment details page for the OUT# clicked"; route specifics not important.)
 
+84. Q: Tapping the "Shipped Today" card (not expanding): what should /shipments/released show?
+    A: Option A — all outbound shipments in released/completed/shipped (not limited to today), default sort newest completed first, search + sort only.
+
