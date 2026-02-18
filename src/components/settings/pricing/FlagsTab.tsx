@@ -18,6 +18,7 @@ import { useChargeTypes, type ChargeType } from '@/hooks/useChargeTypes';
 import { ensureFlagAlertTrigger } from '@/lib/flagAlertTrigger';
 import { HelpTip } from '@/components/ui/help-tip';
 import { cn } from '@/lib/utils';
+import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 
 export function FlagsTab() {
   const { chargeTypes, loading, refetch, createChargeType, updateChargeType } = useChargeTypes();
@@ -37,6 +38,30 @@ export function FlagsTab() {
 
   return (
     <div className="space-y-4">
+      {/* Built-in flags (non-removable) */}
+      <div className="rounded-lg border bg-muted/20 p-4">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <MaterialIcon name="verified" size="sm" className="text-muted-foreground" />
+          Built-in item exception flags (non-removable)
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          These flags are part of Stride and always available on Item Details and Receiving.
+          Pricing flags you add below are tenant-configurable and can be billed/alerted.
+        </p>
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {BUILTIN_ITEM_EXCEPTION_FLAGS.map((f) => (
+            <div
+              key={f.code}
+              className="flex items-center gap-2 px-2 py-1 rounded-md border bg-background/60 text-xs"
+              title={f.description}
+            >
+              <MaterialIcon name={f.icon || 'flag'} size="sm" className="text-muted-foreground" />
+              <span className="truncate">{f.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
