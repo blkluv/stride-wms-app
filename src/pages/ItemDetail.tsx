@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
 import { useAccountRoomSuggestions } from '@/hooks/useAccountRoomSuggestions';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, ScrollableTabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -39,13 +39,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { RepairQuoteSection } from '@/components/items/RepairQuoteSection';
 import { ItemPhotoGallery } from '@/components/items/ItemPhotoGallery';
-import { ItemHistoryTab } from '@/components/items/ItemHistoryTab';
 import { ItemActivityFeed } from '@/components/items/ItemActivityFeed';
 import { ItemEditDialog } from '@/components/items/ItemEditDialog';
 import { useItemPhotos } from '@/hooks/useItemPhotos';
 import { useItemNotes } from '@/hooks/useItemNotes';
 import { useDocuments } from '@/hooks/useDocuments';
-import { ItemAdvancedTab } from '@/components/items/ItemAdvancedTab';
 import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { AddBillingChargeDialog } from '@/components/items/AddBillingChargeDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
@@ -148,15 +146,6 @@ interface ItemTask {
   created_at: string;
 }
 
-interface ShipmentLink {
-  id: string;
-  shipment_number: string;
-  shipment_type: string;
-  status: string;
-  created_at: string;
-  received_at?: string | null;
-}
-
 // Resolves non-UUID item_code params to UUID and redirects
 function ItemCodeResolver({ itemCode }: { itemCode: string }) {
   const navigate = useNavigate();
@@ -231,13 +220,12 @@ export default function ItemDetail() {
 
   // Tab state - initialize from URL param if provided
   const initialTab = searchParams.get('tab') || 'details';
-  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'history', 'advanced', 'repair'];
+  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'repair'];
   const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : 'details');
 
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [tasks, setTasks] = useState<ItemTask[]>([]);
-  const [shipments, setShipments] = useState<ShipmentLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountSettings, setAccountSettings] = useState<{
     default_item_notes: string | null;
@@ -420,7 +408,6 @@ export default function ItemDetail() {
     fetchItem();
     fetchMovements();
     fetchTasks();
-    fetchShipments();
     fetchIndicatorFlags();
   }, [id]);
 
@@ -567,37 +554,6 @@ export default function ItemDetail() {
       setTasks(data || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
-    }
-  };
-
-  const fetchShipments = async () => {
-    try {
-      // Get shipments through shipment_items
-      const { data: shipmentItems } = await (supabase.from('shipment_items') as any)
-        .select(`
-          shipment_id,
-          shipments:shipment_id(id, shipment_number, shipment_type, status, created_at)
-        `)
-        .eq('item_id', id);
-
-      if (!shipmentItems) {
-        setShipments([]);
-        return;
-      }
-
-      const uniqueShipments = shipmentItems
-        .map((si: any) => si.shipments)
-        .filter((s: any) => s)
-        .reduce((acc: ShipmentLink[], s: any) => {
-          if (!acc.find(existing => existing.id === s.id)) {
-            acc.push(s);
-          }
-          return acc;
-        }, []);
-
-      setShipments(uniqueShipments);
-    } catch (error) {
-      console.error('Error fetching shipments:', error);
     }
   };
 
@@ -867,9 +823,10 @@ export default function ItemDetail() {
                   <Badge
                     key={flag.code}
                     variant="outline"
-                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-semibold"
+                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-2.5 py-0.5"
                   >
-                    {'\u26A0\uFE0F'} {flag.name}
+                    <MaterialIcon name="warning" className="text-[12px] mr-1" />
+                    {flag.name}
                   </Badge>
                 ))}
               </div>
@@ -983,7 +940,7 @@ export default function ItemDetail() {
         {/* Status Badges Row - Removed per UI update */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList>
+          <ScrollableTabsList activeValue={activeTab}>
             <TabsTrigger value="details">📋 Details</TabsTrigger>
             <TabsTrigger value="photos" className="relative">
               📷 Photos
@@ -1013,12 +970,8 @@ export default function ItemDetail() {
               <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>
             )}
             {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
-            {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
-            {!isClientUser && (
-              <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>
-            )}
             {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
-          </TabsList>
+          </ScrollableTabsList>
 
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Account Default Notes - Full width above details, only show if highlight enabled AND notes not blank */}
@@ -1477,18 +1430,6 @@ export default function ItemDetail() {
             </TabsContent>
           )}
 
-          {!isClientUser && (
-            <TabsContent value="history" className="mt-6">
-              <ItemHistoryTab itemId={item.id} />
-            </TabsContent>
-          )}
-
-          {!isClientUser && (
-            <TabsContent value="advanced" className="mt-6">
-              <ItemAdvancedTab itemId={item.id} />
-            </TabsContent>
-          )}
-
           {item.needs_repair && (
             <TabsContent value="repair" className="mt-6">
               <RepairQuoteSection itemId={item.id} canApprove={!isClientUser} />
@@ -1587,7 +1528,6 @@ export default function ItemDetail() {
         itemCode={item?.item_code || ''}
         onSuccess={() => {
           setLinkShipmentDialogOpen(false);
-          fetchShipments();
         }}
       />
 

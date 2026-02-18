@@ -12,6 +12,7 @@ import { FormField } from '@/components/ui/form-field';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { ExpectedItemCard, ExpectedItemData, ExpectedItemErrors } from '@/components/shipments/ExpectedItemCard';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 interface Warehouse {
   id: string;
@@ -22,6 +23,8 @@ interface ClassOption {
   id: string;
   code: string;
   name: string;
+  min_cubic_feet: number | null;
+  max_cubic_feet: number | null;
 }
 
 interface FormErrors {
@@ -91,7 +94,7 @@ export default function ClientInboundCreate() {
             .is('deleted_at', null)
             .order('name'),
           (supabase.from('classes') as any)
-            .select('id, code, name')
+            .select('id, code, name, min_cubic_feet, max_cubic_feet')
             .eq('tenant_id', portalUser.tenant_id)
             .eq('is_active', true)
             .order('sort_order', { ascending: true }),
@@ -246,6 +249,9 @@ export default function ClientInboundCreate() {
       const validItems = expectedItems.filter(item => item.description.trim());
 
       for (const expectedItem of validItems) {
+        const cls = expectedItem.classId ? classes.find((c) => c.id === expectedItem.classId) : undefined;
+        const classCubicFeet = cls ? getClassCubicFeetSingleValue(cls) : null;
+
         const itemPayload = {
           tenant_id: portalUser.tenant_id,
           account_id: portalUser.account_id,
@@ -254,6 +260,8 @@ export default function ClientInboundCreate() {
           vendor: expectedItem.vendor || null,
           quantity: expectedItem.quantity,
           class_id: expectedItem.classId || null,
+          size: classCubicFeet,
+          size_unit: classCubicFeet !== null ? 'cu_ft' : null,
           sidemark: sidemark.trim() || null,
           receiving_shipment_id: shipment.id,
           status: 'pending_receipt',

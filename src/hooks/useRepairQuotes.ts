@@ -6,6 +6,7 @@ import { queueRepairQuoteReadyAlert, queueRepairQuoteSentToClientAlert } from '@
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { buildRepairQuoteReadyEmail } from '@/lib/email';
 import { getInvoiceStatusClasses } from '@/lib/statusColors';
+import { logItemActivity } from '@/lib/activity/logItemActivity';
 
 // ============================================================================
 // NEW WORKFLOW TYPES
@@ -166,6 +167,22 @@ export function useRepairQuotes(itemId: string | undefined) {
 
       if (error) throw error;
 
+      // Activity: Repair quote created
+      logItemActivity({
+        tenantId: profile.tenant_id,
+        itemId,
+        actorUserId: profile.id,
+        eventType: 'item_repair_quote_created',
+        eventLabel: `Repair quote created ($${quoteData.flat_rate.toFixed(2)})`,
+        details: {
+          repair_quote_id: data?.id,
+          flat_rate: quoteData.flat_rate,
+          approval_status: 'pending',
+          technician_user_id: quoteData.technician_user_id || null,
+          technician_name: quoteData.technician_name || null,
+        },
+      });
+
       // Queue repair quote ready alert
       // Fetch item code and account email for the alert
       const { data: itemData } = await supabase
@@ -222,6 +239,21 @@ export function useRepairQuotes(itemId: string | undefined) {
       // Create alert for repair quote approval
       const quote = quotes.find(q => q.id === quoteId);
       if (quote) {
+        if (profile?.tenant_id && itemId) {
+          logItemActivity({
+            tenantId: profile.tenant_id,
+            itemId,
+            actorUserId: profile.id,
+            eventType: 'item_repair_quote_approved',
+            eventLabel: `Repair quote approved ($${(quote.flat_rate ?? 0).toFixed(2)})`,
+            details: {
+              repair_quote_id: quoteId,
+              flat_rate: quote.flat_rate,
+              approval_status: 'approved',
+            },
+          });
+        }
+
         await (supabase
           .from('alert_queue') as any)
           .insert({
@@ -270,6 +302,22 @@ export function useRepairQuotes(itemId: string | undefined) {
         .eq('id', quoteId);
 
       if (error) throw error;
+
+      const quote = quotes.find(q => q.id === quoteId);
+      if (profile?.tenant_id && itemId) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId,
+          actorUserId: profile.id,
+          eventType: 'item_repair_quote_declined',
+          eventLabel: `Repair quote declined${quote?.flat_rate != null ? ` ($${quote.flat_rate.toFixed(2)})` : ''}`,
+          details: {
+            repair_quote_id: quoteId,
+            flat_rate: quote?.flat_rate ?? null,
+            approval_status: 'declined',
+          },
+        });
+      }
 
       toast({
         title: 'Quote Declined',

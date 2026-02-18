@@ -26,6 +26,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { type BuiltinItemColumnKey, type ItemColumnKey, parseCustomFieldColumnKey } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 
 interface ShipmentItem {
   id: string;
@@ -40,6 +41,8 @@ interface ShipmentItem {
   item?: {
     item_code: string;
     sku?: string | null;
+    size?: number | null;
+    size_unit?: string | null;
     description: string | null;
     vendor: string | null;
     sidemark: string | null;
@@ -464,7 +467,7 @@ export function ShipmentItemRow({
       ? visibleColumns
       : (['item_code', 'quantity', 'vendor', 'description', 'location', 'sidemark', 'room'] as ItemColumnKey[]);
 
-  const expandedColSpan = 2 + columns.length + 3; // checkbox + expand + view columns + (class, status, actions)
+  const expandedColSpan = 2 + columns.length + 4; // checkbox + expand + view columns + (class, status, actions, column settings)
 
   return (
     <>
@@ -579,6 +582,12 @@ export function ShipmentItemRow({
                       {item.item_id ? (item.actual_quantity || '-') : (item.expected_quantity || '-')}
                     </span>
                   )}
+                </TableCell>
+              );
+            case 'size':
+              return (
+                <TableCell key={col} className="w-28 text-right tabular-nums">
+                  <span className="text-sm">{formatItemSize(item.item?.size ?? null, item.item?.size_unit ?? null)}</span>
                 </TableCell>
               );
             case 'vendor':
@@ -762,6 +771,9 @@ export function ShipmentItemRow({
             )}
           </div>
         </TableCell>
+
+        {/* Column settings header alignment */}
+        <TableCell className="w-8" />
       </TableRow>
 
       {/* Expanded Row - ONLY shows flags */}

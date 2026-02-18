@@ -4,12 +4,21 @@
  * billing events, receiving sessions, photos) for a comprehensive timeline.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { ActivityEntityType } from '@/lib/activity/logActivity';
@@ -27,16 +36,40 @@ interface ActivityRow {
 }
 
 interface EntityActivityFeedProps {
-  entityType: Exclude<ActivityEntityType, 'item'>;
+  entityType: Exclude<ActivityEntityType, 'item'> | 'manifest';
   entityId: string;
   title?: string;
   description?: string;
 }
 
+type EntityActivityFilterCategory =
+  | 'all'
+  | 'operations'
+  | 'status'
+  | 'billing'
+  | 'media'
+  | 'items'
+  | 'update';
+
+const FILTER_OPTIONS: Array<{ value: EntityActivityFilterCategory; label: string; icon: string }> = [
+  { value: 'all', label: 'All', icon: 'done_all' },
+  { value: 'operations', label: 'Operations', icon: 'qr_code_scanner' },
+  { value: 'status', label: 'Status', icon: 'swap_horiz' },
+  { value: 'billing', label: 'Billing', icon: 'receipt_long' },
+  { value: 'media', label: 'Photos & Docs', icon: 'photo_camera' },
+  { value: 'items', label: 'Items', icon: 'inventory_2' },
+  { value: 'update', label: 'Updates', icon: 'edit' },
+];
+
 const TABLE_MAP: Record<string, { table: string; idColumn: string }> = {
-  shipment: { table: 'shipment_activity', idColumn: 'shipment_id' },
-  task:     { table: 'task_activity',     idColumn: 'task_id' },
-  account:  { table: 'account_activity',  idColumn: 'account_id' },
+  shipment:     { table: 'shipment_activity',     idColumn: 'shipment_id' },
+  task:         { table: 'task_activity',         idColumn: 'task_id' },
+  account:      { table: 'account_activity',      idColumn: 'account_id' },
+  claim:        { table: 'claim_activity',        idColumn: 'claim_id' },
+  repair_quote: { table: 'repair_quote_activity', idColumn: 'repair_quote_id' },
+  quote:        { table: 'quote_activity',        idColumn: 'quote_id' },
+  invoice:      { table: 'invoice_activity',      idColumn: 'invoice_id' },
+  stocktake:    { table: 'stocktake_activity',    idColumn: 'stocktake_id' },
 };
 
 function getEventIcon(eventType: string): string {
@@ -90,6 +123,434 @@ function getEventCategory(eventType: string): string {
   if (eventType.includes('photo')) return 'media';
   if (eventType.includes('item')) return 'items';
   return 'update';
+}
+
+function dedupeAndSort(rows: ActivityRow[]): ActivityRow[] {
+  const seen = new Set<string>();
+  const deduplicated = rows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+  deduplicated.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return deduplicated;
+}
+
+function formatActionLabel(action: string, fallbackPrefix?: string): string {
+  const a = String(action || '').trim();
+  if (!a) return fallbackPrefix ? `${fallbackPrefix} updated` : 'Updated';
+  if (a === 'created') return fallbackPrefix ? `${fallbackPrefix} created` : 'Created';
+  if (a.startsWith('status_changed_to_')) {
+    const status = a.replace('status_changed_to_', '').replace(/_/g, ' ');
+    return `Status changed to ${status}`;
+  }
+  return a.replace(/_/g, ' ');
+}
+
+async function resolveUserNames(userIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  const map = new Map<string, string>();
+  if (ids.length === 0) return map;
+
+  try {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, email')
+      .in('id', ids);
+    if (users) {
+      for (const u of users as any[]) {
+        const name = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown';
+        map.set(u.id, name);
+      }
+    }
+  } catch {
+    // best-effort name resolution
+  }
+  return map;
+}
+
+async function fetchClaimComprehensiveActivity(claimId: string): Promise<ActivityRow[]> {
+  const allRows: ActivityRow[] = [];
+
+  // 1) claim_activity table (if it exists)
+  try {
+    const { data: activityData, error: activityError } = await (supabase as any)
+      .from('claim_activity')
+      .select('*')
+      .eq('claim_id', claimId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (!activityError && activityData) allRows.push(...(activityData as ActivityRow[]));
+  } catch {
+    // ignore
+  }
+
+  // 2) claim_audit (canonical audit table used today)
+  try {
+    const { data: auditRows, error: auditError } = await supabase
+      .from('claim_audit')
+      .select('id, action, actor_id, details, created_at')
+      .eq('claim_id', claimId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (auditError) throw auditError;
+
+    const actorIds = (auditRows || []).map((r: any) => r.actor_id).filter(Boolean) as string[];
+    const userNameMap = await resolveUserNames(actorIds);
+
+    for (const row of (auditRows || []) as any[]) {
+      const actorName = row.actor_id ? (userNameMap.get(row.actor_id) || null) : null;
+      const action = String(row.action || 'updated');
+      allRows.push({
+        id: `claim-audit-${row.id}`,
+        actor_name: actorName,
+        event_type: `claim_${action}`,
+        event_label: formatActionLabel(action, 'Claim'),
+        details: (row.details as any) || {},
+        created_at: row.created_at,
+      });
+    }
+  } catch (err: any) {
+    if (err?.code !== '42P01') console.error('[EntityActivityFeed] claim_audit fetch failed:', err);
+  }
+
+  // 3) billing events linked to claim
+  try {
+    const { data: billingEvents, error } = await supabase
+      .from('billing_events')
+      .select('id, charge_type, description, total_amount, created_at')
+      .eq('claim_id', claimId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    if (billingEvents) {
+      for (const b of billingEvents as any[]) {
+        allRows.push({
+          id: `claim-billing-${b.id}`,
+          actor_name: null,
+          event_type: b.charge_type === 'CREDIT' ? 'billing_credit' : 'billing_charge_added',
+          event_label: `${b.description || 'Billing event'}${b.total_amount != null ? ` $${Number(b.total_amount).toFixed(2)}` : ''}`,
+          details: { charge_type: b.charge_type, amount: b.total_amount },
+          created_at: b.created_at,
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return dedupeAndSort(allRows);
+}
+
+async function fetchRepairQuoteComprehensiveActivity(repairQuoteId: string): Promise<ActivityRow[]> {
+  const allRows: ActivityRow[] = [];
+
+  // 1) repair_quote_activity table (if it exists)
+  try {
+    const { data: activityData, error: activityError } = await (supabase as any)
+      .from('repair_quote_activity')
+      .select('*')
+      .eq('repair_quote_id', repairQuoteId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (!activityError && activityData) allRows.push(...(activityData as ActivityRow[]));
+  } catch {
+    // ignore
+  }
+
+  // 2) repair_quotes.audit_log (existing system of record)
+  try {
+    const { data: rq, error } = await (supabase as any)
+      .from('repair_quotes')
+      .select('audit_log')
+      .eq('id', repairQuoteId)
+      .maybeSingle();
+    if (error) throw error;
+
+    const auditLog = (rq?.audit_log || []) as any[];
+    for (let i = 0; i < auditLog.length; i++) {
+      const entry = auditLog[i] || {};
+      const at = entry.at || entry.created_at || null;
+      if (!at) continue;
+      const action = String(entry.action || 'updated');
+      allRows.push({
+        id: `repair-quote-audit-${i}-${String(at)}`,
+        actor_name: entry.by_name || null,
+        event_type: `repair_quote_${action}`,
+        event_label: formatActionLabel(action, 'Repair quote'),
+        details: (entry.details as any) || {},
+        created_at: String(at),
+      });
+    }
+  } catch (err: any) {
+    if (err?.code !== '42P01') console.error('[EntityActivityFeed] repair_quotes.audit_log fetch failed:', err);
+  }
+
+  return dedupeAndSort(allRows);
+}
+
+function formatQuoteEventLabel(eventType: string, payload: Record<string, unknown> | null | undefined): string {
+  switch (eventType) {
+    case 'created':
+      return 'Quote created';
+    case 'updated':
+      return 'Quote updated';
+    case 'emailed':
+      return `Quote emailed${payload && (payload as any).recipient_email ? ` to ${(payload as any).recipient_email}` : ''}`;
+    case 'email_failed':
+      return 'Quote email failed';
+    case 'exported_pdf':
+      return 'PDF exported';
+    case 'exported_excel':
+      return 'Excel exported';
+    case 'viewed':
+      return 'Quote viewed';
+    case 'accepted':
+      return 'Quote accepted';
+    case 'declined':
+      return 'Quote declined';
+    case 'expired':
+      return 'Quote expired';
+    case 'voided':
+      return 'Quote voided';
+    case 'attachment_added':
+      return `Attachment added${payload && (payload as any).file_name ? `: ${(payload as any).file_name}` : ''}`;
+    case 'attachment_removed':
+      return `Attachment removed${payload && (payload as any).file_name ? `: ${(payload as any).file_name}` : ''}`;
+    default:
+      return formatActionLabel(eventType, 'Quote');
+  }
+}
+
+async function fetchQuoteComprehensiveActivity(quoteId: string): Promise<ActivityRow[]> {
+  const allRows: ActivityRow[] = [];
+
+  // 1) quote_activity table (if it exists)
+  try {
+    const { data: activityData, error: activityError } = await (supabase as any)
+      .from('quote_activity')
+      .select('*')
+      .eq('quote_id', quoteId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (!activityError && activityData) allRows.push(...(activityData as ActivityRow[]));
+  } catch {
+    // ignore
+  }
+
+  // 2) quote_events (actual audit/event table used by quotes tool)
+  try {
+    const { data: events, error } = await (supabase as any)
+      .from('quote_events')
+      .select('id, event_type, payload_json, created_by, created_at')
+      .eq('quote_id', quoteId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) throw error;
+
+    const userIds = (events || []).map((e: any) => e.created_by).filter(Boolean) as string[];
+    const userNameMap = await resolveUserNames(userIds);
+
+    for (const evt of (events || []) as any[]) {
+      const actorName = evt.created_by ? (userNameMap.get(evt.created_by) || null) : null;
+      const eventType = String(evt.event_type || 'updated');
+      allRows.push({
+        id: `quote-event-${evt.id}`,
+        actor_name: actorName,
+        event_type: `quote_${eventType}`,
+        event_label: formatQuoteEventLabel(eventType, (evt.payload_json as any) || null),
+        details: ((evt.payload_json as any) || {}) as Record<string, unknown>,
+        created_at: evt.created_at,
+      });
+    }
+  } catch (err: any) {
+    if (err?.code !== '42P01') console.error('[EntityActivityFeed] quote_events fetch failed:', err);
+  }
+
+  return dedupeAndSort(allRows);
+}
+
+async function fetchStocktakeComprehensiveActivity(stocktakeId: string): Promise<ActivityRow[]> {
+  const allRows: ActivityRow[] = [];
+
+  // 1) stocktake_activity table (if it exists)
+  try {
+    const { data: activityData, error: activityError } = await (supabase as any)
+      .from('stocktake_activity')
+      .select('*')
+      .eq('stocktake_id', stocktakeId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (!activityError && activityData) allRows.push(...(activityData as ActivityRow[]));
+  } catch {
+    // ignore
+  }
+
+  // 2) core stocktake lifecycle from stocktakes table
+  let stocktake: any = null;
+  try {
+    const { data, error } = await (supabase as any)
+      .from('stocktakes')
+      .select('id, stocktake_number, name, status, created_at, created_by, started_at, completed_at, closed_at, closed_by, updated_at')
+      .eq('id', stocktakeId)
+      .maybeSingle();
+    if (error) throw error;
+    stocktake = data;
+  } catch {
+    // ignore
+  }
+
+  const lifecycleUserIds: string[] = [];
+  if (stocktake?.created_by) lifecycleUserIds.push(stocktake.created_by);
+  if (stocktake?.closed_by) lifecycleUserIds.push(stocktake.closed_by);
+
+  // 3) scans + results (collect user IDs for single user resolution pass)
+  let scans: any[] = [];
+  let results: any[] = [];
+
+  try {
+    const { data } = await (supabase as any)
+      .from('stocktake_scans')
+      .select(`
+        id,
+        scanned_at,
+        scanned_by,
+        scanned_location:locations!stocktake_scans_scanned_location_id_fkey(id, code),
+        item_code,
+        scan_result,
+        auto_fix_applied,
+        old_location_id,
+        new_location_id
+      `)
+      .eq('stocktake_id', stocktakeId)
+      .order('scanned_at', { ascending: false })
+      .limit(200);
+    scans = (data || []) as any[];
+  } catch {
+    // ignore
+  }
+
+  try {
+    const { data } = await (supabase as any)
+      .from('stocktake_results')
+      .select('id, item_code, result, resolved, resolved_by, resolved_at, resolution_notes, created_at')
+      .eq('stocktake_id', stocktakeId)
+      .eq('resolved', true)
+      .order('resolved_at', { ascending: false })
+      .limit(120);
+    results = (data || []) as any[];
+  } catch {
+    // ignore
+  }
+
+  const userIds = [
+    ...lifecycleUserIds,
+    ...scans.map((s) => s.scanned_by).filter(Boolean),
+    ...results.map((r) => r.resolved_by).filter(Boolean),
+  ] as string[];
+  const userNameMap = await resolveUserNames(userIds);
+
+  if (stocktake?.created_at) {
+    allRows.push({
+      id: `stocktake-created-${stocktake.id}`,
+      actor_name: stocktake.created_by ? (userNameMap.get(stocktake.created_by) || null) : null,
+      event_type: 'stocktake_created',
+      event_label: `Stocktake ${stocktake.stocktake_number || ''} created`.trim(),
+      details: { stocktake_number: stocktake.stocktake_number || null, name: stocktake.name || null },
+      created_at: stocktake.created_at,
+    });
+  }
+
+  if (stocktake?.started_at) {
+    allRows.push({
+      id: `stocktake-started-${stocktake.id}`,
+      actor_name: null,
+      event_type: 'status_active',
+      event_label: 'Stocktake started',
+      details: {},
+      created_at: stocktake.started_at,
+    });
+  }
+
+  if (stocktake?.completed_at) {
+    allRows.push({
+      id: `stocktake-completed-${stocktake.id}`,
+      actor_name: null,
+      event_type: 'status_completed',
+      event_label: 'Stocktake completed',
+      details: {},
+      created_at: stocktake.completed_at,
+    });
+  }
+
+  if (stocktake?.closed_at) {
+    allRows.push({
+      id: `stocktake-closed-${stocktake.id}`,
+      actor_name: stocktake.closed_by ? (userNameMap.get(stocktake.closed_by) || null) : null,
+      event_type: 'status_closed',
+      event_label: 'Stocktake closed',
+      details: {},
+      created_at: stocktake.closed_at,
+    });
+  }
+
+  if (stocktake?.status === 'cancelled') {
+    const at = stocktake.updated_at || stocktake.closed_at || stocktake.completed_at || stocktake.created_at;
+    if (at) {
+      allRows.push({
+        id: `stocktake-cancelled-${stocktake.id}`,
+        actor_name: null,
+        event_type: 'status_cancelled',
+        event_label: 'Stocktake cancelled',
+        details: {},
+        created_at: at,
+      });
+    }
+  }
+
+  for (const scan of scans) {
+    const actorName = scan.scanned_by ? (userNameMap.get(scan.scanned_by) || null) : null;
+    const locCode = scan.scanned_location?.code || null;
+    const itemCode = scan.item_code || null;
+    const result = String(scan.scan_result || 'scan');
+    allRows.push({
+      id: `stocktake-scan-${scan.id}`,
+      actor_name: actorName,
+      event_type: `scan_${result}`,
+      event_label: `${itemCode ? `Item ${itemCode}` : 'Item'} scanned${locCode ? ` at ${locCode}` : ''} (${result.replace(/_/g, ' ')})`,
+      details: {
+        item_code: itemCode,
+        scanned_location_code: locCode,
+        scan_result: result,
+        auto_fix_applied: !!scan.auto_fix_applied,
+        old_location_id: scan.old_location_id || null,
+        new_location_id: scan.new_location_id || null,
+      },
+      created_at: scan.scanned_at,
+    });
+  }
+
+  for (const r of results) {
+    const actorName = r.resolved_by ? (userNameMap.get(r.resolved_by) || null) : null;
+    const at = r.resolved_at || r.created_at;
+    if (!at) continue;
+    allRows.push({
+      id: `stocktake-result-resolved-${r.id}`,
+      actor_name: actorName,
+      event_type: 'stocktake_result_resolved',
+      event_label: `Variance resolved${r.item_code ? `: ${r.item_code}` : ''}`,
+      details: {
+        item_code: r.item_code || null,
+        result: r.result || null,
+        resolution_notes: r.resolution_notes || null,
+      },
+      created_at: at,
+    });
+  }
+
+  return dedupeAndSort(allRows);
 }
 
 /**
@@ -457,10 +918,62 @@ async function fetchShipmentComprehensiveActivity(shipmentId: string): Promise<A
   return deduplicated;
 }
 
+async function fetchManifestHistoryActivity(manifestId: string): Promise<ActivityRow[]> {
+  const { data, error } = await (supabase as any)
+    .from('stocktake_manifest_history')
+    .select(`
+      id,
+      action,
+      description,
+      changed_at,
+      old_values,
+      new_values,
+      affected_item_ids,
+      changed_by_user:users!stocktake_manifest_history_changed_by_fkey(first_name, last_name, email)
+    `)
+    .eq('manifest_id', manifestId)
+    .order('changed_at', { ascending: false })
+    .limit(200);
+
+  if (error) throw error;
+
+  const rows = (data || []) as any[];
+  return rows.map((row) => {
+    const action = String(row.action || 'updated');
+    const user = row.changed_by_user;
+    const actorName =
+      user
+        ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || null
+        : null;
+
+    return {
+      id: row.id,
+      actor_name: actorName,
+      event_type: action,
+      event_label: row.description || action.replace(/_/g, ' '),
+      details: {
+        old_values: row.old_values || null,
+        new_values: row.new_values || null,
+        affected_item_ids: row.affected_item_ids || null,
+      },
+      created_at: row.changed_at,
+    } satisfies ActivityRow;
+  });
+}
+
 export function EntityActivityFeed({ entityType, entityId, title, description }: EntityActivityFeedProps) {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const entityMap = useEntityMap(activities, '[EntityActivityFeed] entity resolution failed:');
+  const [selectedCategories, setSelectedCategories] = useState<EntityActivityFilterCategory[]>(['all']);
+
+  const filteredActivities = useMemo(() => {
+    if (selectedCategories.includes('all')) return activities;
+    const selected = selectedCategories.filter((c) => c !== 'all') as Array<Exclude<EntityActivityFilterCategory, 'all'>>;
+    return activities.filter((a) => selected.includes(getEventCategory(a.event_type) as any));
+  }, [activities, selectedCategories]);
+
+  const activeFilterCount = selectedCategories.filter((c) => c !== 'all').length;
+  const entityMap = useEntityMap(filteredActivities, '[EntityActivityFeed] entity resolution failed:');
 
   const mapping = TABLE_MAP[entityType];
 
@@ -472,6 +985,37 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
       // For shipments, use comprehensive multi-source fetch
       if (entityType === 'shipment') {
         const rows = await fetchShipmentComprehensiveActivity(entityId);
+        setActivities(rows);
+        return;
+      }
+
+      // For manifests, use stocktake manifest history
+      if (entityType === 'manifest') {
+        const rows = await fetchManifestHistoryActivity(entityId);
+        setActivities(rows);
+        return;
+      }
+
+      if (entityType === 'claim') {
+        const rows = await fetchClaimComprehensiveActivity(entityId);
+        setActivities(rows);
+        return;
+      }
+
+      if (entityType === 'repair_quote') {
+        const rows = await fetchRepairQuoteComprehensiveActivity(entityId);
+        setActivities(rows);
+        return;
+      }
+
+      if (entityType === 'quote') {
+        const rows = await fetchQuoteComprehensiveActivity(entityId);
+        setActivities(rows);
+        return;
+      }
+
+      if (entityType === 'stocktake') {
+        const rows = await fetchStocktakeComprehensiveActivity(entityId);
         setActivities(rows);
         return;
       }
@@ -534,21 +1078,83 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
     );
   }
 
+  const toggleCategory = (cat: EntityActivityFilterCategory, checked: boolean) => {
+    if (cat === 'all') {
+      setSelectedCategories(['all']);
+      return;
+    }
+    setSelectedCategories((prev) => {
+      const withoutAll = prev.filter((c) => c !== 'all');
+      const next = checked
+        ? Array.from(new Set([...withoutAll, cat]))
+        : withoutAll.filter((c) => c !== cat);
+      return next.length === 0 ? ['all'] : next;
+    });
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MaterialIcon name="timeline" size="md" />
-          {displayTitle}
-        </CardTitle>
-        <CardDescription>{displayDescription}</CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <MaterialIcon name="timeline" size="md" />
+              {displayTitle}
+            </CardTitle>
+            <CardDescription>{displayDescription}</CardDescription>
+          </div>
+
+          {/* Filter button */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="relative h-9 w-9 flex-shrink-0" aria-label="Filter activity">
+                <MaterialIcon name="filter_list" size="sm" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-primary text-primary-foreground rounded-full">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[220px]">
+              <DropdownMenuLabel>Filter</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {FILTER_OPTIONS.map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={selectedCategories.includes(opt.value)}
+                  onCheckedChange={(checked) => toggleCategory(opt.value, !!checked)}
+                >
+                  <div className="flex items-center gap-2">
+                    <MaterialIcon name={opt.icon} size="sm" className="text-muted-foreground" />
+                    <span>{opt.label}</span>
+                  </div>
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full justify-start h-8 px-2 text-sm"
+                onClick={() => setSelectedCategories(['all'])}
+              >
+                <MaterialIcon name="restart_alt" size="sm" className="mr-2 text-muted-foreground" />
+                Reset
+              </Button>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </CardHeader>
 
       <CardContent>
-        {activities.length === 0 ? (
+        {filteredActivities.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-24 text-center">
             <MaterialIcon name="timeline" className="text-[36px] text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">No activity recorded yet</p>
+            <p className="text-sm text-muted-foreground">
+              {selectedCategories.includes('all')
+                ? 'No activity recorded yet'
+                : 'No matching activity for the selected filters'}
+            </p>
           </div>
         ) : (
           <ScrollArea className="h-[400px] pr-4">
@@ -558,7 +1164,7 @@ export function EntityActivityFeed({ entityType, entityId, title, description }:
 
               {/* Events */}
               <div className="space-y-3">
-                {activities.map((activity) => (
+                {filteredActivities.map((activity) => (
                   <div key={activity.id} className="relative flex gap-3 pl-10">
                     {/* Timeline dot */}
                     <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${getEventColor(activity.event_type)}`}>

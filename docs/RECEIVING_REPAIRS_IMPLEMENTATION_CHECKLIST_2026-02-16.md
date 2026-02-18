@@ -17,28 +17,28 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [x] 8. Dedicated Overage chip exists.
 - [x] 9. Exception chips are multi-select.
 - [x] 10. Exceptions note model: initially shared but refined to per-exception inline notes.
-- [ ] 11. Exception note scope: shipment-level notes system (not stage-specific).
-- [ ] 12. Intake notes types: Public + Internal toggles like Item Details.
-- [ ] 13. Exception notes must be Public; mismatch between manifest vs expected doesn’t require note; piece discrepancies do.
+- [x] 11. Exception note scope: shipment-level notes system (not stage-specific).
+- [x] 12. Intake notes types: Public + Internal toggles like Item Details.
+- [x] 13. Exception notes must be Public; mismatch between manifest vs expected doesn’t require note; piece discrepancies do.
 - [x] 14. Stage 1 mismatch (Carrier vs Dock): live sync Shortage/Overage; keep those chips locked until mismatch corrected.
 - [x] 15. Mis-Ship exception: manual; available once Stage 2 is visible (Stage 1 remains editable).
 - [x] 16. Stage 2 mismatch (Dock vs Entry): no sync; prompt on Stage 2 completion; require correction or exception+note.
 - [x] 17. Entry Count definition: row count (each row = piece).
 - [x] 18. Signature not required for Stage 1 completion.
-- [ ] 19. Intake notes UI style matches Item Details notes UI (multi-note list + filters).
-- [ ] 20. Notes storage is shipment-level.
-- [ ] 21. Exception-note enforcement UX: Notes tab (later refined to inline per-chip notes).
-- [ ] 22. Public exception note required for all exception chips.
-- [ ] 23. Add "Exception" note type (tabs: All/Public/Internal/Exception).
-- [ ] 24. Generic Public note does NOT satisfy exception requirement; each selected chip needs its exception note(s).
+- [x] 19. Intake notes UI style matches Item Details notes UI (multi-note list + filters).
+- [x] 20. Notes storage is shipment-level.
+- [x] 21. Exception-note enforcement UX: Notes tab (later refined to inline per-chip notes).
+- [x] 22. Public exception note required for all exception chips.
+- [x] 23. Add "Exception" note type (tabs: All/Public/Internal/Exception).
+- [x] 24. Generic Public note does NOT satisfy exception requirement; each selected chip needs its exception note(s).
 - [x] 25. Carrier paperwork pieces input is manual.
 - [x] 26. Carrier count required for Stage 1 completion; label "Carrier count" and tooltip help.
 - [x] 27. Dock count required for Stage 1 completion; label "Dock Count" and tooltip help to all 3 counts.
 - [x] 28. Stage 2 count labeled "Entry Count", read-only computed from row count.
 - [x] 29. Removing an exception chip removes its corresponding exception note(s); log add/remove in activity history.
 - [x] 30. Inline quick entry is one note per chip; more notes can be added later in Notes tab.
-- [ ] 31. Chip-generated exception notes are tied to that chip; exception notes created directly in Notes tab need not have a chip.
-- [ ] 32. Per-exception note entry appears inline in Exceptions section; still stored under Notes tab (Exception filter).
+- [x] 31. Chip-generated exception notes are tied to that chip; exception notes created directly in Notes tab need not have a chip.
+- [x] 32. Per-exception note entry appears inline in Exceptions section; still stored under Notes tab (Exception filter).
 - [x] 33. Signature applies to Stage 1 carrier sign-for.
 - [x] 34. Signature is persisted + viewable later on intake page and Shipment Details page.
 - [x] 35. Signature metadata displayed (typed name + timestamp if present).
@@ -51,11 +51,11 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [x] 42. Scanner environment: mobile web first; native later.
 - [x] 43. Mobile web capture: prefer in-page live preview; allow file-input capture if needed.
 - [x] 44. Implement scanner now, structure for later native swap.
-- [ ] 45. Alerts: avoid double-emailing; enhance Shipment Received email with optional Exceptions section; show exception indicator near shipment number.
-- [ ] 46. Shipment received email exceptions formatting: bullet/note style (types + notes), not item-specific.
-- [ ] 47. Implement item-level flags + alert tokens now.
-- [ ] 48. Item-level flag types: Damage, Wet, Missing documents, Crushed/Torn, Other, Open.
-- [ ] 49. Flags exist at both shipment level (exception exists) and item level (which piece).
+- [x] 45. Alerts: avoid double-emailing; enhance Shipment Received email with optional Exceptions section; show exception indicator near shipment number.
+- [x] 46. Shipment received email exceptions formatting: bullet/note style (types + notes), not item-specific.
+- [x] 47. Implement item-level flags + alert tokens now.
+- [x] 48. Item-level flag types: Damage, Wet, Missing documents, Crushed/Torn, Other, Open.
+- [x] 49. Flags exist at both shipment level (exception exists) and item level (which piece).
 - [x] 50. Shipment exception chip list: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
 - [x] 51. Completed intake remains accessible on the same Dock Intake page; read-only by default; "Edit" unlocks changes without reopening status.
 - [x] 52. Receiving PDF: save on Stage 2 completion; overwrite visible version; keep older versions archived (not deleted).

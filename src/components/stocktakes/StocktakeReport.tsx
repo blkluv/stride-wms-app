@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -456,6 +457,16 @@ export default function StocktakeReport() {
       </div>
 
       {/* Resolve Dialog */}
+      {/* Activity Feed */}
+      <div className="mt-6">
+        <EntityActivityFeed
+          entityType="stocktake"
+          entityId={id!}
+          title="Activity"
+          description="Timeline of changes to this stocktake"
+        />
+      </div>
+
       <Dialog open={!!resolveDialog} onOpenChange={() => setResolveDialog(null)}>
         <DialogContent>
           <DialogHeader>
