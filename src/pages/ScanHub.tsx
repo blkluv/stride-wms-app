@@ -556,10 +556,12 @@ export default function ScanHub() {
     }
 
     // Fallback: query DB by code if not found in memory
+    // Escape LIKE wildcards so ILIKE behaves like a case-insensitive exact match.
+    const escapedCodeToMatch = codeToMatch.replace(/([\\%_])/g, '\\$1');
     const { data: dbLoc } = await supabase
       .from('locations')
       .select('id, code, name, type')
-      .ilike('code', codeToMatch)
+      .ilike('code', escapedCodeToMatch)
       .is('deleted_at', null)
       .maybeSingle();
     if (dbLoc) {
@@ -680,19 +682,6 @@ export default function ScanHub() {
 
       if (mode === 'move') {
         if (phase === 'scanning-item') {
-          // Auto-detect: check if this is a location code first
-          // If an item is already scanned, a location scan completes the move
-          if (scannedItem && isLikelyLocationCode(input)) {
-            const loc = await lookupLocation(input);
-            if (loc) {
-              hapticMedium();
-              setTargetLocation(loc);
-              setPhase('confirm');
-              setProcessing(false);
-              return;
-            }
-          }
-
           const item = await lookupItem(input);
           if (item) {
             hapticMedium();
