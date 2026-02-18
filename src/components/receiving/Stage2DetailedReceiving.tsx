@@ -42,6 +42,7 @@ import { SHIPMENT_EXCEPTION_CODE_META, type ShipmentExceptionCode } from '@/hook
 import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
+import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 
@@ -1066,30 +1067,67 @@ export function Stage2DetailedReceiving({
                                 </span>
                                 <span>Flag tray</span>
                               </div>
-                              {flagServicesLoading ? (
-                                <div className="text-sm text-muted-foreground">Loading flags...</div>
-                              ) : flagServiceEvents.length === 0 ? (
-                                <div className="text-sm text-muted-foreground">No flag services configured.</div>
-                              ) : (
-                                <div className="flex flex-wrap gap-x-5 gap-y-2">
-                                  {flagServiceEvents.map((flag) => {
-                                    const checked = item.flags.includes(flag.service_code);
-                                    return (
-                                      <label
-                                        key={`${item.id}-${flag.service_code}`}
-                                        className="flex items-center gap-2 text-sm cursor-pointer"
-                                      >
-                                        <Checkbox
-                                          checked={checked}
-                                          onCheckedChange={() => toggleItemFlag(item.id, flag.service_code)}
-                                          disabled={!canEdit}
-                                        />
-                                        <span>{flag.service_name}</span>
-                                      </label>
-                                    );
-                                  })}
+                              <div className="space-y-4">
+                                {/* Built-in item exceptions */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <MaterialIcon name="verified" size="sm" />
+                                    Item exceptions (built-in)
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                                    {BUILTIN_ITEM_EXCEPTION_FLAGS.map((f) => {
+                                      const checked = item.flags.includes(f.code);
+                                      return (
+                                        <label
+                                          key={`${item.id}-${f.code}`}
+                                          className="flex items-center gap-2 text-sm cursor-pointer"
+                                          title={f.description}
+                                        >
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={() => toggleItemFlag(item.id, f.code)}
+                                            disabled={!canEdit}
+                                          />
+                                          <span>{f.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              )}
+
+                                {/* Pricing/service flags */}
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                    <MaterialIcon name="tune" size="sm" />
+                                    Service flags (from Pricing)
+                                  </div>
+                                  {flagServicesLoading ? (
+                                    <div className="text-sm text-muted-foreground">Loading flags…</div>
+                                  ) : flagServiceEvents.length === 0 ? (
+                                    <div className="text-sm text-muted-foreground">No service flags configured.</div>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-x-5 gap-y-2">
+                                      {flagServiceEvents.map((flag) => {
+                                        const checked = item.flags.includes(flag.service_code);
+                                        return (
+                                          <label
+                                            key={`${item.id}-${flag.service_code}`}
+                                            className="flex items-center gap-2 text-sm cursor-pointer"
+                                            title={flag.notes || undefined}
+                                          >
+                                            <Checkbox
+                                              checked={checked}
+                                              onCheckedChange={() => toggleItemFlag(item.id, flag.service_code)}
+                                              disabled={!canEdit}
+                                            />
+                                            <span>{flag.service_name}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </TableCell>
                         </TableRow>

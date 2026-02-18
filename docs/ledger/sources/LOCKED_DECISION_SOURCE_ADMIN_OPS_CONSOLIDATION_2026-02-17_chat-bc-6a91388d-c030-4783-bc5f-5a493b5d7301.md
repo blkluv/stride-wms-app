@@ -92,3 +92,11 @@ User decision (default sender + admin config):
 User decision (default sender display name):
 - Do not add a separate configurable “From name” field for the platform default sender; keep it as an email address only.
 
+### QA-2026-02-17-ADMINOPS-016
+User decision (Reply-To behavior when using platform default sender):
+- When a tenant is using the platform default sender, replies should go to the tenant’s configured Reply-To email address (not a platform inbox, and not “no-reply”).
+
+### QA-2026-02-17-ADMINOPS-017
+User decision (Reply-To fallback):
+- If a tenant has not configured a Reply-To email yet, default Reply-To to the tenant owner/admin login email (not a platform inbox and not blocked).
+

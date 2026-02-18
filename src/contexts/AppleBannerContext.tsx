@@ -65,9 +65,11 @@ export function AppleBannerProvider({ children }: { children: ReactNode }) {
   }, []); // hideBanner declared below (safe: called after init via closure in runtime)
 
   const hideBanner = useCallback(() => {
-    clearTimers();
-
     const current = bannerRef.current;
+    // If we're already closing, do nothing (and don't clear the close timer).
+    if (current?.closing) return;
+
+    clearTimers();
     if (!current) {
       // If there's something queued but nothing showing, display the next one.
       setBannerQueue((prev) => {
@@ -82,11 +84,10 @@ export function AppleBannerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // If we're already closing, do nothing.
-    if (current.closing) return;
-
     // Mark as closing so the component can animate out.
-    setBanner({ ...current, closing: true });
+    const closingBanner = { ...current, closing: true };
+    bannerRef.current = closingBanner;
+    setBanner(closingBanner);
 
     closeRef.current = setTimeout(() => {
       // Call onDismiss callback after the roll-up completes.
