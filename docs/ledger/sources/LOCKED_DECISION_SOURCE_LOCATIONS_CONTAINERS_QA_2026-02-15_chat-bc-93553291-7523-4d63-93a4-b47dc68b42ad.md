@@ -171,6 +171,11 @@
   - Use Option A: default new child units to the parent's current location/container assignment.
   - Show a warning/confirmation that child location will be set to the current location and users should scan to update if a different location is needed.
 
+### QA-2026-02-15-026
+- Question/context: Outbound behavior when inventory remains in grouped parent record (qty > 1).
+- Explicit answer/decision:
+  - Use Option B: do not allow shipping a partial quantity directly from grouped parent; require split & relabel first so shipped units have their own labels.
+
 ## Notes
 
 - This source is not marked authoritative/final; imported decisions should default to `accepted` when explicit and unambiguous, or `draft` when unresolved/conflicting.
