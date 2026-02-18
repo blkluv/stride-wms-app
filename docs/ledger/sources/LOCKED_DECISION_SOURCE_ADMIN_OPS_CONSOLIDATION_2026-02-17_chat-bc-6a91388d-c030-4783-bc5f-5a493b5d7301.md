@@ -146,3 +146,12 @@ User decision (Sender Type filter values):
   - Custom sender (verified)
   - Custom sender (pending)
 
+### QA-2026-02-17-ADMINOPS-027
+User decision (Status filter values):
+- Email Ops tenant table Status filter values will be:
+  - Ready
+  - Pending (waiting on tenant DNS)
+  - Action needed (set Reply-To inbox)
+  - Warning (deliverability risk)
+  - Error (misconfigured)
+
