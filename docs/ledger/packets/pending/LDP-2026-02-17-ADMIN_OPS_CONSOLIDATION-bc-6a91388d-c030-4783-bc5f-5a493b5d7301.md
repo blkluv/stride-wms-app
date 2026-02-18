@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `23`
+- Q&A items extracted: `24`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -48,6 +48,7 @@
 | DL-2026-02-17-026 | Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021` | - | - |
 | DL-2026-02-17-027 | Admin Email Ops config stores fallback sender as domain-only; app generates tenant-slug@domain | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-022` | - | - |
 | DL-2026-02-17-028 | Email Ops includes tenant status table with sortable columns, status filtering, and search autocomplete | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-023` | - | - |
+| DL-2026-02-17-029 | Builder will define plain-language Email Ops status taxonomy and meanings for operators | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-024` | - | - |
 
 ## Detailed Decision Entries
 
@@ -604,6 +605,28 @@ Operators need fast ways to triage onboarding and email setup issues across many
   - searchable tenant selector (autocomplete)
 - Follow-up decision needed: define the exact set of statuses and which fields/criteria produce each status.
 
+### DL-2026-02-17-029: Builder will define plain-language Email Ops status taxonomy and meanings for operators
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-024`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Because the operator is non-technical and does not know which email statuses matter, the builder will define an initial, plain-language status taxonomy (and the meaning/criteria for each status) for the Email Ops tenant table, focused on actionable onboarding and support triage.
+
+#### Why
+An operator-focused status system should reflect “what needs attention next” rather than internal technical states. Delegating this to the builder reduces decision burden and keeps the UI coherent.
+
+#### Implementation impact
+- Status values should be:
+  - understandable in plain English
+  - filterable in the admin table
+  - derived from concrete fields (so they remain accurate)
+- The set can be iterated later as operators use it in real workflows.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -633,3 +656,4 @@ Operators need fast ways to triage onboarding and email setup issues across many
 | DLE-2026-02-17-025 | 2026-02-17 | DL-2026-02-17-026 | planned | - | builder | Keep fallback sender base domain/subdomain admin-configurable (do not hardcode final production domain while app domain is TBD). |
 | DLE-2026-02-17-026 | 2026-02-17 | DL-2026-02-17-027 | planned | - | builder | Store fallback sender config as domain-only in Email Ops; app generates `{tenant_slug}@domain` automatically. |
 | DLE-2026-02-17-027 | 2026-02-17 | DL-2026-02-17-028 | planned | - | builder | Add Email Ops tenant status table with sortable columns, status filtering, and search autocomplete/selector. |
+| DLE-2026-02-17-028 | 2026-02-17 | DL-2026-02-17-029 | planned | - | builder | Define initial Email Ops tenant status taxonomy + criteria in plain language for non-technical operators. |

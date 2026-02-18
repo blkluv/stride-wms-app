@@ -131,3 +131,7 @@ User decision (Email Ops tenant list UX):
 - The table must include a Status column that supports filtering so the operator can quickly view all tenants in a given status (e.g., “pending”, etc.).
 - The table must include a search autocomplete dropdown/select to quickly find a tenant by typing (for large tenant counts).
 
+### QA-2026-02-17-ADMINOPS-024
+User request (status meanings + builder selection):
+- User requests the builder determine which Email Ops statuses matter and what they mean, because the user does not know which statuses are relevant to track.
+
