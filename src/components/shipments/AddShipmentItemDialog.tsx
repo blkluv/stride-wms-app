@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { logActivity } from '@/lib/activity/logActivity';
+import { getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 interface ClassOption {
   id: string;
@@ -100,6 +101,20 @@ export function AddShipmentItemDialog({
 
       // Create actual item record if we have the required data
       if (tenantId && accountId && warehouseId) {
+        let classCubicFeet: number | null = null;
+        if (matchedClass?.id) {
+          try {
+            const { data: classRow } = await (supabase.from('classes') as any)
+              .select('min_cubic_feet, max_cubic_feet')
+              .eq('tenant_id', tenantId)
+              .eq('id', matchedClass.id)
+              .maybeSingle();
+            classCubicFeet = classRow ? getClassCubicFeetSingleValue(classRow) : null;
+          } catch {
+            // ignore
+          }
+        }
+
         const itemPayload = {
           tenant_id: tenantId,
           account_id: accountId,
@@ -108,6 +123,8 @@ export function AddShipmentItemDialog({
           vendor: vendor.trim() || null,
           quantity: itemQuantity,
           class_id: matchedClass?.id || null,
+          size: classCubicFeet,
+          size_unit: classCubicFeet !== null ? 'cu_ft' : null,
           sidemark_id: sidemarkId || null,
           receiving_shipment_id: shipmentId,
           status: 'pending_receipt',
