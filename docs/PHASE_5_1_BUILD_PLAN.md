@@ -59,12 +59,10 @@ The contract's SQL and RPC definitions assume certain columns that don't exist i
 | A2 | Add `locations.zone_id` (nullable FK → `warehouse_zones.id`, ON DELETE SET NULL) | A1 |
 | A3 | Create `warehouse_maps` table with unique indexes for name and single-default | None |
 | A4 | Create `warehouse_map_nodes` table with unique index for map+zone binding | A1, A3 |
-| A5 | Create `zone_alert_state` table with composite PK on `(tenant_id, map_id, zone_id)` | A1, A3 |
-| A6 | Enable RLS on all 4 new tables with CRUD policies using `user_tenant_id()` | A1–A5 |
+| A5 | Enable RLS on all new tables with CRUD policies using `user_tenant_id()` | A1–A4 |
 | A7 | Create `set_updated_at()` trigger function (if not exists) + triggers on `warehouse_maps` and `warehouse_map_nodes` | A3, A4 |
 | A8 | Create `ensure_single_default_map()` trigger on `warehouse_maps` | A3 |
-| A9 | Create `rpc_get_warehouse_map_zone_capacity(p_map_id uuid)` — adapted for schema deviations | A1–A5 |
-| A10 | Create `rpc_evaluate_zone_alerts(p_map_id uuid)` — skeleton with upward-transition logic | A9 |
+| A9 | Create `rpc_get_warehouse_map_zone_capacity(p_map_id uuid)` — adapted for schema deviations | A1–A4 |
 
 ### Phase B: TypeScript Types Update
 
@@ -72,7 +70,7 @@ The contract's SQL and RPC definitions assume certain columns that don't exist i
 
 | Step | Description | Dependencies |
 |------|-------------|--------------|
-| B1 | Regenerate or manually add types for `warehouse_zones`, `warehouse_maps`, `warehouse_map_nodes`, `zone_alert_state` to `src/integrations/supabase/types.ts` | Phase A |
+| B1 | Regenerate or manually add types for `warehouse_zones`, `warehouse_maps`, `warehouse_map_nodes` to `src/integrations/supabase/types.ts` | Phase A |
 | B2 | Add `zone_id` to `locations` Row/Insert/Update types | Phase A |
 
 ### Phase C: Hooks Layer
@@ -84,7 +82,7 @@ The contract's SQL and RPC definitions assume certain columns that don't exist i
 | C1 | Create `src/hooks/useWarehouseZones.ts` — CRUD for zones, batch generate | Phase B |
 | C2 | Create `src/hooks/useWarehouseMaps.ts` — CRUD for maps, set default, duplicate | Phase B |
 | C3 | Create `src/hooks/useWarehouseMapNodes.ts` — CRUD for map nodes, autosave | Phase B |
-| C4 | Create `src/hooks/useZoneCapacity.ts` — calls `rpc_get_warehouse_map_zone_capacity`, evaluates alerts | Phase B |
+| C4 | Create `src/hooks/useWarehouseMapZoneCapacity.ts` — calls `rpc_get_warehouse_map_zone_capacity` for heat viewer data | Phase B |
 
 ### Phase D: UI — Zones Management (Settings → Warehouses → Zones)
 
@@ -136,16 +134,9 @@ The contract's SQL and RPC definitions assume certain columns that don't exist i
 | G4 | Single data call: `rpc_get_warehouse_map_zone_capacity(mapId)` on load + refresh button | C4 |
 | G5 | Add route `/warehouses/:warehouseId/heatmap` to `App.tsx` | G1 |
 
-### Phase H: Alert Integration
+### Phase H: (Out of scope) Zone-level alert integration
 
-**Estimated files**: 2–3 modified files
-
-| Step | Description | Dependencies |
-|------|-------------|--------------|
-| H1 | Add `ZONE_WARNING_85` and `ZONE_CRITICAL_100` to `TRIGGER_EVENTS` in `useCommunications.ts` | Phase G |
-| H2 | Create alert queue functions in `alertQueue.ts` for zone alerts | H1 |
-| H3 | Create email templates in `email.ts` for zone threshold alerts | H2 |
-| H4 | Wire `rpc_evaluate_zone_alerts` call into heat map refresh flow | C4 |
+Zone/heat-map notification alerts are intentionally out of scope (DL-2026-02-18-010). Heat map remains a visualization; alerting remains per-location via existing capacity alerts.
 
 ---
 
@@ -225,7 +216,7 @@ Currently the TypeScript types in `src/integrations/supabase/types.ts` appear to
 | `src/hooks/useWarehouseZones.ts` | C |
 | `src/hooks/useWarehouseMaps.ts` | C |
 | `src/hooks/useWarehouseMapNodes.ts` | C |
-| `src/hooks/useZoneCapacity.ts` | C |
+| `src/hooks/useWarehouseMapZoneCapacity.ts` | C |
 | `src/components/warehouses/ZonesTable.tsx` | D |
 | `src/components/warehouses/AddZoneModal.tsx` | D |
 | `src/components/warehouses/BatchGenerateZonesWizard.tsx` | D |
@@ -242,12 +233,9 @@ Currently the TypeScript types in `src/integrations/supabase/types.ts` appear to
 ### Modified Files
 | File | Phase | Changes |
 |------|-------|---------|
-| `src/integrations/supabase/types.ts` | B | Add types for 4 new tables + `zone_id` on locations |
+| `src/integrations/supabase/types.ts` | B | Add types for 3 new tables + `zone_id` on locations |
 | `src/components/settings/LocationsSettingsTab.tsx` | E | Zone dropdown, bulk assign, unbound filter |
 | `src/App.tsx` | F, G | Add routes for map builder and heat map |
-| `src/hooks/useCommunications.ts` | H | Add `ZONE_WARNING_85` and `ZONE_CRITICAL_100` trigger events |
-| `src/lib/alertQueue.ts` | H | Zone alert queue functions |
-| `src/lib/email.ts` | H | Zone alert email templates |
 
 ---
 
@@ -260,6 +248,7 @@ Currently the TypeScript types in `src/integrations/supabase/types.ts` appear to
 - **DO NOT** make per-zone or per-location HTTP calls (single RPC per heat refresh)
 - **DO NOT** allow cross-tenant read/write (RLS on all tables)
 - Zones remain an **optional** feature
+- Zone-level alert notifications are out of scope (DL-2026-02-18-010)
 
 ---
 
@@ -274,7 +263,7 @@ Currently the TypeScript types in `src/integrations/supabase/types.ts` appear to
 | 5 | E | Locations enhancement | Low-Medium |
 | 6 | F | Map Builder | High |
 | 7 | G | Heat Map Viewer | Medium |
-| 8 | H | Alert integration | Low-Medium |
+| 8 | H | (Out of scope) Zone-level alert integration | - |
 
 ---
 
