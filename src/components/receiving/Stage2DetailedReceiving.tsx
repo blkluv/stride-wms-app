@@ -463,6 +463,12 @@ export function Stage2DetailedReceiving({
   // Remove item (allocation-aware)
   const removeItem = async (item: ReceivedItem) => {
     if (!canEdit || !showCompleteButton) return;
+
+    // Prevent in-flight autosave from re-saving a row after user deletes it.
+    delete rowResaveQueuedRef.current[item.id];
+    delete rowLatestQueuedSnapshotRef.current[item.id];
+    delete rowPersistedShipmentItemIdRef.current[item.id];
+
     // If sourced from allocation, reverse via deallocation RPC
     if (item.allocationId) {
       try {
