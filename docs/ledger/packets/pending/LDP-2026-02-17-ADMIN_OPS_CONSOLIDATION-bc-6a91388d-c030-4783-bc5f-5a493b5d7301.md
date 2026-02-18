@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `13`
+- Q&A items extracted: `15`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -37,6 +37,8 @@
 | DL-2026-02-17-015 | Help prompt is generic but instructs ChatGPT to ask provider questions and produce tailored DNS steps | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-011` | - | - |
 | DL-2026-02-17-016 | Simplify tenant email sender setup UI to single-page guided steps with help tips on every field | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-012` | - | - |
 | DL-2026-02-17-017 | Tenant enters full “From email address” (not just domain) for Resend sender setup | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-013` | - | - |
+| DL-2026-02-17-018 | Platform default sender email is configurable in /admin/saas-ops Email section | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-014` | - | - |
+| DL-2026-02-17-019 | Platform default sender does not include a configurable “From name” (email only) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-015` | - | - |
 
 ## Detailed Decision Entries
 
@@ -370,6 +372,47 @@ Non-technical users think in terms of the exact email address they want customer
 - Tenant UI should ask for the full From email and derive the domain from it for Resend domain verification.
 - Sending logic should use this configured From email only when the associated domain is verified (safe fallback otherwise).
 
+### DL-2026-02-17-018: Platform default sender email is configurable in /admin/saas-ops Email section
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-014`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Tenants who do not configure a custom sender domain will send from a platform default sender email address, and that default sender must be configurable by `admin_dev` within the consolidated `/admin/saas-ops` Email section (not hard-coded in the frontend or edge functions).
+
+#### Why
+The platform needs a reliable fallback sender for new/low-touch tenants, and admin-dev operators need to be able to update the default sender without code changes.
+
+#### Implementation impact
+- Add an admin-dev UI control in `/admin/saas-ops` → Email to set the platform default From email (no separate configurable From name; see `DL-2026-02-17-019`).
+- Store the default sender configuration in the database (not environment variables), so it can be updated from the app.
+- Update email sending functions to use:
+  - tenant custom From email when verified
+  - otherwise platform default From email
+
+### DL-2026-02-17-019: Platform default sender does not include a configurable “From name” (email only)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-015`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+For the platform default sender settings (admin-dev configured), do not add a separate configurable “From name” field. Keep the configuration to the default sender email address only.
+
+#### Why
+This keeps the Email Ops UI simpler for non-technical operators and avoids confusion between a “company name” vs a “person name”.
+
+#### Implementation impact
+- `/admin/saas-ops` Email settings should collect only the default From email address.
+- Outbound mail should format the From header using the configured email address without requiring an operator-provided display name.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -388,3 +431,5 @@ Non-technical users think in terms of the exact email address they want customer
 | DLE-2026-02-17-014 | 2026-02-17 | DL-2026-02-17-015 | planned | - | builder | Write a generic-but-detailed ChatGPT prompt that instructs the AI to ask about registrar/DNS provider and produce provider-specific DNS verification steps in layman terms. |
 | DLE-2026-02-17-015 | 2026-02-17 | DL-2026-02-17-016 | planned | `src/components/settings/preferences/EmailDomainSection.tsx` | builder | Refactor Email Sender Configuration to a single-page guided flow with help tips on every field and layman copy. |
 | DLE-2026-02-17-016 | 2026-02-17 | DL-2026-02-17-017 | completed | - | builder | Confirmed: tenant will enter full From email address; domain will be derived for Resend verification. |
+| DLE-2026-02-17-017 | 2026-02-17 | DL-2026-02-17-018 | planned | - | builder | Add admin-dev configurable platform default sender settings (DB-backed) and ensure email sending respects tenant-verified sender or platform default fallback. |
+| DLE-2026-02-17-018 | 2026-02-17 | DL-2026-02-17-019 | planned | - | builder | Keep platform default sender configuration to a single From email field (no separate configurable From name). |
