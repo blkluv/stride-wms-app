@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `28`
+- Q&A items extracted: `29`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -53,6 +53,7 @@
 | DL-2026-02-17-031 | Email Ops Sender Type filter values include Platform, Custom (verified), and Custom (pending) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-026` | - | - |
 | DL-2026-02-17-032 | Email Ops Status filter values include Ready, Pending, Action needed, Warning, and Error | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-027` | - | - |
 | DL-2026-02-17-033 | Email Ops tenant table shows multiple issue badges and computes an overall worst status | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-028` | - | - |
+| DL-2026-02-17-034 | Email Ops issue badges represent setup blockers (anything preventing successful email setup) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-029` | - | - |
 
 ## Detailed Decision Entries
 
@@ -718,6 +719,26 @@ Operators need a fast overall signal for triage, but also need the specifics of 
 - Compute overall status as the max severity across issues (e.g., Error > Warning > Action needed > Pending > Ready).
 - Sorting/filtering should use the overall status, while the UI still surfaces issue badges for context.
 
+### DL-2026-02-17-034: Email Ops issue badges represent setup blockers (anything preventing successful email setup)
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-029`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Issue badges shown in the Email Ops tenant table should represent any issues that would prevent a tenant from successfully setting up email (setup blockers).
+
+#### Why
+Operators should be able to filter/sort and immediately see which tenants are blocked from finishing setup, without needing to interpret technical details.
+
+#### Implementation impact
+- Treat the issue badge list as the canonical “blocker” set.
+- Map blockers from concrete fields (e.g., missing required inputs, failed verification states, missing required platform configuration).
+- Non-blocking concerns (like best-practice deliverability enhancements) may be displayed separately as warnings if desired (requires follow-up decision).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -752,3 +773,4 @@ Operators need a fast overall signal for triage, but also need the specifics of 
 | DLE-2026-02-17-030 | 2026-02-17 | DL-2026-02-17-031 | planned | - | builder | Implement Sender Type column + filters for Platform vs Custom (verified/pending). |
 | DLE-2026-02-17-031 | 2026-02-17 | DL-2026-02-17-032 | planned | - | builder | Implement Status column + filters for Ready/Pending/Action needed/Warning/Error with clear criteria and operator-friendly labels. |
 | DLE-2026-02-17-032 | 2026-02-17 | DL-2026-02-17-033 | planned | - | builder | Add per-tenant issue badges and compute overall worst status for sorting/filtering in Email Ops table. |
+| DLE-2026-02-17-033 | 2026-02-17 | DL-2026-02-17-034 | planned | - | builder | Define which derived issues count as “setup blockers” for issue badges and map them from concrete config/verification fields. |
