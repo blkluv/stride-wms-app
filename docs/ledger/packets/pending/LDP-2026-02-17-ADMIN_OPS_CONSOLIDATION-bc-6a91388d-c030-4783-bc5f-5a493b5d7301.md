@@ -12,9 +12,10 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `36`
+- Q&A items extracted: `37`
 - Existing decisions mapped: `-`
 - New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041, DL-2026-02-17-042`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -61,6 +62,7 @@
 | DL-2026-02-17-039 | Only show warnings/custom-domain fields when tenant opts into using their own email; toggle controls UI | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-034` | - | - |
 | DL-2026-02-17-040 | Tenant email settings toggle label is “Send emails from my company domain” | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-035` | - | - |
 | DL-2026-02-17-041 | Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036` | - | - |
+| DL-2026-02-17-042 | Toggling back to platform sender clears previously entered custom-domain setup fields | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-037` | - | - |
 
 ## Detailed Decision Entries
 
@@ -896,6 +898,25 @@ Tenants should be able to back out of advanced setup without getting “stuck”
 - Switching the toggle off should immediately switch sending to platform sender mode.
 - Ensure the Reply-To field is saved and used as the Reply-To header in platform sender mode (with fallback per `DL-2026-02-17-021`).
 
+### DL-2026-02-17-042: Toggling back to platform sender clears previously entered custom-domain setup fields
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-037`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If the tenant unchecks the “Send emails from my company domain” toggle (switches back to platform sender), clear any previously entered custom-domain setup fields rather than keeping them hidden.
+
+#### Why
+This reduces confusion for non-technical users who may assume the app is “half configured” or still in a failing state.
+
+#### Implementation impact
+- On toggle-off, reset custom sender inputs/state and clear persisted custom-domain configuration fields that represent an in-progress setup (so a future attempt starts fresh).
+- Consider adding a small confirmation prompt (“This will clear your custom sender setup fields”) if accidental toggles are a concern (follow-up decision).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -938,3 +959,4 @@ Tenants should be able to back out of advanced setup without getting “stuck”
 | DLE-2026-02-17-038 | 2026-02-17 | DL-2026-02-17-039 | planned | - | builder | Show custom-domain fields and warnings only when tenant opts into using their own email/domain; add checkbox/toggle to switch modes. |
 | DLE-2026-02-17-039 | 2026-02-17 | DL-2026-02-17-040 | planned | - | builder | Implement tenant toggle label copy: “Send emails from my company domain”. |
 | DLE-2026-02-17-040 | 2026-02-17 | DL-2026-02-17-041 | planned | - | builder | Ensure toggling back to platform sender auto-applies platform sending and Reply-To routes to the tenant’s saved Reply-To/inbound address. |
+| DLE-2026-02-17-041 | 2026-02-17 | DL-2026-02-17-042 | planned | - | builder | When tenant toggles off custom sender, clear/reset custom-domain setup fields (and persisted in-progress config) to avoid confusion. |

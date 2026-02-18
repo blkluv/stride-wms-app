@@ -205,3 +205,7 @@ User requirement/clarification (switching back to platform sender):
 - If a tenant starts the custom domain setup and then unchecks the toggle (switches back to platform sender), the app should automatically use the platform sender mode.
 - Once they set their Reply-To/inbound address, replies should route to that address (no additional setup steps required for the tenant beyond saving the field).
 
+### QA-2026-02-17-ADMINOPS-037
+User decision (clearing custom setup on toggle off):
+- If the tenant unchecks the toggle (switches back to platform sender), clear the custom-domain setup fields they had entered (rather than keeping them hidden).
+
