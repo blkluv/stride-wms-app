@@ -90,6 +90,8 @@ interface Item {
   account_id: string | null;
   received_at: string | null;
   primary_photo_url: string | null;
+  size: number | null;
+  size_unit: string | null;
   metadata?: Record<string, unknown> | null;
   has_indicator_flags?: boolean;
 }
@@ -223,7 +225,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, metadata,
+          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, size, size_unit, metadata,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -248,6 +250,8 @@ export default function Inventory() {
         sidemark: item.sidemark,
         vendor: item.vendor,
         room: item.room,
+        size: item.size ?? null,
+        size_unit: item.size_unit ?? null,
         location_id: item.current_location_id,
         location_code: item.location?.code || null,
         location_name: item.location?.name || null,
@@ -514,6 +518,9 @@ export default function Inventory() {
           showEditIcon={false}
         />
       ),
+    },
+    size: {
+      renderCell: (item) => item.size ? `${item.size} ${item.size_unit || 'cu ft'}`.trim() : '-',
     },
     location: {
       sortField: 'location_code',

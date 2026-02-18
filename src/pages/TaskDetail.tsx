@@ -1268,6 +1268,8 @@ export default function TaskDetailPage() {
                                 return <TableCell key={col}>{item?.sidemark || '-'}</TableCell>;
                               case 'room':
                                 return <TableCell key={col}>{item?.room || '-'}</TableCell>;
+                              case 'size':
+                                return <TableCell key={col}>{(item as any)?.size ? `${(item as any).size} ${(item as any).size_unit || ''}`.trim() : '-'}</TableCell>;
                               default:
                                 return <TableCell key={col}>-</TableCell>;
                             }
