@@ -28,6 +28,7 @@ import {
   ClaimAutoApprovedNotice,
 } from '@/components/claims/ClaimNotice';
 import { format } from 'date-fns';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -445,59 +446,12 @@ export default function ClaimDetail() {
               </TabsContent>
 
               <TabsContent value="audit" className="mt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MaterialIcon name="schedule" size="md" />
-                      Activity History
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingAudit ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                      </div>
-                    ) : auditLog.length === 0 ? (
-                      <p className="text-muted-foreground text-sm">No activity recorded yet.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {auditLog.map(entry => {
-                          const userName = entry.user
-                            ? `${entry.user.first_name || ''} ${entry.user.last_name || ''}`.trim() || 'Unknown User'
-                            : 'System';
-                          const details = entry.details as Record<string, unknown> | null;
-                          const changedFields = details?.changed_fields as string[] | undefined;
-
-                          return (
-                            <div key={entry.id} className="flex items-start gap-3 text-sm border-b border-border last:border-0 pb-3 last:pb-0">
-                              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                                <MaterialIcon name="person" size="sm" className="text-muted-foreground" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-foreground">
-                                  <span className="font-medium">{userName}</span>
-                                  <span className="text-muted-foreground mx-1">·</span>
-                                  <span className="capitalize">
-                                    {entry.action.replace(/_/g, ' ')}
-                                  </span>
-                                </p>
-                                {changedFields && changedFields.length > 0 && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    Changed: {changedFields.map(f => f.replace(/_/g, ' ')).join(', ')}
-                                  </p>
-                                )}
-                                <p className="text-muted-foreground text-xs mt-1">
-                                  {format(new Date(entry.created_at), 'MMM d, yyyy h:mm a')}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <EntityActivityFeed
+                  entityType="claim"
+                  entityId={claim.id}
+                  title="Activity"
+                  description="Timeline of all changes to this claim"
+                />
               </TabsContent>
             </Tabs>
           </div>

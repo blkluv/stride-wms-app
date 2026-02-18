@@ -38,6 +38,7 @@ import { ClassSelect } from '@/components/ui/class-select';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
+import { useClasses } from '@/hooks/useClasses';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { Switch } from '@/components/ui/switch';
 
@@ -171,6 +172,46 @@ export function ItemEditDialog({
   // Account sidemarks for autocomplete
   const { sidemarks: accountSidemarks, addSidemark: addAccountSidemark } = useAccountSidemarks(selectedAccountId || undefined);
   const sidemarkSuggestions = accountSidemarks.map((s) => ({ value: s.sidemark, label: s.sidemark }));
+
+  // Classes for size auto-population
+  const { classes } = useClasses();
+  const [sizeManuallySet, setSizeManuallySet] = useState(false);
+
+  const watchedClassId = form.watch('class_id');
+  useEffect(() => {
+    if (!watchedClassId || !open) return;
+    if (sizeManuallySet) return;
+
+    const cls = classes.find((c) => c.id === watchedClassId);
+    if (!cls) return;
+
+    const min = cls.min_cubic_feet;
+    const max = cls.max_cubic_feet;
+    let autoSize: number | undefined;
+
+    if (min !== null && max !== null) {
+      autoSize = Math.round(((min + max) / 2) * 10) / 10;
+    } else if (min !== null) {
+      autoSize = min;
+    } else if (max !== null) {
+      autoSize = max;
+    }
+
+    if (autoSize !== undefined) {
+      const currentSize = form.getValues('size');
+      if (!currentSize) {
+        form.setValue('size', autoSize);
+        if (!form.getValues('size_unit')) {
+          form.setValue('size_unit', 'cu_ft');
+        }
+      }
+    }
+  }, [watchedClassId, classes, open, sizeManuallySet]);
+
+  // Reset manual flag when dialog opens
+  useEffect(() => {
+    if (open) setSizeManuallySet(false);
+  }, [open]);
 
   useEffect(() => {
     if (open && item) {
@@ -620,7 +661,15 @@ export function ItemEditDialog({
                     <FormItem>
                       <FormLabel>Size</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="Size" {...field} />
+                        <Input
+                          type="number"
+                          placeholder="Size"
+                          {...field}
+                          onChange={(e) => {
+                            setSizeManuallySet(true);
+                            field.onChange(e);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
