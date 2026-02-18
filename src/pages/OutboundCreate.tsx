@@ -208,6 +208,8 @@ export default function OutboundCreate() {
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
   const [searchQuery, setSearchQuery] = useState('');
+  // Requested quantity per selected item (defaults to full available qty)
+  const [requestedQtyByItemId, setRequestedQtyByItemId] = useState<Record<string, number>>({});
 
   // Fetch account items
   const { items: accountItems, loading: itemsLoading } = useAccountItems(accountId || undefined);
@@ -501,7 +503,7 @@ export default function OutboundCreate() {
     );
   }, [accountItems, searchQuery]);
 
-  const itemQuantityById = useMemo(() => {
+  const availableQtyById = useMemo(() => {
     const map = new Map<string, number>();
     for (const item of accountItems as any[]) {
       const qty = typeof item?.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
@@ -512,6 +514,28 @@ export default function OutboundCreate() {
     return map;
   }, [accountItems]);
 
+  const getRequestedQty = useCallback((itemId: string): number => {
+    const available = availableQtyById.get(itemId) ?? 1;
+    const raw = requestedQtyByItemId[itemId];
+    const qty = typeof raw === 'number' && Number.isFinite(raw) ? raw : available;
+    // Clamp within [1, available]
+    return Math.max(1, Math.min(available, qty));
+  }, [availableQtyById, requestedQtyByItemId]);
+
+  // Keep requested qty map hydrated for selected items (including pre-selected)
+  useEffect(() => {
+    if (selectedItemIds.size === 0) return;
+    let changed = false;
+    const next: Record<string, number> = { ...requestedQtyByItemId };
+    for (const itemId of selectedItemIds) {
+      if (next[itemId] == null) {
+        next[itemId] = availableQtyById.get(itemId) ?? 1;
+        changed = true;
+      }
+    }
+    if (changed) setRequestedQtyByItemId(next);
+  }, [availableQtyById, requestedQtyByItemId, selectedItemIds]);
+
   // ------------------------------------------
   // Item selection handlers
   // ------------------------------------------
@@ -519,8 +543,22 @@ export default function OutboundCreate() {
     const newSet = new Set(selectedItemIds);
     if (newSet.has(itemId)) {
       newSet.delete(itemId);
+      // Optional cleanup: keep the map small (safe to rehydrate later)
+      setRequestedQtyByItemId((prev) => {
+        if (prev[itemId] == null) return prev;
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } else {
       newSet.add(itemId);
+      // Default requested qty to the full available qty
+      setRequestedQtyByItemId((prev) => {
+        if (prev[itemId] != null) return prev;
+        const next = { ...prev };
+        next[itemId] = availableQtyById.get(itemId) ?? 1;
+        return next;
+      });
     }
     setSelectedItemIds(newSet);
     if (errors.items) {
@@ -643,7 +681,7 @@ export default function OutboundCreate() {
       const toInsert = itemIds.map((item_id) => ({
         shipment_id: draftShipmentId,
         item_id,
-        expected_quantity: itemQuantityById.get(item_id) ?? 1,
+        expected_quantity: getRequestedQty(item_id),
         status: 'pending',
       }));
 
@@ -1315,8 +1353,54 @@ export default function OutboundCreate() {
                                     return <TableCell key={col} className="font-medium">{item.item_code}</TableCell>;
                                   case 'sku':
                                     return <TableCell key={col}>{(item as any).sku || '-'}</TableCell>;
-                                  case 'quantity':
-                                    return <TableCell key={col} className="text-right tabular-nums">{typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}</TableCell>;
+                                  case 'quantity': {
+                                    const available =
+                                      typeof (item as any).quantity === 'number' && Number.isFinite((item as any).quantity)
+                                        ? (item as any).quantity
+                                        : 1;
+                                    const selected = selectedItemIds.has(item.id);
+
+                                    if (!selected) {
+                                      return (
+                                        <TableCell key={col} className="text-right tabular-nums">
+                                          {typeof available === 'number' ? available : '-'}
+                                        </TableCell>
+                                      );
+                                    }
+
+                                    const requested = getRequestedQty(item.id);
+                                    const showMax = typeof available === 'number' && available > 1;
+
+                                    return (
+                                      <TableCell
+                                        key={col}
+                                        className="text-right tabular-nums"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex items-center justify-end gap-2">
+                                          <Input
+                                            type="number"
+                                            min={1}
+                                            max={available}
+                                            step={1}
+                                            value={requested}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={(e) => {
+                                              const raw = parseInt(e.target.value || '0', 10);
+                                              const next = Number.isFinite(raw) ? raw : 1;
+                                              const clamped = Math.max(1, Math.min(available, next));
+                                              setRequestedQtyByItemId((prev) => ({ ...prev, [item.id]: clamped }));
+                                            }}
+                                            className="h-8 w-20 text-right"
+                                            aria-label={`Requested quantity for ${item.item_code}`}
+                                          />
+                                          {showMax && (
+                                            <span className="text-xs text-muted-foreground">/ {available}</span>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    );
+                                  }
                                   case 'size':
                                     return <TableCell key={col} className="text-right tabular-nums">{formatItemSize((item as any).size ?? null, (item as any).size_unit ?? null)}</TableCell>;
                                   case 'vendor':
