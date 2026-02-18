@@ -844,14 +844,19 @@ export default function ItemDetail() {
               )}
             >
               {/* Consolidated Actions Menu (Tasks + Item actions) */}
-              <DropdownMenu>
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="w-full sm:w-auto justify-center">
                     <MaterialIcon name="more_horiz" size="sm" className="mr-2" />
                     Actions
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={8}
+                  // Glass + constrained height so long menus remain usable on mobile
+                  className="w-[min(20rem,calc(100vw-1.5rem))] bg-popover/90 backdrop-blur-xl"
+                >
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Create Task</div>
                   <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
                     🔍 Inspection
