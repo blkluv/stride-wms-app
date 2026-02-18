@@ -265,7 +265,7 @@ export function TaggablePhotoGrid({
 
       {/* Lightbox */}
       <Dialog open={!!lightboxPhoto} onOpenChange={() => setLightboxPhoto(null)}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1.5rem)] !h-[calc(100vh-1.5rem)] max-w-6xl !max-h-[calc(100vh-1.5rem)] !overflow-hidden p-3 sm:p-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               Photo
@@ -281,15 +281,29 @@ export function TaggablePhotoGrid({
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative flex flex-col min-h-0">
+            <div className="relative flex flex-1 flex-col min-h-0">
               <img
                 src={lightboxPhoto.url}
                 alt="Photo"
                 className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
-              <div className="flex gap-2 mt-4 justify-end flex-wrap">
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                {/* Download */}
                 <Button
                   variant="outline"
+                  size="icon"
+                  className="h-11 w-11 sm:hidden"
+                  onClick={() => {
+                    const index = normalizedPhotos.findIndex(p => p.url === lightboxPhoto.url);
+                    handleDownload(lightboxPhoto.url, index >= 0 ? index : 0);
+                  }}
+                >
+                  <MaterialIcon name="download" size="md" />
+                  <span className="sr-only">Download</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="hidden sm:inline-flex"
                   onClick={() => {
                     const index = normalizedPhotos.findIndex(p => p.url === lightboxPhoto.url);
                     handleDownload(lightboxPhoto.url, index >= 0 ? index : 0);
@@ -301,19 +315,50 @@ export function TaggablePhotoGrid({
                 {enableTagging && !readonly && onPhotosChange && (
                   <>
                     {!lightboxPhoto.isPrimary && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          handleSetPrimary(lightboxPhoto.url);
-                          setLightboxPhoto(null);
-                        }}
-                      >
-                        <MaterialIcon name="star" size="sm" className="mr-2" />
-                        Set as Primary
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 sm:hidden"
+                          onClick={() => {
+                            handleSetPrimary(lightboxPhoto.url);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="star" size="md" />
+                          <span className="sr-only">Set as Primary</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="hidden sm:inline-flex"
+                          onClick={() => {
+                            handleSetPrimary(lightboxPhoto.url);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="star" size="sm" className="mr-2" />
+                          Set as Primary
+                        </Button>
+                      </>
                     )}
+                    {/* Attention */}
                     <Button
                       variant={lightboxPhoto.needsAttention ? 'secondary' : 'outline'}
+                      size="icon"
+                      className="h-11 w-11 sm:hidden"
+                      onClick={() => {
+                        handleToggleAttention(lightboxPhoto.url);
+                        setLightboxPhoto(null);
+                      }}
+                    >
+                      <MaterialIcon name="warning" size="md" />
+                      <span className="sr-only">
+                        {lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
+                      </span>
+                    </Button>
+                    <Button
+                      variant={lightboxPhoto.needsAttention ? 'secondary' : 'outline'}
+                      className="hidden sm:inline-flex"
                       onClick={() => {
                         handleToggleAttention(lightboxPhoto.url);
                         setLightboxPhoto(null);
@@ -322,9 +367,24 @@ export function TaggablePhotoGrid({
                       <MaterialIcon name="warning" size="sm" className="mr-2" />
                       {lightboxPhoto.needsAttention ? 'Remove Attention Flag' : 'Mark Needs Attention'}
                     </Button>
+                    {/* Repair */}
                     <Button
                       variant={lightboxPhoto.isRepair ? 'secondary' : 'outline'}
-                      className={lightboxPhoto.isRepair ? 'bg-green-100 hover:bg-green-200 text-green-700' : ''}
+                      size="icon"
+                      className={cn("h-11 w-11 sm:hidden", lightboxPhoto.isRepair ? "bg-green-100 text-green-700 hover:bg-green-200" : "")}
+                      onClick={() => {
+                        handleToggleRepair(lightboxPhoto.url);
+                        setLightboxPhoto(null);
+                      }}
+                    >
+                      <MaterialIcon name="build" size="md" />
+                      <span className="sr-only">
+                        {lightboxPhoto.isRepair ? 'Remove Repair Tag' : 'Mark as Repair'}
+                      </span>
+                    </Button>
+                    <Button
+                      variant={lightboxPhoto.isRepair ? 'secondary' : 'outline'}
+                      className={cn("hidden sm:inline-flex", lightboxPhoto.isRepair ? 'bg-green-100 hover:bg-green-200 text-green-700' : '')}
                       onClick={() => {
                         handleToggleRepair(lightboxPhoto.url);
                         setLightboxPhoto(null);
@@ -336,16 +396,31 @@ export function TaggablePhotoGrid({
                   </>
                 )}
                 {!readonly && onPhotosChange && (
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      handleDelete(lightboxPhoto.url);
-                      setLightboxPhoto(null);
-                    }}
-                  >
-                    <MaterialIcon name="close" size="sm" className="mr-2" />
-                    Delete
-                  </Button>
+                  <>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="h-11 w-11 sm:hidden"
+                      onClick={() => {
+                        handleDelete(lightboxPhoto.url);
+                        setLightboxPhoto(null);
+                      }}
+                    >
+                      <MaterialIcon name="close" size="md" />
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="hidden sm:inline-flex"
+                      onClick={() => {
+                        handleDelete(lightboxPhoto.url);
+                        setLightboxPhoto(null);
+                      }}
+                    >
+                      <MaterialIcon name="close" size="sm" className="mr-2" />
+                      Delete
+                    </Button>
+                  </>
                 )}
               </div>
             </div>

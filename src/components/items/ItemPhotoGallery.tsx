@@ -411,7 +411,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
 
       {/* Lightbox Dialog */}
       <Dialog open={!!lightboxPhoto} onOpenChange={() => setLightboxPhoto(null)}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1.5rem)] !h-[calc(100vh-1.5rem)] max-w-6xl !max-h-[calc(100vh-1.5rem)] !overflow-hidden p-3 sm:p-4">
           <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
               Photo
@@ -457,7 +457,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative flex flex-col min-h-0">
+            <div className="relative flex flex-1 flex-col min-h-0">
               {/* Task info banner for task photos */}
               {isTaskPhoto(lightboxPhoto) && lightboxPhoto.source_task_title && (
                 <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm flex items-center gap-2">
@@ -477,9 +477,20 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                 alt={lightboxPhoto.file_name}
                 className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
-              <div className="flex gap-2 mt-4 justify-end flex-wrap">
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                {/* Download */}
                 <Button
                   variant="outline"
+                  size="icon"
+                  className="h-11 w-11 sm:hidden"
+                  onClick={() => handleDownload(lightboxPhoto)}
+                >
+                  <MaterialIcon name="download" size="md" />
+                  <span className="sr-only">Download</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="hidden sm:inline-flex"
                   onClick={() => handleDownload(lightboxPhoto)}
                 >
                   <MaterialIcon name="download" size="sm" className="mr-2" />
@@ -489,44 +500,102 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
                 {!isClientUser && !isTaskPhoto(lightboxPhoto) && (
                   <>
                     {!lightboxPhoto.is_primary && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          handleSetPrimary(lightboxPhoto.id);
-                          setLightboxPhoto(null);
-                        }}
-                      >
-                        <MaterialIcon name="star" size="sm" className="mr-2" />
-                        Set as Primary
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 sm:hidden"
+                          onClick={() => {
+                            handleSetPrimary(lightboxPhoto.id);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="star" size="md" />
+                          <span className="sr-only">Set as Primary</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="hidden sm:inline-flex"
+                          onClick={() => {
+                            handleSetPrimary(lightboxPhoto.id);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="star" size="sm" className="mr-2" />
+                          Set as Primary
+                        </Button>
+                      </>
                     )}
                     {/* Add flag buttons only shown when flags are NOT set */}
                     {!lightboxPhoto.needs_attention && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          handleToggleAttention(lightboxPhoto.id, false);
-                          setLightboxPhoto(null);
-                        }}
-                      >
-                        <MaterialIcon name="warning" size="sm" className="mr-2" />
-                        attention
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 sm:hidden"
+                          onClick={() => {
+                            handleToggleAttention(lightboxPhoto.id, false);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="warning" size="md" />
+                          <span className="sr-only">Mark Needs Attention</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="hidden sm:inline-flex"
+                          onClick={() => {
+                            handleToggleAttention(lightboxPhoto.id, false);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="warning" size="sm" className="mr-2" />
+                          Attention
+                        </Button>
+                      </>
                     )}
                     {!lightboxPhoto.is_repair && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          handleToggleRepair(lightboxPhoto.id, false);
-                          setLightboxPhoto(null);
-                        }}
-                      >
-                        <MaterialIcon name="build" size="sm" className="mr-2" />
-                        repair
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 sm:hidden"
+                          onClick={() => {
+                            handleToggleRepair(lightboxPhoto.id, false);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="build" size="md" />
+                          <span className="sr-only">Mark as Repair</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="hidden sm:inline-flex"
+                          onClick={() => {
+                            handleToggleRepair(lightboxPhoto.id, false);
+                            setLightboxPhoto(null);
+                          }}
+                        >
+                          <MaterialIcon name="build" size="sm" className="mr-2" />
+                          Repair
+                        </Button>
+                      </>
                     )}
                     <Button
                       variant="destructive"
+                      size="icon"
+                      className="h-11 w-11 sm:hidden"
+                      onClick={() => {
+                        handleDelete(lightboxPhoto.id);
+                        setLightboxPhoto(null);
+                      }}
+                    >
+                      <MaterialIcon name="close" size="md" />
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="hidden sm:inline-flex"
                       onClick={() => {
                         handleDelete(lightboxPhoto.id);
                         setLightboxPhoto(null);
