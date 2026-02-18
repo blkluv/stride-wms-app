@@ -846,8 +846,8 @@ export default function ItemDetail() {
               {/* Consolidated Actions Menu (Tasks + Item actions) */}
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full sm:w-auto justify-center">
-                    <MaterialIcon name="more_horiz" size="sm" className="mr-2" />
+                  <Button variant="outline" className="w-full sm:w-auto justify-start">
+                    <span className="mr-2">🧰</span>
                     Actions
                   </Button>
                 </DropdownMenuTrigger>
@@ -1193,7 +1193,7 @@ export default function ItemDetail() {
                     {/* Account */}
                     <div>
                       <span className="text-muted-foreground">Account</span>
-                      <p className="font-medium">{item.account?.account_name || '-'}</p>
+                      <p className="text-base font-semibold leading-tight">{item.account?.account_name || '-'}</p>
                     </div>
                     {/* Sidemark - inline editable with autocomplete */}
                     <div>
