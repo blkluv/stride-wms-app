@@ -213,3 +213,7 @@ User decision (clearing custom setup on toggle off):
 User decision (confirmation prompt on toggle off):
 - When the tenant toggles off “Send emails from my company domain”, show a confirmation prompt explaining that custom-domain setup fields will be cleared.
 
+### QA-2026-02-17-ADMINOPS-039
+User decision (cleanup Resend domain registration on cancel):
+- If a tenant starts custom domain setup and we registered the domain with Resend, then the tenant switches back to platform sender, we should remove/cleanup the domain registration in Resend as well (not just stop using it).
+

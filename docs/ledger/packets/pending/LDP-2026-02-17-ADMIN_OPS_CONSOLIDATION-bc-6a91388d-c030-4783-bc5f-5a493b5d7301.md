@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `38`
+- Q&A items extracted: `39`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041, DL-2026-02-17-042, DL-2026-02-17-043`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041, DL-2026-02-17-042, DL-2026-02-17-043, DL-2026-02-17-044`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -63,6 +63,7 @@
 | DL-2026-02-17-041 | Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036` | - | - |
 | DL-2026-02-17-042 | Toggling back to platform sender clears previously entered custom-domain setup fields | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-037` | - | - |
 | DL-2026-02-17-043 | Confirm before clearing custom-domain setup when toggling off | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-038` | - | - |
+| DL-2026-02-17-044 | Cleanup Resend domain registration when tenant cancels custom sender setup | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-039` | - | - |
 
 ## Detailed Decision Entries
 
@@ -936,6 +937,25 @@ Prevents accidental data loss and reduces confusion for non-technical users.
 - Use a confirmation dialog with clear copy (example: “Switching back to platform sender will clear your custom domain setup fields. Continue?”).
 - Only clear the custom-domain fields after the tenant confirms.
 
+### DL-2026-02-17-044: Cleanup Resend domain registration when tenant cancels custom sender setup
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-039`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant begins custom sender setup and the platform registers the tenant’s domain in Resend, but the tenant later switches back to the platform sender (cancels custom sender setup), the platform should cleanup/remove that tenant domain registration in Resend as well (not just stop using it).
+
+#### Why
+Keeps the platform Resend account clean and reduces operational overhead (and potential plan limits on number of domains) when tenants abandon custom sender setup.
+
+#### Implementation impact
+- Implement a service-side cleanup call to Resend Domains API when custom sender is cancelled.
+- Cleanup should be best-effort and must not block switching back to platform sender mode; if cleanup fails, platform sender mode still applies and the system can retry or surface an admin warning.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -980,3 +1000,4 @@ Prevents accidental data loss and reduces confusion for non-technical users.
 | DLE-2026-02-17-040 | 2026-02-17 | DL-2026-02-17-041 | planned | - | builder | Ensure toggling back to platform sender auto-applies platform sending and Reply-To routes to the tenant’s saved Reply-To/inbound address. |
 | DLE-2026-02-17-041 | 2026-02-17 | DL-2026-02-17-042 | planned | - | builder | When tenant toggles off custom sender, clear/reset custom-domain setup fields (and persisted in-progress config) to avoid confusion. |
 | DLE-2026-02-17-042 | 2026-02-17 | DL-2026-02-17-043 | planned | - | builder | Add confirmation prompt before clearing custom sender setup when tenant toggles off custom-domain mode. |
+| DLE-2026-02-17-043 | 2026-02-17 | DL-2026-02-17-044 | planned | - | builder | When tenant cancels custom sender setup, cleanup/remove the tenant domain registration in Resend (best-effort; do not block platform fallback). |
