@@ -17,14 +17,12 @@ interface PhotoGridProps {
   photos: string[];
   onPhotosChange?: (urls: string[]) => void;
   readonly?: boolean;
-  columns?: 3 | 4;
 }
 
 export function PhotoGrid({
   photos,
   onPhotosChange,
   readonly = false,
-  columns = 4,
 }: PhotoGridProps) {
   const { toast } = useToast();
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);

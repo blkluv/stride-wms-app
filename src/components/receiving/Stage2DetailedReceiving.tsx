@@ -319,7 +319,7 @@ export function Stage2DetailedReceiving({
 
   // Remove item (allocation-aware)
   const removeItem = async (item: ReceivedItem) => {
-    if (!canEdit) return;
+    if (!canEdit || !showCompleteButton) return;
     // If sourced from allocation, reverse via deallocation RPC
     if (item.allocationId) {
       try {
@@ -1048,7 +1048,7 @@ export function Stage2DetailedReceiving({
                               onClick={() => removeItem(item)}
                               className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                               title="Remove item"
-                              disabled={!canEdit}
+                              disabled={!canEdit || !showCompleteButton}
                             >
                               <MaterialIcon name="delete" size="sm" />
                             </Button>
