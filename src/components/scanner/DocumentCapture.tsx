@@ -9,6 +9,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useDocuments } from '@/hooks/useDocuments';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { DocumentScanner } from './DocumentScanner';
 import { uploadDocument } from '@/lib/scanner/uploadService';
@@ -38,6 +39,7 @@ export function DocumentCapture({
 }: DocumentCaptureProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   
   const [scannerOpen, setScannerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -220,6 +222,8 @@ export function DocumentCapture({
     }
   };
 
+  // "Real scan" is mobile/tablet-focused; desktop uses upload.
+  const effectiveScanEnabled = scanEnabled && isMobile;
   const canAddMore = canEdit && documents.length < maxDocuments;
 
   return (
@@ -257,8 +261,8 @@ export function DocumentCapture({
 
       {/* Upload Buttons */}
       {canAddMore && (
-        <div className={scanEnabled ? 'flex gap-2' : undefined}>
-          {scanEnabled ? (
+        <div className={effectiveScanEnabled ? 'flex gap-2' : undefined}>
+          {effectiveScanEnabled ? (
             <Button
               type="button"
               variant="outline"
@@ -273,7 +277,7 @@ export function DocumentCapture({
           ) : null}
 
           {/* Upload Button - File picker (overlay input for mobile reliability) */}
-          <div className={scanEnabled ? 'relative flex-1' : 'relative w-full'}>
+          <div className={effectiveScanEnabled ? 'relative flex-1' : 'relative w-full'}>
             <Button
               type="button"
               variant="outline"
@@ -309,7 +313,7 @@ export function DocumentCapture({
       </p>
 
       {/* Document Scanner Dialog - Opens directly to camera */}
-      {scanEnabled && canEdit ? (
+      {effectiveScanEnabled && canEdit ? (
         <DocumentScanner
           open={scannerOpen}
           onOpenChange={setScannerOpen}

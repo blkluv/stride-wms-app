@@ -1106,7 +1106,7 @@ export function Stage1DockIntake({
         </CardHeader>
         <CardContent>
           <DocumentCapture
-            context={{ type: 'shipment', shipmentId }}
+            context={{ type: 'shipment', shipmentId, shipmentNumber }}
             maxDocuments={12}
             ocrEnabled={true}
             canEdit={canEdit}

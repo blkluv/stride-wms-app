@@ -37,7 +37,7 @@ export type DocumentContextType =
 
 // Context with specific metadata for each type
 export type DocumentContext =
-  | { type: 'shipment'; shipmentId: string; vendor?: string }
+  | { type: 'shipment'; shipmentId: string; shipmentNumber?: string; vendor?: string }
   | { type: 'quote'; quoteId: string; quoteNumber?: string }
   | { type: 'employee'; employeeId: string; employeeName?: string }
   | { type: 'delivery'; deliveryId: string; routeStopId?: string }
