@@ -833,9 +833,10 @@ export default function ItemDetail() {
                   <Badge
                     key={flag.code}
                     variant="outline"
-                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-semibold"
+                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-2.5 py-0.5"
                   >
-                    {'\u26A0\uFE0F'} {flag.name}
+                    <MaterialIcon name="warning" className="text-[12px] mr-1" />
+                    {flag.name}
                   </Badge>
                 ))}
               </div>

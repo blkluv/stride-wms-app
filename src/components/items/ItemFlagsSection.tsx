@@ -490,17 +490,20 @@ export function ItemFlagsSection({
                   <span className="text-sm">{service.service_name}</span>
                   <div className="flex items-center gap-1 ml-auto">
                     {!isIndicator && (
-                      <Badge variant="outline" className="text-xs px-1">
+                      <Badge variant="outline" className="text-xs px-2 py-0.5">
                         <MaterialIcon name="attach_money" className="text-[12px]" />
                       </Badge>
                     )}
                     {isIndicator && (
-                      <Badge variant="outline" className="text-xs px-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+                      <Badge
+                        variant="outline"
+                        className="text-xs px-2 py-0.5 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                      >
                         <MaterialIcon name="warning" className="text-[12px]" />
                       </Badge>
                     )}
                     {hasAlert && (
-                      <Badge variant="outline" className="text-xs px-1">
+                      <Badge variant="outline" className="text-xs px-2 py-0.5">
                         <MaterialIcon name="notifications" className="text-[12px]" />
                       </Badge>
                     )}
