@@ -158,8 +158,16 @@ export default function ScanHub() {
 
   // Quarantine warning state
   const [quarantineWarningOpen, setQuarantineWarningOpen] = useState(false);
+  const quarantineWarningOpenRef = useRef(quarantineWarningOpen);
   const [quarantineItem, setQuarantineItem] = useState<ScannedItem | null>(null);
   const [quarantinePendingAction, setQuarantinePendingAction] = useState<(() => void) | null>(null);
+
+  useEffect(() => { quarantineWarningOpenRef.current = quarantineWarningOpen; }, [quarantineWarningOpen]);
+
+  const setQuarantineWarningOpenSafe = (next: boolean) => {
+    quarantineWarningOpenRef.current = next;
+    setQuarantineWarningOpen(next);
+  };
 
   // Location suggestions state
   const [suggestionsWarehouseId, setSuggestionsWarehouseId] = useState<string | undefined>();
@@ -669,14 +677,14 @@ export default function ScanHub() {
       quarantinePendingAction();
     }
 
-    setQuarantineWarningOpen(false);
+    setQuarantineWarningOpenSafe(false);
     setQuarantineItem(null);
     setQuarantinePendingAction(null);
   };
 
   // Dismiss quarantine warning (go back)
   const handleQuarantineDismiss = () => {
-    setQuarantineWarningOpen(false);
+    setQuarantineWarningOpenSafe(false);
     setQuarantineItem(null);
     setQuarantinePendingAction(null);
   };
@@ -744,7 +752,7 @@ export default function ScanHub() {
               hapticError();
               setQuarantineItem(item);
               setQuarantinePendingAction(() => () => navigate(`/inventory/${item.id}`));
-              setQuarantineWarningOpen(true);
+              setQuarantineWarningOpenSafe(true);
               scanQueueRef.current = [];
               return;
             }
@@ -808,7 +816,7 @@ export default function ScanHub() {
                     description: 'Now scan the destination bay.',
                   });
                 });
-                setQuarantineWarningOpen(true);
+                setQuarantineWarningOpenSafe(true);
                 scanQueueRef.current = [];
                 return;
               }
@@ -1000,7 +1008,7 @@ export default function ScanHub() {
       const m = modeRef.current;
       const p = phaseRef.current;
       const canContinue =
-        m !== null && (p === 'scanning-item' || p === 'scanning-location') && !quarantineWarningOpen;
+        m !== null && (p === 'scanning-item' || p === 'scanning-location') && !quarantineWarningOpenRef.current;
 
       if (canContinue) {
         processNextQueuedScan();
