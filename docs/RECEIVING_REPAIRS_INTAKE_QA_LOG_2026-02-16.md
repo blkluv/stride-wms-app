@@ -290,3 +290,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 87. Q: Tapping the "Intakes In Progress" card (not expanding): where should it go?
     A: Incoming Manager (`/incoming/manager`) on the intakes view (option A).
 
+88. Q: Tapping the "Expected Today" card (not expanding): where should it go?
+    A: Incoming Manager (`/incoming/manager`) on the expected view (option A).
+
