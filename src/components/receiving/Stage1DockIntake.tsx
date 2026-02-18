@@ -89,6 +89,8 @@ interface Stage1DockIntakeProps {
   entryCount?: number;
   /** Draft-only: show the "Complete Dock Intake" action */
   showCompleteButton?: boolean;
+  /** Render in read-only mode (view-only). */
+  readOnly?: boolean;
 }
 
 export function Stage1DockIntake({
@@ -101,10 +103,12 @@ export function Stage1DockIntake({
   onOpenExceptions,
   entryCount = 0,
   showCompleteButton = true,
+  readOnly = false,
 }: Stage1DockIntakeProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { hasRole } = usePermissions();
+  const canEdit = !readOnly;
 
   // Form state
   const [accountId, setAccountId] = useState<string>(shipment.account_id || '');
@@ -523,6 +527,7 @@ export function Stage1DockIntake({
 
   // Signature handlers
   const handleSignatureComplete = async (data: string | null, name: string) => {
+    if (!canEdit) return;
     const normalizedName = name.trim();
     const normalizedData = data?.trim() ? data : null;
 
@@ -560,6 +565,7 @@ export function Stage1DockIntake({
   };
 
   const handleClearSignature = async () => {
+    if (!canEdit) return;
     const prevSignatureData = signatureData;
     const prevSignatureName = signatureName;
     const prevSignatureTimestamp = signatureTimestamp;
@@ -599,6 +605,7 @@ export function Stage1DockIntake({
   };
 
   const handleSignatureDialogOpenChange = (open: boolean) => {
+    if (open && !canEdit) return;
     if (!open) {
       setShowSignatureDialog(false);
       setSignatureDraftData(null);
@@ -645,6 +652,7 @@ export function Stage1DockIntake({
 
   // Complete Stage 1
   const handleComplete = async () => {
+    if (!canEdit) return;
     const errors = validate();
     if (errors.length > 0) {
       toast({
@@ -757,6 +765,7 @@ export function Stage1DockIntake({
               placeholder="Select account..."
               clearable={false}
               className="w-full"
+              disabled={!canEdit}
             />
           </div>
 
@@ -770,6 +779,7 @@ export function Stage1DockIntake({
                 placeholder="Enter carrier..."
                 value={carrierName}
                 onChange={(e) => handleCarrierNameChange(e.target.value)}
+                disabled={!canEdit}
               />
             </div>
             <div className="space-y-2">
@@ -779,6 +789,7 @@ export function Stage1DockIntake({
                 placeholder="Enter tracking..."
                 value={trackingNumber}
                 onChange={(e) => handleTrackingNumberChange(e.target.value)}
+                disabled={!canEdit}
               />
             </div>
             <div className="space-y-2">
@@ -788,6 +799,7 @@ export function Stage1DockIntake({
                 placeholder="Enter reference..."
                 value={poNumber}
                 onChange={(e) => handlePoNumberChange(e.target.value)}
+                disabled={!canEdit}
               />
             </div>
           </div>
@@ -813,6 +825,7 @@ export function Stage1DockIntake({
                 onChange={handleSignedPiecesChange}
                 min={0}
                 step={1}
+                disabled={!canEdit}
               />
             </div>
 
@@ -834,6 +847,7 @@ export function Stage1DockIntake({
                 onChange={handleDockCountChange}
                 min={0}
                 step={1}
+                disabled={!canEdit}
               />
             </div>
 
@@ -896,6 +910,7 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.cartons || ''}
                 onChange={(e) => handleBreakdownChange('cartons', parseInt(e.target.value) || 0)}
+                disabled={!canEdit}
               />
             </div>
             <div className="space-y-2">
@@ -906,6 +921,7 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.pallets || ''}
                 onChange={(e) => handleBreakdownChange('pallets', parseInt(e.target.value) || 0)}
+                disabled={!canEdit}
               />
             </div>
             <div className="space-y-2">
@@ -916,6 +932,7 @@ export function Stage1DockIntake({
                 min={0}
                 value={breakdown.crates || ''}
                 onChange={(e) => handleBreakdownChange('crates', parseInt(e.target.value) || 0)}
+                disabled={!canEdit}
               />
             </div>
           </div>
@@ -946,6 +963,7 @@ export function Stage1DockIntake({
                   size="sm"
                   className="gap-1.5"
                   onClick={() => toggleException(opt.value)}
+                  disabled={!canEdit}
                 >
                   <MaterialIcon name={opt.icon} size="sm" />
                   {opt.label}
@@ -967,6 +985,7 @@ export function Stage1DockIntake({
                 value={exceptionNotes[ex] || ''}
                 onChange={(e) => setExceptionNotes((prev) => ({ ...prev, [ex]: e.target.value }))}
                 onBlur={() => void handleExceptionNoteBlur(ex)}
+                disabled={!canEdit}
               />
             </div>
           ))}
@@ -993,18 +1012,23 @@ export function Stage1DockIntake({
           {getPhotoUrls(receivingPhotos).length > 0 ? (
             <TaggablePhotoGrid
               photos={receivingPhotos}
-              enableTagging={true}
-              onPhotosChange={async (photos) => {
-                try {
-                  await saveReceivingPhotosToShipment(photos);
-                } catch (err: any) {
-                  toast({
-                    variant: 'destructive',
-                    title: 'Photo Error',
-                    description: err?.message || 'Failed to save photos',
-                  });
-                }
-              }}
+              enableTagging={canEdit}
+              readonly={!canEdit}
+              onPhotosChange={
+                canEdit
+                  ? async (photos) => {
+                      try {
+                        await saveReceivingPhotosToShipment(photos);
+                      } catch (err: any) {
+                        toast({
+                          variant: 'destructive',
+                          title: 'Photo Error',
+                          description: err?.message || 'Failed to save photos',
+                        });
+                      }
+                    }
+                  : undefined
+              }
             />
           ) : (
             <p className="text-sm text-muted-foreground text-center py-4">
@@ -1013,7 +1037,7 @@ export function Stage1DockIntake({
           )}
 
           {/* Buttons (match Documents layout) */}
-          {getPhotoUrls(receivingPhotos).length < 20 && (
+          {canEdit && getPhotoUrls(receivingPhotos).length < 20 && (
             <div className="flex gap-2 pt-3">
               <PhotoScannerButton
                 entityType="shipment"
@@ -1085,6 +1109,7 @@ export function Stage1DockIntake({
             context={{ type: 'shipment', shipmentId }}
             maxDocuments={12}
             ocrEnabled={true}
+            canEdit={canEdit}
             onDocumentAdded={() => {
               void refetchDocuments();
             }}
@@ -1113,7 +1138,7 @@ export function Stage1DockIntake({
                 variant="secondary"
                 size="sm"
                 onClick={() => setAddChargeOpen(true)}
-                disabled={!accountId}
+                disabled={!accountId || !canEdit}
               >
                 <MaterialIcon name="attach_money" size="sm" />
                 Add Charge
@@ -1123,7 +1148,7 @@ export function Stage1DockIntake({
                   variant="secondary"
                   size="sm"
                   onClick={() => setAddCreditOpen(true)}
-                  disabled={!accountId}
+                  disabled={!accountId || !canEdit}
                 >
                   <MaterialIcon name="money_off" size="sm" />
                   Add Credit
@@ -1221,7 +1246,7 @@ export function Stage1DockIntake({
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleSignatureDialogOpenChange(true)}>
+              <Button variant="outline" size="sm" onClick={() => handleSignatureDialogOpenChange(true)} disabled={!canEdit}>
                 <MaterialIcon name={signatureData || signatureName.trim() ? 'edit' : 'draw'} size="sm" className="mr-2" />
                 {signatureData || signatureName.trim() ? 'Edit' : 'Capture'}
               </Button>
@@ -1230,6 +1255,7 @@ export function Stage1DockIntake({
                   variant="ghost"
                   size="sm"
                   onClick={() => void handleClearSignature()}
+                  disabled={!canEdit}
                   className="text-red-600 hover:text-red-700"
                 >
                   <MaterialIcon name="delete" size="sm" className="mr-1" />
@@ -1261,6 +1287,7 @@ export function Stage1DockIntake({
             value={notes}
             onChange={(e) => handleNotesUserChange(e.target.value)}
             rows={3}
+            disabled={!canEdit}
           />
         </CardContent>
       </Card>
@@ -1271,7 +1298,7 @@ export function Stage1DockIntake({
           <Button
             size="lg"
             onClick={handleComplete}
-            disabled={completing}
+            disabled={completing || !canEdit}
             className="gap-2"
           >
             {completing ? (
@@ -1304,13 +1331,14 @@ export function Stage1DockIntake({
               onChange={(e) => setPendingRequiredNote(e.target.value)}
               rows={4}
               placeholder="Please describe what was refused or what the other exception is."
+              disabled={!canEdit}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingRequiredNoteCode(null)}>
               Cancel
             </Button>
-            <Button onClick={() => void handleSaveRequiredNote()}>
+            <Button onClick={() => void handleSaveRequiredNote()} disabled={!canEdit}>
               Save Note
             </Button>
           </DialogFooter>
@@ -1335,6 +1363,7 @@ export function Stage1DockIntake({
                   value={signatureDraftName}
                   onChange={(e) => setSignatureDraftName(e.target.value)}
                   placeholder="Driver name (required if drawing)"
+                  disabled={!canEdit}
                 />
                 <p className="text-xs text-muted-foreground">
                   Optional overall. If you draw a signature, Driver name is required.
@@ -1357,7 +1386,7 @@ export function Stage1DockIntake({
               onClick={() => {
                 void handleSignatureComplete(signatureDraftData, signatureDraftName);
               }}
-              disabled={!signatureDraftName.trim() || (!!signatureDraftData && !signatureDraftName.trim())}
+              disabled={!canEdit || !signatureDraftName.trim() || (!!signatureDraftData && !signatureDraftName.trim())}
             >
               <MaterialIcon name="check" size="sm" className="mr-2" />
               Save Signature

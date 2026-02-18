@@ -57,7 +57,7 @@ This checklist tracks implementation of each of the **89** logged decisions.
 - [ ] 48. Item-level flag types: Damage, Wet, Missing documents, Crushed/Torn, Other, Open.
 - [ ] 49. Flags exist at both shipment level (exception exists) and item level (which piece).
 - [ ] 50. Shipment exception chip list: Damage, Wet, Open, Missing Docs, Crushed/Torn, Mis-Ship, Shortage, Overage, Other.
-- [ ] 51. Completed intake remains accessible on the same Dock Intake page; read-only by default; "Edit" unlocks changes without reopening status.
+- [x] 51. Completed intake remains accessible on the same Dock Intake page; read-only by default; "Edit" unlocks changes without reopening status.
 - [x] 52. Receiving PDF: save on Stage 2 completion; overwrite visible version; keep older versions archived (not deleted).
 - [x] 53. Archived receiving PDFs revisited via interactive Activity feed (open/download).
 - [x] 54. Activity entity links render inline within sentence (not chips).
