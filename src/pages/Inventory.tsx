@@ -48,6 +48,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
@@ -148,7 +149,13 @@ export default function Inventory() {
   const { preferences } = useTenantPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
 
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
   const [activeViewId, setActiveViewId] = useState<string>('');
 
   useEffect(() => {
@@ -768,26 +775,35 @@ export default function Inventory() {
                   <SelectItem value="disposed">Disposed</SelectItem>
                 </SelectContent>
               </Select>
-              <Select
-                value={activeViewId || defaultItemViewId || 'default'}
-                onValueChange={setActiveViewId}
-                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-              >
-                <SelectTrigger className="w-full sm:w-44">
-                  <div className="flex items-center gap-2">
-                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                    <SelectValue placeholder="View" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {itemDisplaySettings.views.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                      {v.is_default ? ' (default)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex w-full sm:w-auto gap-2">
+                <Select
+                  value={activeViewId || defaultItemViewId || 'default'}
+                  onValueChange={setActiveViewId}
+                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                >
+                  <SelectTrigger className="flex-1 sm:w-44">
+                    <div className="flex items-center gap-2">
+                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                      <SelectValue placeholder="View" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {itemDisplaySettings.views.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                        {v.is_default ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <ItemColumnsPopover
+                  settings={itemDisplaySettings}
+                  viewId={activeViewId || defaultItemViewId || 'default'}
+                  disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                  onSave={saveItemDisplaySettings}
+                />
+              </div>
               <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
             </div>
 
