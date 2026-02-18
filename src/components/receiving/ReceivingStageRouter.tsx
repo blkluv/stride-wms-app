@@ -19,7 +19,7 @@ import { useShipmentExceptions } from '@/hooks/useShipmentExceptions';
 import DockIntakeMatchingPanel from '@/components/incoming/DockIntakeMatchingPanel';
 import type { CandidateParams } from '@/hooks/useInboundCandidates';
 import { downloadReceivingPdf, storeReceivingPdf, type ReceivingPdfData } from '@/lib/receivingPdf';
-import { queueReceivingDiscrepancyAlert } from '@/lib/alertQueue';
+import { queueReceivingDiscrepancyAlert, queueShipmentReceivedAlert } from '@/lib/alertQueue';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
 import { ShipmentNotesSection } from '@/components/shipments/ShipmentNotesSection';
@@ -287,6 +287,14 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
       // Fire alerts (non-blocking)
       try {
+        // Client + internal: Shipment received notification (with optional Exceptions section)
+        void queueShipmentReceivedAlert(
+          profile.tenant_id,
+          shipmentId,
+          shipment.shipment_number,
+          entryCount
+        );
+
         const { data: exceptions } = await (supabase as any)
           .from('shipment_exceptions')
           .select('id')

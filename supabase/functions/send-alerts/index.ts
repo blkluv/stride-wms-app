@@ -38,6 +38,27 @@ function parseCommaEmails(str: string | null | undefined): string[] {
   return str.split(',').map(e => e.trim().toLowerCase()).filter(e => EMAIL_REGEX.test(e));
 }
 
+function escapeHtml(input: string): string {
+  return (input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+const SHIPMENT_EXCEPTION_LABELS: Record<string, string> = {
+  SHORTAGE: 'Shortage',
+  OVERAGE: 'Overage',
+  MIS_SHIP: 'Mis-Ship',
+  DAMAGE: 'Damage',
+  WET: 'Wet',
+  OPEN: 'Open',
+  MISSING_DOCS: 'Missing Docs',
+  CRUSHED_TORN_CARTONS: 'Crushed/Torn Cartons',
+  OTHER: 'Other',
+};
+
 // =============================================================================
 // RECIPIENT RESOLUTION (Hardened)
 // =============================================================================
@@ -652,6 +673,10 @@ async function buildTemplateVariables(
     office_alert_email_primary: officeAlertEmailPrimary,
     // ── Portal deep-link tokens (defaults; overridden per entity below) ──
     shipment_link: '',
+    // ── Shipment exception aggregate tokens (optional) ──
+    exceptions_count: '0',
+    exceptions_list_text: '',
+    exceptions_section_html: '',
     portal_invoice_url: '',
     portal_claim_url: '',
     portal_release_url: '',
@@ -757,6 +782,67 @@ async function buildTemplateVariables(
           }
         } else {
           variables.items_count = '0';
+        }
+
+        // Shipment exceptions (open) — optional section for Shipment Received templates
+        try {
+          const { data: exRows, error: exErr } = await supabase
+            .from('shipment_exceptions')
+            .select('code, note')
+            .eq('tenant_id', tenantId)
+            .eq('shipment_id', entityId)
+            .eq('status', 'open');
+
+          if (exErr) throw exErr;
+
+          const exceptions = Array.isArray(exRows) ? exRows : [];
+          variables.exceptions_count = String(exceptions.length);
+
+          if (exceptions.length > 0) {
+            const formatted = exceptions.map((ex: any) => {
+              const code = String(ex.code || '').trim();
+              const label = SHIPMENT_EXCEPTION_LABELS[code] || code.replace(/_/g, ' ');
+              const note = String(ex.note || '').trim();
+              return { code, label, note };
+            });
+
+            variables.exceptions_list_text = formatted
+              .map((e) => `- ${e.label}${e.note ? `: ${e.note}` : ''}`)
+              .join('\n');
+
+            const listItems = formatted
+              .map((e) => {
+                const safeLabel = escapeHtml(e.label);
+                const safeNote = escapeHtml(e.note);
+                return `
+                  <li style="margin:0 0 10px;">
+                    <strong style="color:#92400e;">${safeLabel}</strong>
+                    ${safeNote ? `<div style="margin-top:2px;color:#475569;white-space:pre-wrap;">${safeNote}</div>` : ''}
+                  </li>
+                `;
+              })
+              .join('');
+
+            variables.exceptions_section_html = `
+              <div style="margin-top:24px;padding:16px;border:1px solid #fde68a;background:#fffbeb;border-radius:12px;">
+                <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#92400e;letter-spacing:0.3px;text-transform:uppercase;">
+                  Exceptions
+                </p>
+                <ul style="margin:0;padding-left:18px;color:#92400e;font-size:14px;">
+                  ${listItems}
+                </ul>
+              </div>
+            `;
+          } else {
+            variables.exceptions_list_text = '';
+            variables.exceptions_section_html = '';
+          }
+        } catch (exBuildErr) {
+          // Exceptions are optional; don't block alert delivery if this fails.
+          console.warn('[send-alerts] failed to build shipment exception tokens:', exBuildErr);
+          variables.exceptions_count = variables.exceptions_count || '0';
+          variables.exceptions_list_text = variables.exceptions_list_text || '';
+          variables.exceptions_section_html = variables.exceptions_section_html || '';
         }
       }
     } else if (entityType === 'item') {

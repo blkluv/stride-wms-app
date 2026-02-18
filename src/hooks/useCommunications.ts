@@ -176,6 +176,9 @@ export const COMMUNICATION_VARIABLES = [
   { key: 'shipment_expected_date', label: 'Expected Date', group: 'Shipment', sample: '2024-01-15', description: 'Expected arrival date' },
   { key: 'shipment_received_date', label: 'Received Date', group: 'Shipment', sample: '2024-01-14', description: 'Actual received date' },
   { key: 'shipment_link', label: 'Shipment Link', group: 'Shipment', sample: 'https://portal.stride.com/shipments/123', description: 'Direct link to shipment' },
+  { key: 'exceptions_count', label: 'Exceptions Count', group: 'Shipment', sample: '2', description: 'Number of open receiving exceptions (blank/0 when none)' },
+  { key: 'exceptions_list_text', label: 'Exceptions List (Text)', group: 'Shipment', sample: '- Damage: Corner torn\\n- Wet: Box soaked', description: 'Bullet list of exceptions (type + note)' },
+  { key: 'exceptions_section_html', label: 'Exceptions Section (HTML)', group: 'Shipment', sample: '<div>...</div>', description: 'Preformatted Exceptions section for emails (blank when none)' },
 
   // Item
   { key: 'item_id', label: 'Item ID', group: 'Item', sample: 'ITM-001', description: 'Unique item identifier' },

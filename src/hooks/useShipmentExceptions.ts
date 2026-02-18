@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { logActivity } from '@/lib/activity/logActivity';
+import { queueReceivingExceptionAlert } from '@/lib/alertQueue';
 
 export type ShipmentExceptionCode =
   | 'PIECES_MISMATCH'
@@ -253,6 +254,40 @@ export function useShipmentExceptions(
           note: normalizedNote,
         },
       });
+
+      // Queue internal-only exception alert (do not block UI save)
+      if (!MATCHING_DISCREPANCY_CODES.has(code)) {
+        void (async () => {
+          try {
+            // Guard: only queue if the tenant has explicitly enabled this trigger.
+            // If there is no communication_alerts row, send-alerts would otherwise "fail open"
+            // and send a generic email, which is not desired.
+            const { data: commAlert } = await (supabase.from('communication_alerts') as any)
+              .select('is_enabled, channels')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('trigger_event', 'receiving.exception_noted')
+              .maybeSingle();
+
+            if (!commAlert || commAlert.is_enabled !== true || commAlert.channels?.email !== true) {
+              return;
+            }
+
+            const { data: sh } = await (supabase.from('shipments') as any)
+              .select('shipment_number')
+              .eq('id', shipmentId)
+              .maybeSingle();
+            const shipmentNumber = (sh?.shipment_number as string | null) || shipmentId;
+            await queueReceivingExceptionAlert(
+              profile.tenant_id,
+              shipmentId,
+              shipmentNumber,
+              SHIPMENT_EXCEPTION_CODE_META[code]?.label || code
+            );
+          } catch (alertErr) {
+            console.warn('[useShipmentExceptions] failed to queue receiving exception alert:', alertErr);
+          }
+        })();
+      }
 
       // Mirror to shipment_notes (chip-generated exception note)
       void syncChipGeneratedExceptionNote();
