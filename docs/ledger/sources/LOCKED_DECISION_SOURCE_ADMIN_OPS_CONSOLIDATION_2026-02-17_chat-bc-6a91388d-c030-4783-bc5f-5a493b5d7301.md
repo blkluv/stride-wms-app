@@ -155,3 +155,8 @@ User decision (Status filter values):
   - Warning (deliverability risk)
   - Error (misconfigured)
 
+### QA-2026-02-17-ADMINOPS-028
+User decision (status display model):
+- Email Ops tenant table should show multiple issue indicators (e.g., “Pending DNS” and “Missing Reply-To”) when applicable.
+- Also compute and display a single “overall status” as the worst/most severe of the applicable issues for sorting/filtering.
+
