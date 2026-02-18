@@ -135,3 +135,7 @@ User decision (Email Ops tenant list UX):
 User request (status meanings + builder selection):
 - User requests the builder determine which Email Ops statuses matter and what they mean, because the user does not know which statuses are relevant to track.
 
+### QA-2026-02-17-ADMINOPS-025
+User decision (table columns):
+- In the Email Ops tenant table, separate “Status” from “Sender Type” by using two columns (instead of encoding both concepts into a single Status string).
+
