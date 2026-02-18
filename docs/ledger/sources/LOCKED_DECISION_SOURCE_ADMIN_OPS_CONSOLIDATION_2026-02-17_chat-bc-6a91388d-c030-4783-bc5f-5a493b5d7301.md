@@ -114,3 +114,8 @@ User decision (fallback From address is per-tenant):
 User decision (fallback sender local-part identifier):
 - The `"tenantid"` portion of the platform-managed fallback sender email should use a human-friendly tenant code/slug (not UUID, not company name).
 
+### QA-2026-02-17-ADMINOPS-021
+User decision (fallback sender domain not finalized yet):
+- The app’s domain (and therefore the fallback sender domain/subdomain) has not been picked yet because the product is still in development.
+- Do not hardcode a final domain value into code; this should remain configurable and can be set later in admin Email Ops.
+

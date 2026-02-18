@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `20`
+- Q&A items extracted: `21`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -45,6 +45,7 @@
 | DL-2026-02-17-023 | UI clearly explains platform-managed outbound From address when no custom sender domain is set up | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-018` | - | - |
 | DL-2026-02-17-024 | Platform-managed fallback From address is per-tenant (tenantid@subdomain.stridewms.com style) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-019` | - | - |
 | DL-2026-02-17-025 | Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020` | - | - |
+| DL-2026-02-17-026 | Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021` | - | - |
 
 ## Detailed Decision Entries
 
@@ -537,6 +538,25 @@ Tenant code/slug is readable and stable while avoiding exposing UUIDs or relying
 - Define where the tenant code/slug is stored and how it is generated/validated (must be unique).
 - Ensure the code/slug is safe for email local-part usage (allowed characters, length, normalization).
 
+### DL-2026-02-17-026: Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The final app domain (and therefore the platform-managed fallback sender base domain/subdomain) has not been chosen yet because the product is still in development. We will not hardcode a final domain value into code; the base domain/subdomain used for platform-managed senders must remain admin-configurable and can be set/updated later in Email Ops.
+
+#### Why
+This avoids rework and prevents shipping assumptions about the final production domain while still letting development continue with configurable settings.
+
+#### Implementation impact
+- Add an admin-dev configurable setting for the platform-managed sender base domain/subdomain (used to build per-tenant From addresses).
+- Tenant-facing UI should display whatever is currently configured, and if it is unset, show a clear “not configured yet” status rather than implying a fixed production domain.
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -563,3 +583,4 @@ Tenant code/slug is readable and stable while avoiding exposing UUIDs or relying
 | DLE-2026-02-17-022 | 2026-02-17 | DL-2026-02-17-023 | planned | - | builder | Update tenant email setup copy to clearly explain platform-managed From address when no custom sender is configured and that Reply-To controls incoming replies. |
 | DLE-2026-02-17-023 | 2026-02-17 | DL-2026-02-17-024 | planned | - | builder | Implement per-tenant platform-managed fallback From address and admin-dev configuration for the base domain/subdomain. |
 | DLE-2026-02-17-024 | 2026-02-17 | DL-2026-02-17-025 | planned | - | builder | Use tenant code/slug as the local-part identifier for platform-managed per-tenant fallback sender addresses. |
+| DLE-2026-02-17-025 | 2026-02-17 | DL-2026-02-17-026 | planned | - | builder | Keep fallback sender base domain/subdomain admin-configurable (do not hardcode final production domain while app domain is TBD). |
