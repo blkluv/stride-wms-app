@@ -64,6 +64,7 @@ import {
   calculateShipmentBillingPreview,
   BillingPreview,
 } from '@/lib/billing/billingCalculation';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 import { logActivity, logBillingActivity } from '@/lib/activity/logActivity';
 import { voidCharge, voidBillingEventWithMetadataMerge } from '@/services/billing';
 
@@ -743,6 +744,11 @@ export function BillingCalculator({
   // Use serviceLinePreview total if provided, otherwise use calculated preview total
   const previewTotal = hasServiceLinePreview ? serviceLinePreviewTotal : (preview?.subtotal || 0);
 
+  // Estimated time (preview only)
+  const previewEstimatedMinutes = hasServiceLinePreview
+    ? 0
+    : (preview?.lineItems?.reduce((sum, li) => sum + (li.estimatedMinutes || 0), 0) ?? 0);
+
   // For shipments that are already received, don't show preview (events already exist)
   // For tasks, check if task_completion event exists
   // For items/accounts, never show preview
@@ -792,6 +798,11 @@ export function BillingCalculator({
             {waiveCharges && (
               <Badge variant="destructive" className="text-[10px] ml-2">
                 Charges Waived
+              </Badge>
+            )}
+            {!!previewEstimatedMinutes && (
+              <Badge variant="secondary" className="text-[10px] ml-2">
+                Est. {formatMinutesShort(previewEstimatedMinutes)}
               </Badge>
             )}
           </CardTitle>
