@@ -37,6 +37,7 @@ import { DueDateRulesSettingsTab } from './DueDateRulesSettingsTab';
 import { PreferencesContent } from './preferences/PreferencesContent';
 import { LegalLinksSection } from './preferences/LegalLinksSection';
 import { EmailDomainSection } from './preferences/EmailDomainSection';
+import { EmailReplyForwardingSection } from './preferences/EmailReplyForwardingSection';
 import { SmsAddonActivationCard } from './SmsAddonActivationCard';
 import { SmsConsentPanel } from './SmsConsentPanel';
 
@@ -481,6 +482,9 @@ export function OrganizationSettingsTab() {
 
               {/* Email Domain Configuration */}
               <EmailDomainSection />
+
+              {/* Reply Forwarding (platform-managed inbound) */}
+              <EmailReplyForwardingSection />
 
               {/* SMS Add-On Activation */}
               <SmsAddonActivationCard settings={tenantSettings} />

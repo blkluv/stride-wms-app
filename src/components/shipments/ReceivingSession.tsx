@@ -330,7 +330,7 @@ export function ReceivingSession({
           </CardHeader>
           <CardContent>
             <DocumentCapture
-              context={{ type: 'shipment', shipmentId }}
+              context={{ type: 'shipment', shipmentId, shipmentNumber }}
               maxDocuments={10}
               ocrEnabled={ocrEnabled}
             />

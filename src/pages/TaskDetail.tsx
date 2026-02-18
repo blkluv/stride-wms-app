@@ -676,6 +676,7 @@ export default function TaskDetailPage() {
           toast({
             title: 'Repair Task Created',
             description: `Auto-repair task created for ${itemData.item_code}`,
+            navigateTo: `/tasks/${repairTask.id}`,
           });
         }
       }

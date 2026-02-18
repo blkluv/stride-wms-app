@@ -9,10 +9,12 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { WarehouseProvider } from "@/contexts/WarehouseContext";
 import { AppleBannerProvider } from "@/contexts/AppleBannerContext";
+import { ToastBannerProvider } from "@/contexts/ToastBannerContext";
 import { PromptProvider } from "@/components/prompts";
 import { SubscriptionGateProvider, SubscriptionGatedRoute } from "@/components/subscription/SubscriptionGate";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { RequireRole } from "@/components/RequireRole";
+import { ToastBanner } from "@/components/ui/ToastBanner";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
@@ -103,6 +105,7 @@ const App = () => (
       {/* Replaced by AppleBanner system — remove after verification */}
       <BrowserRouter>
         <AppleBannerProvider>
+        <ToastBannerProvider>
         <AuthProvider>
           <WarehouseProvider>
           <PromptProvider>
@@ -167,9 +170,9 @@ const App = () => (
             <Route path="/technicians" element={<ProtectedRoute><RequireRole role="tenant_admin"><Technicians /></RequireRole></ProtectedRoute>} />
             <Route path="/repair-quotes" element={<ProtectedRoute><RequireRole role="tenant_admin"><RepairQuotes /></RequireRole></ProtectedRoute>} />
             <Route path="/repair-quotes/:id" element={<ProtectedRoute><RequireRole role="tenant_admin"><RepairQuoteDetail /></RequireRole></ProtectedRoute>} />
-            <Route path="/quotes" element={<ProtectedRoute><RequireRole role="tenant_admin"><Quotes /></RequireRole></ProtectedRoute>} />
-            <Route path="/quotes/new" element={<ProtectedRoute><RequireRole role="tenant_admin"><QuoteBuilder /></RequireRole></ProtectedRoute>} />
-            <Route path="/quotes/:id" element={<ProtectedRoute><RequireRole role="tenant_admin"><QuoteBuilder /></RequireRole></ProtectedRoute>} />
+            <Route path="/quotes" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><Quotes /></RequireRole></ProtectedRoute>} />
+            <Route path="/quotes/new" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><QuoteBuilder /></RequireRole></ProtectedRoute>} />
+            <Route path="/quotes/:id" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><QuoteBuilder /></RequireRole></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><RequireRole role="tenant_admin"><Settings /></RequireRole></ProtectedRoute>} />
             {/* QA/Dev tooling: allow system-level admin_dev access */}
             <Route path="/diagnostics" element={<ProtectedRoute><RequireRole role={['tenant_admin', 'admin_dev']}><Diagnostics /></RequireRole></ProtectedRoute>} />
@@ -211,11 +214,13 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           <AIBotSwitch />
+          <ToastBanner />
           </SidebarProvider>
           </SubscriptionGateProvider>
           </PromptProvider>
           </WarehouseProvider>
         </AuthProvider>
+        </ToastBannerProvider>
         </AppleBannerProvider>
       </BrowserRouter>
     </TooltipProvider>

@@ -5962,6 +5962,7 @@ export type Database = {
           file_size: number | null
           id: string
           is_primary: boolean | null
+          is_repair: boolean
           item_id: string
           mime_type: string | null
           needs_attention: boolean | null
@@ -5979,6 +5980,7 @@ export type Database = {
           file_size?: number | null
           id?: string
           is_primary?: boolean | null
+          is_repair?: boolean
           item_id: string
           mime_type?: string | null
           needs_attention?: boolean | null
@@ -5996,6 +5998,7 @@ export type Database = {
           file_size?: number | null
           id?: string
           is_primary?: boolean | null
+          is_repair?: boolean
           item_id?: string
           mime_type?: string | null
           needs_attention?: boolean | null
