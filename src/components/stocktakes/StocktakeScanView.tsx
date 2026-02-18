@@ -33,6 +33,7 @@ import {
 } from '@/lib/haptics';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 
 const scanResultConfig: Record<ScanResult, {
   color: string;
@@ -320,20 +321,8 @@ export default function StocktakeScanView() {
     return sortDirection === 'asc' ? <MaterialIcon name="arrow_upward" size="sm" /> : <MaterialIcon name="arrow_downward" size="sm" />;
   };
 
-  const parseQRPayload = (input: string): { type: string; id: string; code?: string } | null => {
-    try {
-      const parsed = JSON.parse(input);
-      if (parsed.type && parsed.id) {
-        return parsed;
-      }
-    } catch {
-      return { type: 'unknown', id: '', code: input.trim() };
-    }
-    return null;
-  };
-
   const lookupItem = async (input: string) => {
-    const payload = parseQRPayload(input);
+    const payload = parseScanPayload(input);
     if (!payload) return null;
 
     let query = supabase
