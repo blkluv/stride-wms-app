@@ -23,7 +23,7 @@ Last updated: 2026-02-18
 | 8 | Add **Size** to Item Fields in Settings/Preferences (BUILTIN_ITEM_COLUMNS) | ✅ | `211f226` |
 | 9 | Classes editor: single “Cubic Feet” size per class (persist to both min/max) | ✅ | `0b26777` |
 | 10 | Auto-populate item `size` from class assignment; prompt on overwrite; default `size_unit` to `cu_ft` | ✅ | `e3b45fb` |
-| 11 | Column visibility + reorder controls on all item list pages (Inventory/Manifest/Expected/Outbound/Stocktake detail) | 🟨 | In-page controls added for Inventory/ShipmentDetail/TaskDetail (`cb2f16c`, `677a3a6`), ManifestDetail (`cfe0eb7`), OutboundCreate (`6ea7b1e`), and StocktakeScanView (`641382f`). Still pending Expected intake page. |
+| 11 | Column visibility + reorder controls on all item list pages (Inventory/Manifest/Expected/Outbound/Stocktake detail) | ✅ | Inventory (`cb2f16c`), ShipmentDetail/TaskDetail (`677a3a6`), ManifestDetail (`cfe0eb7`), OutboundCreate (`6ea7b1e`), StocktakeScanView (`641382f`), ExpectedShipmentDetail (`28dce23`). |
 
 ## Context notes / decisions
 
