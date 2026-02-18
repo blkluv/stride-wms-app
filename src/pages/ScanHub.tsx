@@ -1311,6 +1311,7 @@ export default function ScanHub() {
     scanQueueRef.current = [];
     processingRef.current = false;
     inFlightScanRef.current = null;
+    setProcessing(false);
     setModeSafe(null);
     setPhaseSafe('idle');
     setScannedItemSafe(null);
@@ -1436,6 +1437,7 @@ export default function ScanHub() {
     scanQueueRef.current = [];
     processingRef.current = false;
     inFlightScanRef.current = null;
+    setProcessing(false);
     setModeSafe(selectedMode);
     setPhaseSafe('scanning-item');
     setScannedItemSafe(null);
