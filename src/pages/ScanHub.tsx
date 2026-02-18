@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
 import { parseScanPayload } from '@/lib/scan/parseScanPayload';
+import { playScanAudioFeedback } from '@/lib/scan/scanAudioFeedback';
 import { ScanModeIcon } from '@/components/scan/ScanModeIcon';
 import { HelpButton } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
@@ -98,6 +99,58 @@ export default function ScanHub() {
 
   // Batch move state
   const [batchItems, setBatchItems] = useState<ScannedItem[]>([]);
+
+  /**
+   * Scan pipeline refs
+   *
+   * Camera scanners can emit multiple scans before React state updates flush.
+   * We mirror key state in refs + queue scans to avoid stale `phase` causing
+   * location scans to be handled as "scan item first".
+   */
+  const processingRef = useRef(false);
+  const inFlightScanRef = useRef<string | null>(null);
+  const scanQueueRef = useRef<string[]>([]);
+  const modeRef = useRef<ScanMode>(mode);
+  const phaseRef = useRef<ScanPhase>(phase);
+  const scannedItemRef = useRef<ScannedItem | null>(scannedItem);
+  const targetLocationRef = useRef<ScannedLocation | null>(targetLocation);
+  const batchItemsRef = useRef<ScannedItem[]>(batchItems);
+
+  useEffect(() => {
+    modeRef.current = mode;
+    phaseRef.current = phase;
+    scannedItemRef.current = scannedItem;
+    targetLocationRef.current = targetLocation;
+    batchItemsRef.current = batchItems;
+  }, [mode, phase, scannedItem, targetLocation, batchItems]);
+
+  const setModeSafe = (next: ScanMode) => {
+    modeRef.current = next;
+    setMode(next);
+  };
+
+  const setPhaseSafe = (next: ScanPhase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  };
+
+  const setScannedItemSafe = (next: ScannedItem | null) => {
+    scannedItemRef.current = next;
+    setScannedItem(next);
+  };
+
+  const setTargetLocationSafe = (next: ScannedLocation | null) => {
+    targetLocationRef.current = next;
+    setTargetLocation(next);
+  };
+
+  const setBatchItemsSafe = (next: ScannedItem[] | ((prev: ScannedItem[]) => ScannedItem[])) => {
+    setBatchItems((prev) => {
+      const computed = typeof next === 'function' ? (next as (p: ScannedItem[]) => ScannedItem[])(prev) : next;
+      batchItemsRef.current = computed;
+      return computed;
+    });
+  };
 
   // Service event scan state
   const [serviceItems, setServiceItems] = useState<ServiceScannedItem[]>([]);
@@ -668,289 +721,355 @@ export default function ScanHub() {
     setQuarantinePendingAction(null);
   };
 
-  const handleScanResult = async (data: string) => {
-    if (processing) return;
-
-    setProcessing(true);
+  const handleScanResult = (data: string) => {
     const input = data.trim();
-    
-    try {
-      if (mode === 'lookup') {
-        // Auto-differentiate: if it's a location barcode, tell the user
-        const likelyLoc = isLikelyLocationCode(input);
-        if (likelyLoc) {
-          const loc = await lookupLocation(input);
-          if (loc) {
-            hapticMedium();
-            toast({
-              title: `Location: ${loc.code}`,
-              description: loc.name || loc.type || 'Location found',
-            });
-            setProcessing(false);
-            return;
-          }
-        }
+    if (!input) return;
 
-        const item = await lookupItem(input);
-        if (item) {
-          hapticMedium(); // Item found
+    const enqueue = (value: string) => {
+      const v = value.trim();
+      if (!v) return;
+      if (inFlightScanRef.current && v === inFlightScanRef.current) return;
+      const q = scanQueueRef.current;
+      const last = q.length > 0 ? q[q.length - 1] : null;
+      if (last && v === last) return;
+      if (q.length >= 3) return;
+      q.push(v);
+    };
 
-          // Check for quarantine
-          const isQuarantined = await checkQuarantine(item.id);
-          if (isQuarantined) {
-            hapticError();
-            setQuarantineItem(item);
-            setQuarantinePendingAction(() => () => navigate(`/inventory/${item.id}`));
-            setQuarantineWarningOpen(true);
-            setProcessing(false);
-            return;
-          }
+    // If another operation is using the shared `processing` flag (e.g. executing a move),
+    // ignore scans rather than interleaving actions.
+    if (processing && !processingRef.current) {
+      return;
+    }
 
-          navigate(`/inventory/${item.id}`);
-        } else {
-          // If not quickly detected as location, try full async lookup
-          if (!likelyLoc) {
+    if (processingRef.current) {
+      enqueue(input);
+      return;
+    }
+
+    processingRef.current = true;
+    inFlightScanRef.current = input;
+    setProcessing(true);
+
+    const processNextQueuedScan = () => {
+      const next = scanQueueRef.current.shift();
+      if (!next) return;
+      setTimeout(() => handleScanResult(next), 0);
+    };
+
+    void (async () => {
+      try {
+        const currentMode = modeRef.current;
+        const currentPhase = phaseRef.current;
+
+        if (currentMode === 'lookup') {
+          const likelyLoc = isLikelyLocationCode(input);
+          if (likelyLoc) {
             const loc = await lookupLocation(input);
             if (loc) {
               hapticMedium();
+              void playScanAudioFeedback('success');
               toast({
                 title: `Location: ${loc.code}`,
                 description: loc.name || loc.type || 'Location found',
               });
-              setProcessing(false);
               return;
             }
           }
 
-          hapticError(); // Not found at all
+          const item = await lookupItem(input);
+          if (item) {
+            hapticMedium();
+            void playScanAudioFeedback('success');
+
+            const isQuarantined = await checkQuarantine(item.id);
+            if (isQuarantined) {
+              hapticError();
+              void playScanAudioFeedback('error');
+              setQuarantineItem(item);
+              setQuarantinePendingAction(() => () => navigate(`/inventory/${item.id}`));
+              setQuarantineWarningOpen(true);
+              scanQueueRef.current = [];
+              return;
+            }
+
+            navigate(`/inventory/${item.id}`);
+            return;
+          }
+
+          if (!likelyLoc) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticMedium();
+              void playScanAudioFeedback('success');
+              toast({
+                title: `Location: ${loc.code}`,
+                description: loc.name || loc.type || 'Location found',
+              });
+              return;
+            }
+          }
+
+          hapticError();
+          void playScanAudioFeedback('error');
           toast({
             variant: 'destructive',
             title: 'Not Found',
             description: 'No item or location found with that code.',
           });
+          return;
         }
-        setProcessing(false);
-        return;
-      }
 
-      if (mode === 'move') {
-        if (phase === 'scanning-item') {
-          // Auto-differentiate: check if the scanned barcode is a location first
-          const likelyLocation = isLikelyLocationCode(input);
+        if (currentMode === 'move') {
+          const effectivePhase: ScanPhase =
+            currentPhase === 'scanning-item' && !!scannedItemRef.current
+              ? 'scanning-location'
+              : currentPhase;
 
-          if (likelyLocation) {
-            // User scanned a location barcode during the item phase
-            const loc = await lookupLocation(input);
-            if (loc) {
-              hapticError();
-              toast({
-                variant: 'destructive',
-                title: 'Location Scanned',
-                description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
-              });
-              setProcessing(false);
-              return;
-            }
-          }
-
-          // Try as item
-          const item = await lookupItem(input);
-          if (item) {
-            hapticMedium();
-
-            const isQuarantined = await checkQuarantine(item.id);
-            if (isQuarantined) {
-              hapticError();
-              setQuarantineItem(item);
-              setQuarantinePendingAction(() => () => {
-                setScannedItem(item);
-                setPhase('scanning-location');
-                toast({
-                  title: `Found: ${item.item_code}`,
-                  description: 'Now scan the destination bay.',
-                });
-              });
-              setQuarantineWarningOpen(true);
-              setProcessing(false);
-              return;
-            }
-
-            setScannedItem(item);
-            setPhase('scanning-location');
-            toast({
-              title: `Found: ${item.item_code}`,
-              description: 'Now scan the destination bay.',
-            });
-          } else {
-            // Not found as item - also try as location in case sync check missed it
-            if (!likelyLocation) {
+          if (effectivePhase === 'scanning-item') {
+            const likelyLocation = isLikelyLocationCode(input);
+            if (likelyLocation) {
               const loc = await lookupLocation(input);
               if (loc) {
                 hapticError();
+                void playScanAudioFeedback('error');
                 toast({
                   variant: 'destructive',
                   title: 'Location Scanned',
                   description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
                 });
-                setProcessing(false);
                 return;
               }
             }
+
+            const item = await lookupItem(input);
+            if (item) {
+              hapticMedium();
+              void playScanAudioFeedback('success');
+
+              const isQuarantined = await checkQuarantine(item.id);
+              if (isQuarantined) {
+                hapticError();
+                void playScanAudioFeedback('error');
+                setQuarantineItem(item);
+                setQuarantinePendingAction(() => () => {
+                  setScannedItemSafe(item);
+                  setPhaseSafe('scanning-location');
+                  toast({
+                    title: `Found: ${item.item_code}`,
+                    description: 'Now scan the destination bay.',
+                  });
+                });
+                setQuarantineWarningOpen(true);
+                scanQueueRef.current = [];
+                return;
+              }
+
+              setScannedItemSafe(item);
+              setPhaseSafe('scanning-location');
+              toast({
+                title: `Found: ${item.item_code}`,
+                description: 'Now scan the destination bay.',
+              });
+              return;
+            }
+
+            if (!likelyLocation) {
+              const loc = await lookupLocation(input);
+              if (loc) {
+                hapticError();
+                void playScanAudioFeedback('error');
+                toast({
+                  variant: 'destructive',
+                  title: 'Location Scanned',
+                  description: `"${loc.code}" is a location. Please scan an item first, then scan the destination.`,
+                });
+                return;
+              }
+            }
+
             hapticError();
+            void playScanAudioFeedback('error');
             toast({
               variant: 'destructive',
               title: 'Not Found',
               description: 'No item or location found with that code.',
             });
+            return;
           }
-        } else if (phase === 'scanning-location') {
-          // Auto-differentiate: try location lookup first (most likely)
-          const loc = await lookupLocation(input);
-          if (loc) {
-            hapticMedium();
-            setTargetLocation(loc);
-            setPhase('confirm');
-          } else {
-            // Not a location - check if it's another item (user may have scanned wrong code)
+
+          if (effectivePhase === 'scanning-location') {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              hapticMedium();
+              void playScanAudioFeedback('success');
+              setTargetLocationSafe(loc);
+              setPhaseSafe('confirm');
+              scanQueueRef.current = [];
+              return;
+            }
+
             const item = await lookupItem(input);
+            hapticError();
+            void playScanAudioFeedback('error');
             if (item) {
-              hapticError();
               toast({
                 variant: 'destructive',
                 title: 'Item Scanned',
                 description: `"${item.item_code}" is an item, not a location. Scan a bay/location QR code to complete the move.`,
               });
             } else {
-              hapticError();
               toast({
                 variant: 'destructive',
                 title: 'Location Not Found',
                 description: 'No location found with that code. Scan a valid bay/location barcode.',
               });
             }
+            return;
           }
         }
-      }
 
-      if (mode === 'batch') {
-        // Auto-detect: check if this is a location code
-        const likelyLocation = isLikelyLocationCode(input);
+        if (currentMode === 'batch') {
+          const currentBatch = batchItemsRef.current;
+          const likelyLocation = isLikelyLocationCode(input);
 
-        if (likelyLocation) {
-          const loc = await lookupLocation(input);
-          if (loc) {
-            if (batchItems.length > 0) {
-              hapticMedium();
-              setTargetLocation(loc);
-              setPhase('confirm');
-              setProcessing(false);
-              return;
-            } else {
+          if (likelyLocation) {
+            const loc = await lookupLocation(input);
+            if (loc) {
+              if (currentBatch.length > 0) {
+                hapticMedium();
+                void playScanAudioFeedback('success');
+                setTargetLocationSafe(loc);
+                setPhaseSafe('confirm');
+                scanQueueRef.current = [];
+                return;
+              }
+
               hapticError();
+              void playScanAudioFeedback('error');
               toast({
                 variant: 'destructive',
                 title: 'Location Scanned',
                 description: `"${loc.code}" is a location. Scan items first, then scan a location to move them.`,
               });
-              setProcessing(false);
               return;
             }
           }
-        }
 
-        // Try as item
-        const item = await lookupItem(input);
-        if (item) {
-          if (!batchItems.find(i => i.id === item.id)) {
-            hapticLight();
-            setBatchItems(prev => [...prev, item]);
-            toast({
-              title: `Added: ${item.item_code}`,
-              description: `${batchItems.length + 1} items in batch. Scan location when ready.`,
-            });
-          } else {
-            toast({
-              title: 'Already in batch',
-              description: `${item.item_code} is already added.`,
-            });
+          const item = await lookupItem(input);
+          if (item) {
+            if (!currentBatch.find(i => i.id === item.id)) {
+              hapticLight();
+              void playScanAudioFeedback('success');
+              setBatchItemsSafe((prev) => [...prev, item]);
+              toast({
+                title: `Added: ${item.item_code}`,
+                description: `${currentBatch.length + 1} items in batch. Scan location when ready.`,
+              });
+            } else {
+              toast({
+                title: 'Already in batch',
+                description: `${item.item_code} is already added.`,
+              });
+            }
+            return;
           }
-        } else {
-          // If not quickly detected as location, do a full location lookup as fallback
+
           if (!likelyLocation) {
             const loc = await lookupLocation(input);
             if (loc) {
-              if (batchItems.length > 0) {
+              if (currentBatch.length > 0) {
                 hapticMedium();
-                setTargetLocation(loc);
-                setPhase('confirm');
-                setProcessing(false);
-                return;
-              } else {
-                hapticError();
-                toast({
-                  variant: 'destructive',
-                  title: 'Location Scanned',
-                  description: `"${loc.code}" is a location. Scan items first, then scan a location to move them.`,
-                });
-                setProcessing(false);
+                void playScanAudioFeedback('success');
+                setTargetLocationSafe(loc);
+                setPhaseSafe('confirm');
+                scanQueueRef.current = [];
                 return;
               }
+
+              hapticError();
+              void playScanAudioFeedback('error');
+              toast({
+                variant: 'destructive',
+                title: 'Location Scanned',
+                description: `"${loc.code}" is a location. Scan items first, then scan a location to move them.`,
+              });
+              return;
             }
           }
 
           hapticError();
+          void playScanAudioFeedback('error');
           toast({
             variant: 'destructive',
             title: 'Not Found',
             description: 'No item or location found with that code.',
           });
+          return;
         }
-      }
 
-      // Service Event Scan mode
-      if (mode === 'service') {
-        const item = await lookupItemForService(input);
-        if (item) {
-          if (!serviceItems.find(i => i.id === item.id)) {
-            hapticLight();
-            setServiceItems(prev => [...prev, item]);
-            toast({
-              title: `Added: ${item.item_code}`,
-              description: item.class_code
-                ? `Class: ${item.class_code}`
-                : 'No class assigned - default rate will be used',
-            });
+        if (currentMode === 'service') {
+          const item = await lookupItemForService(input);
+          if (item) {
+            if (!serviceItems.find(i => i.id === item.id)) {
+              hapticLight();
+              void playScanAudioFeedback('success');
+              setServiceItems(prev => [...prev, item]);
+              toast({
+                title: `Added: ${item.item_code}`,
+                description: item.class_code
+                  ? `Class: ${item.class_code}`
+                  : 'No class assigned - default rate will be used',
+              });
+            } else {
+              toast({
+                title: 'Already added',
+                description: `${item.item_code} is already in the list.`,
+              });
+            }
           } else {
+            hapticError();
+            void playScanAudioFeedback('error');
             toast({
-              title: 'Already added',
-              description: `${item.item_code} is already in the list.`,
+              variant: 'destructive',
+              title: 'Item Not Found',
+              description: 'Scan a valid item QR code.',
             });
           }
-        } else {
-          hapticError();
-          toast({
-            variant: 'destructive',
-            title: 'Item Not Found',
-            description: 'Scan a valid item QR code.',
-          });
         }
+      } catch (error) {
+        console.error('Scan error:', error);
+        hapticError();
+        void playScanAudioFeedback('error');
+        toast({
+          variant: 'destructive',
+          title: 'Scan Error',
+          description: 'Failed to process scan.',
+        });
       }
-    } catch (error) {
-      console.error('Scan error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Scan Error',
-        description: 'Failed to process scan.',
-      });
-    } finally {
+    })().finally(() => {
+      processingRef.current = false;
+      inFlightScanRef.current = null;
       setProcessing(false);
-    }
+
+      const m = modeRef.current;
+      const p = phaseRef.current;
+      const canContinue =
+        m !== null && (p === 'scanning-item' || p === 'scanning-location') && !quarantineWarningOpen;
+
+      if (canContinue) {
+        processNextQueuedScan();
+      } else {
+        scanQueueRef.current = [];
+      }
+    });
   };
 
   // Handle manual item selection from search
   const handleItemSelect = (item: { id: string; item_code: string; description: string | null; location_code: string | null; warehouse_name: string | null }) => {
     setShowItemSearch(false);
     hapticLight(); // Selection feedback
+    scanQueueRef.current = [];
     
     const scannedItem: ScannedItem = {
       id: item.id,
@@ -966,8 +1085,8 @@ export default function ScanHub() {
     }
 
     if (mode === 'move') {
-      setScannedItem(scannedItem);
-      setPhase('scanning-location');
+      setScannedItemSafe(scannedItem);
+      setPhaseSafe('scanning-location');
       toast({
         title: `Selected: ${item.item_code}`,
         description: 'Now scan or select the destination bay.',
@@ -975,11 +1094,12 @@ export default function ScanHub() {
     }
 
     if (mode === 'batch') {
-      if (!batchItems.find(i => i.id === item.id)) {
-        setBatchItems(prev => [...prev, scannedItem]);
+      const currentBatch = batchItemsRef.current;
+      if (!currentBatch.find(i => i.id === item.id)) {
+        setBatchItemsSafe(prev => [...prev, scannedItem]);
         toast({
           title: `Added: ${item.item_code}`,
-          description: `${batchItems.length + 1} items in batch.`,
+          description: `${currentBatch.length + 1} items in batch.`,
         });
       } else {
         toast({
@@ -994,10 +1114,11 @@ export default function ScanHub() {
   const handleLocationSelect = (loc: { id: string; code: string; name: string | null }) => {
     setShowLocationSearch(false);
     hapticMedium(); // Location selected
+    scanQueueRef.current = [];
     // Find full location data to get type
     const fullLoc = locations.find(l => l.id === loc.id);
-    setTargetLocation({ ...loc, type: fullLoc?.type });
-    setPhase('confirm');
+    setTargetLocationSafe({ ...loc, type: fullLoc?.type });
+    setPhaseSafe('confirm');
   };
 
   const executeMove = async () => {
@@ -1105,6 +1226,7 @@ export default function ScanHub() {
       }
 
       hapticSuccess(); // Move completed successfully
+      void playScanAudioFeedback('success');
 
       // Log activity per item
       if (profile?.tenant_id) {
@@ -1166,6 +1288,7 @@ export default function ScanHub() {
     } catch (error) {
       console.error('Move error:', error);
       hapticError(); // Move failed
+      void playScanAudioFeedback('error');
       toast({
         variant: 'destructive',
         title: 'Move Failed',
@@ -1177,11 +1300,14 @@ export default function ScanHub() {
   };
 
   const resetState = () => {
-    setMode(null);
-    setPhase('idle');
-    setScannedItem(null);
-    setTargetLocation(null);
-    setBatchItems([]);
+    scanQueueRef.current = [];
+    processingRef.current = false;
+    inFlightScanRef.current = null;
+    setModeSafe(null);
+    setPhaseSafe('idle');
+    setScannedItemSafe(null);
+    setTargetLocationSafe(null);
+    setBatchItemsSafe([]);
     setServiceItems([]);
     setSelectedServices([]);
     setServiceToAdd('');
@@ -1252,13 +1378,16 @@ export default function ScanHub() {
 
       if (result.success) {
         hapticSuccess();
+        void playScanAudioFeedback('success');
         resetState();
       } else {
         hapticError();
+        void playScanAudioFeedback('error');
       }
     } catch (error) {
       console.error('Save error:', error);
       hapticError();
+      void playScanAudioFeedback('error');
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -1296,8 +1425,14 @@ export default function ScanHub() {
 
   const selectMode = (selectedMode: ScanMode) => {
     hapticLight(); // Mode selection feedback
-    setMode(selectedMode);
-    setPhase('scanning-item');
+    scanQueueRef.current = [];
+    processingRef.current = false;
+    inFlightScanRef.current = null;
+    setModeSafe(selectedMode);
+    setPhaseSafe('scanning-item');
+    setScannedItemSafe(null);
+    setTargetLocationSafe(null);
+    setBatchItemsSafe([]);
     // Auto-collapse sidebar when entering scan mode
     collapseSidebar();
   };
@@ -1933,9 +2068,10 @@ export default function ScanHub() {
                       // Swap logic - clear item and start over with location
                       if (scannedItem && targetLocation) {
                         hapticLight();
-                        setScannedItem(null);
-                        setTargetLocation(null);
-                        setPhase('scanning-item');
+                        scanQueueRef.current = [];
+                        setScannedItemSafe(null);
+                        setTargetLocationSafe(null);
+                        setPhaseSafe('scanning-item');
                         toast({
                           title: 'Cleared',
                           description: 'Scan a new item and location.',
@@ -1991,7 +2127,10 @@ export default function ScanHub() {
                 {((scannedItem && targetLocation) || (batchItems.length > 0 && targetLocation)) && (
                   <Button
                     className="w-full mt-4"
-                    onClick={() => setPhase('confirm')}
+                    onClick={() => {
+                      scanQueueRef.current = [];
+                      setPhaseSafe('confirm');
+                    }}
                   >
                     <MaterialIcon name="check" size="sm" className="mr-2" />
                     Proceed to Confirm
@@ -2084,7 +2223,10 @@ export default function ScanHub() {
                     </Button>
                   </div>
                   <button
-                    onClick={() => setBatchItems([])}
+                    onClick={() => {
+                      scanQueueRef.current = [];
+                      setBatchItemsSafe([]);
+                    }}
                     className="text-sm text-destructive hover:underline"
                   >
                     Clear All
@@ -2095,7 +2237,10 @@ export default function ScanHub() {
                     <Badge key={item.id} variant="secondary" className="text-sm pl-2.5 pr-1 py-1 gap-1">
                       {item.item_code}
                       <button
-                        onClick={() => setBatchItems(prev => prev.filter(i => i.id !== item.id))}
+                        onClick={() => {
+                          scanQueueRef.current = [];
+                          setBatchItemsSafe(prev => prev.filter(i => i.id !== item.id));
+                        }}
                         className="ml-0.5 p-0.5 rounded-full hover:bg-destructive/20 hover:text-destructive transition-colors"
                       >
                         <MaterialIcon name="close" size="sm" />
