@@ -281,3 +281,6 @@ the repair receiving workflow fixes. It is intentionally concise but complete.
 84. Q: Tapping the "Shipped Today" card (not expanding): what should /shipments/released show?
     A: Option A — all outbound shipments in released/completed/shipped (not limited to today), default sort newest completed first, search + sort only.
 
+85. Q: Tapping the "Received Today" card (not expanding): where should it go?
+    A: Go to the Dock Intakes list page showing all intakes (not just today's received).
+
