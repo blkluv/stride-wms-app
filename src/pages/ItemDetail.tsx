@@ -45,7 +45,6 @@ import { ItemEditDialog } from '@/components/items/ItemEditDialog';
 import { useItemPhotos } from '@/hooks/useItemPhotos';
 import { useItemNotes } from '@/hooks/useItemNotes';
 import { useDocuments } from '@/hooks/useDocuments';
-import { ItemAdvancedTab } from '@/components/items/ItemAdvancedTab';
 import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { AddBillingChargeDialog } from '@/components/items/AddBillingChargeDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
@@ -231,7 +230,7 @@ export default function ItemDetail() {
 
   // Tab state - initialize from URL param if provided
   const initialTab = searchParams.get('tab') || 'details';
-  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'history', 'advanced', 'repair'];
+  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'history', 'repair'];
   const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : 'details');
 
   const [item, setItem] = useState<ItemDetail | null>(null);
@@ -1015,9 +1014,6 @@ export default function ItemDetail() {
             )}
             {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
             {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
-            {!isClientUser && (
-              <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>
-            )}
             {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
           </TabsList>
 
@@ -1481,12 +1477,6 @@ export default function ItemDetail() {
           {!isClientUser && (
             <TabsContent value="history" className="mt-6">
               <ItemHistoryTab itemId={item.id} />
-            </TabsContent>
-          )}
-
-          {!isClientUser && (
-            <TabsContent value="advanced" className="mt-6">
-              <ItemAdvancedTab itemId={item.id} />
             </TabsContent>
           )}
 
