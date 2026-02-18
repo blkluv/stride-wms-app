@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -29,6 +29,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -43,6 +50,7 @@ import {
 } from '@/components/ui/popover';
 import { useManifestScan, useManifestItems, ManifestStatus } from '@/hooks/useManifests';
 import { useManifests } from '@/hooks/useManifests';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -50,8 +58,19 @@ import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { ItemLabelData } from '@/lib/labelGenerator';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
 import { format } from 'date-fns';
+import { formatItemSize } from '@/lib/items/formatItemSize';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 
 const statusLabels: Record<ManifestStatus, string> = {
@@ -65,9 +84,11 @@ const statusLabels: Record<ManifestStatus, string> = {
 export default function ManifestDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
 
-  const [activeTab, setActiveTab] = useState('items');
+  const initialTab = location.pathname.endsWith('/history') ? 'activity' : 'items';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [addItemOpen, setAddItemOpen] = useState(false);
@@ -82,6 +103,42 @@ export default function ManifestDetail() {
   const { manifest, items, stats, loading, refetch } = useManifestScan(id!);
   const { addItemsBulk, removeItemsBulk } = useManifestItems(id!);
   const { startManifest, completeManifest, cancelManifest } = useManifests();
+
+  // Item table view (tenant-managed) — reused across item list pages
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const manifestItemVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
+
+  // Support legacy /history route (now maps to Activity tab)
+  useEffect(() => {
+    if (location.pathname.endsWith('/history')) {
+      setActiveTab('activity');
+    }
+  }, [location.pathname]);
 
   // Search results for adding items
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -143,7 +200,7 @@ export default function ManifestDetail() {
       .map(i => ({
         id: i.item_id,
         itemCode: i.item_code,
-        sku: (i.item as any)?.sku || '',
+        sku: i.item?.sku || '',
         description: i.item_description || i.item?.description || '',
         vendor: i.item?.vendor || '',
         account: i.account?.account_name || '',
@@ -381,14 +438,43 @@ export default function ManifestDetail() {
                     {isDraft ? 'Add or remove items from this manifest' : 'Items on this manifest'}
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  <div className="relative flex-1 md:w-64">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[200px] md:w-64">
                     <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Search items..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={activeItemViewId || defaultItemViewId || 'default'}
+                      onValueChange={setActiveItemViewId}
+                      disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                    >
+                      <SelectTrigger className="w-[140px] sm:w-[180px] h-9">
+                        <div className="flex items-center gap-2">
+                          <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                          <SelectValue placeholder="View" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {itemDisplaySettings.views.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                            {v.is_default ? ' (default)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <ItemColumnsPopover
+                      settings={itemDisplaySettings}
+                      viewId={activeItemViewId || defaultItemViewId || 'default'}
+                      disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                      onSave={saveItemDisplaySettings}
                     />
                   </div>
                   {selectedItems.length > 0 && (
@@ -489,12 +575,11 @@ export default function ManifestDetail() {
                           />
                         </TableHead>
                       )}
-                      <TableHead>Item Code</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Account</TableHead>
-                      <TableHead>Expected Location</TableHead>
-                      <TableHead>Status</TableHead>
-                      {!isDraft && <TableHead>Scanned</TableHead>}
+                      {manifestItemVisibleColumns.map((col) => (
+                        <TableHead key={col}>{getColumnLabel(itemDisplaySettings, col)}</TableHead>
+                      ))}
+                      <TableHead className="w-28">Scan Status</TableHead>
+                      {!isDraft && <TableHead className="w-32">Scanned At</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -508,14 +593,75 @@ export default function ManifestDetail() {
                             />
                           </TableCell>
                         )}
-                        <TableCell className="font-mono font-medium">{item.item_code}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {item.item_description || '-'}
-                        </TableCell>
-                        <TableCell>{item.account?.account_name || '-'}</TableCell>
-                        <TableCell>
-                          {item.expected_location?.code || '-'}
-                        </TableCell>
+                        {manifestItemVisibleColumns.map((col) => {
+                          const cfKey = parseCustomFieldColumnKey(col);
+                          const baseItem = item.item || null;
+
+                          if (cfKey) {
+                            const meta = baseItem?.metadata;
+                            const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                            const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                            const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                            return <TableCell key={col} className="max-w-[180px] truncate">{display}</TableCell>;
+                          }
+
+                          switch (col as BuiltinItemColumnKey) {
+                            case 'photo': {
+                              const url = baseItem?.primary_photo_url || null;
+                              const node = url ? (
+                                <img src={url} alt={baseItem?.item_code || item.item_code} className="h-8 w-8 rounded object-cover" />
+                              ) : (
+                                <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                              );
+                              return (
+                                <TableCell key={col} className="w-12" onClick={(e) => e.stopPropagation()}>
+                                  {baseItem?.id ? <ItemPreviewCard itemId={baseItem.id}>{node}</ItemPreviewCard> : node}
+                                </TableCell>
+                              );
+                            }
+                            case 'item_code':
+                              return (
+                                <TableCell key={col} className="font-mono font-medium">
+                                  {baseItem?.id ? (
+                                    <ItemPreviewCard itemId={baseItem.id}>
+                                      <span
+                                        className="text-primary hover:underline cursor-pointer"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigate(`/inventory/${baseItem.id}`);
+                                        }}
+                                      >
+                                        {baseItem.item_code}
+                                      </span>
+                                    </ItemPreviewCard>
+                                  ) : (
+                                    item.item_code
+                                  )}
+                                </TableCell>
+                              );
+                            case 'sku':
+                              return <TableCell key={col}>{baseItem?.sku || '-'}</TableCell>;
+                            case 'quantity':
+                              return <TableCell key={col} className="text-right tabular-nums">{baseItem?.quantity ?? '-'}</TableCell>;
+                            case 'size':
+                              return <TableCell key={col} className="text-right tabular-nums">{formatItemSize(baseItem?.size ?? null, baseItem?.size_unit ?? null)}</TableCell>;
+                            case 'vendor':
+                              return <TableCell key={col}>{baseItem?.vendor || '-'}</TableCell>;
+                            case 'description':
+                              return <TableCell key={col} className="max-w-[200px] truncate">{baseItem?.description || item.item_description || '-'}</TableCell>;
+                            case 'location':
+                              return <TableCell key={col}>{item.expected_location?.code || '-'}</TableCell>;
+                            case 'client_account':
+                              return <TableCell key={col}>{item.account?.account_name || '-'}</TableCell>;
+                            case 'sidemark':
+                              return <TableCell key={col}>{baseItem?.sidemark || '-'}</TableCell>;
+                            case 'room':
+                              return <TableCell key={col}>{baseItem?.room || '-'}</TableCell>;
+                            default:
+                              return <TableCell key={col}>-</TableCell>;
+                          }
+                        })}
+
                         <TableCell>
                           {item.scanned ? (
                             <StatusIndicator status="scanned" label="Scanned" size="sm" />
@@ -523,9 +669,10 @@ export default function ManifestDetail() {
                             <StatusIndicator status="pending" label="Pending" size="sm" />
                           )}
                         </TableCell>
-                        {!isDraft && item.scanned && (
+
+                        {!isDraft && (
                           <TableCell className="text-xs text-muted-foreground">
-                            {item.scanned_at && format(new Date(item.scanned_at), 'MMM d, h:mm a')}
+                            {item.scanned_at ? format(new Date(item.scanned_at), 'MMM d, h:mm a') : '-'}
                           </TableCell>
                         )}
                       </TableRow>
@@ -578,7 +725,7 @@ export default function ManifestDetail() {
               {confirmAction?.type === 'remove' && (
                 <>
                   Remove {confirmAction.itemIds?.length} item(s) from the manifest? This action will be
-                  recorded in the audit history.
+                  recorded in the activity log.
                 </>
               )}
             </AlertDialogDescription>

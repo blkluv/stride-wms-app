@@ -32,6 +32,7 @@ import { fieldDescriptions } from '@/lib/pricing/fieldDescriptions';
 import { useClasses, type ItemClass } from '@/hooks/useClasses';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { formatClassCubicFeetLabel, getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 // =============================================================================
 // CODE GENERATOR — derive class code from name
@@ -97,7 +98,7 @@ export function ClassesTab() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Define item groups for class-based pricing. Items are automatically classified when dimensions are entered.
+            Define item groups for class-based pricing. Each class can have a default cubic-feet size used to auto-fill item size.
           </p>
         </div>
         <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto">
@@ -225,12 +226,13 @@ export function ClassesTab() {
                   <span className={cn('font-medium text-sm', !cls.is_active && 'opacity-50')}>
                     {cls.name}
                   </span>
-                  {(cls.min_cubic_feet !== null || cls.max_cubic_feet !== null) && (
-                    <span className="text-xs text-muted-foreground">
-                      {cls.min_cubic_feet ?? 0} – {cls.max_cubic_feet ?? '∞'} cu ft
-                    </span>
-                  )}
-                  <div className="ml-auto mr-2">
+                  <div className="ml-auto mr-2 flex items-center gap-2">
+                    {formatClassCubicFeetLabel(cls) && (
+                      <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                        <MaterialIcon name="straighten" size="sm" className="mr-1" />
+                        {formatClassCubicFeetLabel(cls)}
+                      </Badge>
+                    )}
                     <ActiveBadge active={cls.is_active ?? true} />
                   </div>
                 </div>
@@ -293,7 +295,14 @@ export function ClassesTab() {
 interface ClassEditFormProps {
   itemClass: ItemClass;
   saving: boolean;
-  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null; min_cubic_feet?: number | null; max_cubic_feet?: number | null }) => Promise<void>;
+  onSave: (data: {
+    code: string;
+    name: string;
+    min_cubic_feet?: number | null;
+    max_cubic_feet?: number | null;
+    is_active?: boolean | null;
+    notes?: string | null;
+  }) => Promise<void>;
   onCancel: () => void;
   onDelete: () => void;
 }
@@ -304,16 +313,16 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
   const [code, setCode] = useState(itemClass.code);
   const [notes, setNotes] = useState(itemClass.notes ?? '');
   const [isActive, setIsActive] = useState(itemClass.is_active ?? true);
-  const [minCubicFeet, setMinCubicFeet] = useState(itemClass.min_cubic_feet?.toString() ?? '');
-  const [maxCubicFeet, setMaxCubicFeet] = useState(itemClass.max_cubic_feet?.toString() ?? '');
+  const [cubicFeet, setCubicFeet] = useState<string>(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+  const [cubicFeetTouched, setCubicFeetTouched] = useState(false);
 
   useEffect(() => {
     setName(itemClass.name);
     setCode(itemClass.code);
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
-    setMinCubicFeet(itemClass.min_cubic_feet?.toString() ?? '');
-    setMaxCubicFeet(itemClass.max_cubic_feet?.toString() ?? '');
+    setCubicFeet(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+    setCubicFeetTouched(false);
   }, [itemClass]);
 
   const handleCancel = () => {
@@ -321,32 +330,42 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
     setCode(itemClass.code);
     setNotes(itemClass.notes ?? '');
     setIsActive(itemClass.is_active ?? true);
-    setMinCubicFeet(itemClass.min_cubic_feet?.toString() ?? '');
-    setMaxCubicFeet(itemClass.max_cubic_feet?.toString() ?? '');
+    setCubicFeet(String(getClassCubicFeetSingleValue(itemClass) ?? ''));
+    setCubicFeetTouched(false);
     onCancel();
   };
 
   const handleSave = async () => {
     if (!name.trim() || !code.trim()) return;
-    const min = minCubicFeet.trim() ? Number(minCubicFeet) : null;
-    const max = maxCubicFeet.trim() ? Number(maxCubicFeet) : null;
-    if (min !== null && max !== null && max < min) {
+    const cubicRaw = cubicFeet.trim();
+    const cubicVal = cubicRaw ? Number(cubicRaw) : null;
+    const cubicValid = !cubicRaw || (Number.isFinite(cubicVal) && (cubicVal as number) >= 0);
+    if (!cubicValid) {
       toast({
         variant: 'destructive',
-        title: 'Invalid cubic feet range',
-        description: 'Max cubic feet must be greater than or equal to Min cubic feet.',
+        title: 'Invalid cubic feet',
+        description: 'Please enter a valid non-negative number.',
       });
       return;
     }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
+      ...(cubicFeetTouched ? { min_cubic_feet: cubicVal, max_cubic_feet: cubicVal } : {}),
       is_active: isActive,
       notes: notes.trim() || null,
-      min_cubic_feet: min,
-      max_cubic_feet: max,
     });
   };
+
+  const cubicRaw = cubicFeet.trim();
+  const cubicAsNum = cubicRaw ? Number(cubicRaw) : null;
+  const cubicValid = !cubicRaw || (Number.isFinite(cubicAsNum) && (cubicAsNum as number) >= 0);
+  const legacyRange =
+    (itemClass.min_cubic_feet !== null &&
+      itemClass.max_cubic_feet !== null &&
+      itemClass.min_cubic_feet !== itemClass.max_cubic_feet) ||
+    (itemClass.min_cubic_feet !== null && itemClass.max_cubic_feet === null) ||
+    (itemClass.min_cubic_feet === null && itemClass.max_cubic_feet !== null);
 
   return (
     <div className="space-y-4 pt-3 border-t border-dashed">
@@ -374,6 +393,32 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor={`cls-cubic-${itemClass.id}`} className="text-sm font-medium">
+          Cubic Feet
+        </Label>
+        <Input
+          id={`cls-cubic-${itemClass.id}`}
+          value={cubicFeet}
+          onChange={(e) => { setCubicFeet(e.target.value); setCubicFeetTouched(true); }}
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step="0.01"
+          placeholder="e.g., 12.5"
+        />
+        {legacyRange && (
+          <p className="text-xs text-muted-foreground">
+            This class previously had a legacy cubic-feet range/bound configured. Set a single value to enable auto-filling item size.
+          </p>
+        )}
+        {!cubicValid && (
+          <p className="text-xs text-destructive">
+            Enter a valid number (0 or greater), or leave blank.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor={`cls-notes-${itemClass.id}`} className="text-sm font-medium">Description</Label>
         <Input
           id={`cls-notes-${itemClass.id}`}
@@ -381,33 +426,6 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Optional description"
         />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor={`cls-min-${itemClass.id}`} className="text-sm font-medium">Min Cubic Feet</Label>
-          <Input
-            id={`cls-min-${itemClass.id}`}
-            type="number"
-            min="0"
-            step="0.1"
-            value={minCubicFeet}
-            onChange={(e) => setMinCubicFeet(e.target.value)}
-            placeholder="0"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={`cls-max-${itemClass.id}`} className="text-sm font-medium">Max Cubic Feet</Label>
-          <Input
-            id={`cls-max-${itemClass.id}`}
-            type="number"
-            min="0"
-            step="0.1"
-            value={maxCubicFeet}
-            onChange={(e) => setMaxCubicFeet(e.target.value)}
-            placeholder="No limit"
-          />
-        </div>
       </div>
 
       <div className="flex items-center justify-between">
@@ -424,7 +442,7 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
           <Button variant="outline" size="sm" onClick={handleCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim()}>
+          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim() || !cubicValid}>
             {saving && <MaterialIcon name="progress_activity" size="sm" className="mr-1 animate-spin" />}
             Save Changes
           </Button>
@@ -440,7 +458,14 @@ function ClassEditForm({ itemClass, saving, onSave, onCancel, onDelete }: ClassE
 
 interface AddClassFormProps {
   saving: boolean;
-  onSave: (data: { code: string; name: string; is_active?: boolean | null; notes?: string | null; min_cubic_feet?: number | null; max_cubic_feet?: number | null }) => Promise<void>;
+  onSave: (data: {
+    code: string;
+    name: string;
+    min_cubic_feet?: number | null;
+    max_cubic_feet?: number | null;
+    is_active?: boolean | null;
+    notes?: string | null;
+  }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -451,8 +476,7 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
   const [codeManual, setCodeManual] = useState(false);
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
-  const [minCubicFeet, setMinCubicFeet] = useState('');
-  const [maxCubicFeet, setMaxCubicFeet] = useState('');
+  const [cubicFeet, setCubicFeet] = useState('');
 
   useEffect(() => {
     if (!codeManual && name) {
@@ -462,25 +486,30 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
 
   const handleSave = async () => {
     if (!name.trim() || !code.trim()) return;
-    const min = minCubicFeet.trim() ? Number(minCubicFeet) : null;
-    const max = maxCubicFeet.trim() ? Number(maxCubicFeet) : null;
-    if (min !== null && max !== null && max < min) {
+    const cubicRaw = cubicFeet.trim();
+    const cubicVal = cubicRaw ? Number(cubicRaw) : null;
+    const cubicValid = !cubicRaw || (Number.isFinite(cubicVal) && (cubicVal as number) >= 0);
+    if (!cubicValid) {
       toast({
         variant: 'destructive',
-        title: 'Invalid cubic feet range',
-        description: 'Max cubic feet must be greater than or equal to Min cubic feet.',
+        title: 'Invalid cubic feet',
+        description: 'Please enter a valid non-negative number.',
       });
       return;
     }
     await onSave({
       name: name.trim(),
       code: code.toUpperCase().trim(),
+      min_cubic_feet: cubicVal,
+      max_cubic_feet: cubicVal,
       is_active: isActive,
       notes: notes.trim() || null,
-      min_cubic_feet: min,
-      max_cubic_feet: max,
     });
   };
+
+  const cubicRaw = cubicFeet.trim();
+  const cubicAsNum = cubicRaw ? Number(cubicRaw) : null;
+  const cubicValid = !cubicRaw || (Number.isFinite(cubicAsNum) && (cubicAsNum as number) >= 0);
 
   return (
     <Card className="border-primary/50">
@@ -523,6 +552,25 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="new-cls-cubic" className="text-sm font-medium">Cubic Feet</Label>
+          <Input
+            id="new-cls-cubic"
+            value={cubicFeet}
+            onChange={(e) => setCubicFeet(e.target.value)}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            placeholder="e.g., 12.5"
+          />
+          {!cubicValid && (
+            <p className="text-xs text-destructive">
+              Enter a valid number (0 or greater), or leave blank.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="new-cls-notes" className="text-sm font-medium">Description</Label>
           <Input
             id="new-cls-notes"
@@ -530,33 +578,6 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional description"
           />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="new-cls-min" className="text-sm font-medium">Min Cubic Feet</Label>
-            <Input
-              id="new-cls-min"
-              type="number"
-              min="0"
-              step="0.1"
-              value={minCubicFeet}
-              onChange={(e) => setMinCubicFeet(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="new-cls-max" className="text-sm font-medium">Max Cubic Feet</Label>
-            <Input
-              id="new-cls-max"
-              type="number"
-              min="0"
-              step="0.1"
-              value={maxCubicFeet}
-              onChange={(e) => setMaxCubicFeet(e.target.value)}
-              placeholder="No limit"
-            />
-          </div>
         </div>
 
         <div className="flex items-center justify-between">
@@ -568,7 +589,7 @@ function AddClassForm({ saving, onSave, onCancel }: AddClassFormProps) {
           <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim()}>
+          <Button size="sm" onClick={handleSave} disabled={saving || !name.trim() || !code.trim() || !cubicValid}>
             {saving && <MaterialIcon name="progress_activity" size="sm" className="mr-1 animate-spin" />}
             Create
           </Button>

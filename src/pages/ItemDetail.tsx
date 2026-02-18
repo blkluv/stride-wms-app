@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -146,15 +146,6 @@ interface ItemTask {
   created_at: string;
 }
 
-interface ShipmentLink {
-  id: string;
-  shipment_number: string;
-  shipment_type: string;
-  status: string;
-  created_at: string;
-  received_at?: string | null;
-}
-
 // Resolves non-UUID item_code params to UUID and redirects
 function ItemCodeResolver({ itemCode }: { itemCode: string }) {
   const navigate = useNavigate();
@@ -235,7 +226,6 @@ export default function ItemDetail() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [tasks, setTasks] = useState<ItemTask[]>([]);
-  const [shipments, setShipments] = useState<ShipmentLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountSettings, setAccountSettings] = useState<{
     default_item_notes: string | null;
@@ -418,7 +408,6 @@ export default function ItemDetail() {
     fetchItem();
     fetchMovements();
     fetchTasks();
-    fetchShipments();
     fetchIndicatorFlags();
   }, [id]);
 
@@ -565,37 +554,6 @@ export default function ItemDetail() {
       setTasks(data || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
-    }
-  };
-
-  const fetchShipments = async () => {
-    try {
-      // Get shipments through shipment_items
-      const { data: shipmentItems } = await (supabase.from('shipment_items') as any)
-        .select(`
-          shipment_id,
-          shipments:shipment_id(id, shipment_number, shipment_type, status, created_at)
-        `)
-        .eq('item_id', id);
-
-      if (!shipmentItems) {
-        setShipments([]);
-        return;
-      }
-
-      const uniqueShipments = shipmentItems
-        .map((si: any) => si.shipments)
-        .filter((s: any) => s)
-        .reduce((acc: ShipmentLink[], s: any) => {
-          if (!acc.find(existing => existing.id === s.id)) {
-            acc.push(s);
-          }
-          return acc;
-        }, []);
-
-      setShipments(uniqueShipments);
-    } catch (error) {
-      console.error('Error fetching shipments:', error);
     }
   };
 
@@ -865,9 +823,9 @@ export default function ItemDetail() {
                   <Badge
                     key={flag.code}
                     variant="outline"
-                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-2.5 py-0.5"
                   >
-                    <MaterialIcon name="warning" size="sm" className="mr-1" />
+                    <MaterialIcon name="warning" className="text-[12px] mr-1" />
                     {flag.name}
                   </Badge>
                 ))}
@@ -1570,7 +1528,6 @@ export default function ItemDetail() {
         itemCode={item?.item_code || ''}
         onSuccess={() => {
           setLinkShipmentDialogOpen(false);
-          fetchShipments();
         }}
       />
 

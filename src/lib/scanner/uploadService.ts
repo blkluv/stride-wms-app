@@ -12,6 +12,7 @@ import type {
   UploadProgress,
   Document 
 } from './types';
+import { logActivity } from '@/lib/activity/logActivity';
 
 export interface UploadOptions {
   fileName?: string;
@@ -238,6 +239,57 @@ export async function uploadDocument(
   }
   
   onProgress?.({ stage: 'complete', percentage: 100 });
+
+  // Activity log (best-effort). This is intentionally non-blocking and should
+  // never break uploads if activity tables / RLS aren't configured.
+  try {
+    const docId = createData.document.id as string;
+    if (contextType === 'item' && contextId) {
+      void logActivity({
+        entityType: 'item',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'item_document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    } else if (contextType === 'shipment' && contextId) {
+      void logActivity({
+        entityType: 'shipment',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    } else if (contextType === 'task' && contextId) {
+      void logActivity({
+        entityType: 'task',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    }
+  } catch {
+    // ignore
+  }
   
   return {
     documentId: createData.document.id,

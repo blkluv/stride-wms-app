@@ -26,6 +26,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { type BuiltinItemColumnKey, type ItemColumnKey, parseCustomFieldColumnKey } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 
 interface ShipmentItem {
   id: string;
@@ -40,6 +41,8 @@ interface ShipmentItem {
   item?: {
     item_code: string;
     sku?: string | null;
+    size?: number | null;
+    size_unit?: string | null;
     description: string | null;
     vendor: string | null;
     sidemark: string | null;
@@ -581,6 +584,12 @@ export function ShipmentItemRow({
                   )}
                 </TableCell>
               );
+            case 'size':
+              return (
+                <TableCell key={col} className="w-28 text-right tabular-nums">
+                  <span className="text-sm">{formatItemSize(item.item?.size ?? null, item.item?.size_unit ?? null)}</span>
+                </TableCell>
+              );
             case 'vendor':
               return (
                 <TableCell key={col} className="w-32" onClick={(e) => canEdit && e.stopPropagation()}>
@@ -679,14 +688,6 @@ export function ShipmentItemRow({
                       {item.item?.room || '-'}
                     </span>
                   )}
-                </TableCell>
-              );
-            case 'size':
-              return (
-                <TableCell key={col} className="w-20">
-                  <span className="text-sm">
-                    {(item.item as any)?.size ? `${(item.item as any).size} ${(item.item as any).size_unit || ''}`.trim() : '-'}
-                  </span>
                 </TableCell>
               );
             default:

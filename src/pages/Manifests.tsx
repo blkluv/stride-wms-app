@@ -431,8 +431,8 @@ export default function Manifests() {
                             View Details
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => navigate(`/manifests/${m.id}/history`)}>
-                            <MaterialIcon name="history" size="sm" className="mr-2" />
-                            Audit History
+                            <MaterialIcon name="timeline" size="sm" className="mr-2" />
+                            Activity
                           </DropdownMenuItem>
                           {m.status === 'draft' && (
                             <>

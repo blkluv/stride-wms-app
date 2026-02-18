@@ -48,7 +48,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
-import { ColumnSettingsPopover } from '@/components/items/ColumnSettingsPopover';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
@@ -64,6 +64,7 @@ import {
   getVisibleColumnsForView,
   parseCustomFieldColumnKey,
 } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 import {
   MobileDataCard,
   MobileDataCardHeader,
@@ -79,6 +80,8 @@ interface Item {
   description: string | null;
   status: string;
   quantity: number;
+  size: number | null;
+  size_unit: string | null;
   client_account: string | null;
   sidemark: string | null;
   vendor: string | null;
@@ -91,8 +94,6 @@ interface Item {
   account_id: string | null;
   received_at: string | null;
   primary_photo_url: string | null;
-  size: number | null;
-  size_unit: string | null;
   metadata?: Record<string, unknown> | null;
   has_indicator_flags?: boolean;
 }
@@ -103,6 +104,7 @@ type SortField =
   | 'vendor'
   | 'description'
   | 'quantity'
+  | 'size'
   | 'location_code'
   | 'client_account'
   | 'sidemark'
@@ -147,7 +149,13 @@ export default function Inventory() {
   const { preferences } = useTenantPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
 
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettings();
   const [activeViewId, setActiveViewId] = useState<string>('');
 
   useEffect(() => {
@@ -226,7 +234,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, size, size_unit, metadata,
+          id, item_code, sku, description, status, quantity, size, size_unit, client_account, sidemark, vendor, room, metadata,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -246,13 +254,13 @@ export default function Inventory() {
         description: item.description,
         status: item.status,
         quantity: item.quantity,
+        size: item.size ?? null,
+        size_unit: item.size_unit ?? null,
         // Use account name from joined accounts table, fallback to client_account text field
         client_account: item.account?.account_name || item.client_account,
         sidemark: item.sidemark,
         vendor: item.vendor,
         room: item.room,
-        size: item.size ?? null,
-        size_unit: item.size_unit ?? null,
         location_id: item.current_location_id,
         location_code: item.location?.code || null,
         location_name: item.location?.name || null,
@@ -493,6 +501,13 @@ export default function Inventory() {
         />
       ),
     },
+    size: {
+      sortField: 'size',
+      headClassName: 'text-right',
+      headLabelClassName: 'flex items-center justify-end gap-1',
+      cellClassName: 'text-right tabular-nums',
+      renderCell: (item) => <span className="text-sm">{formatItemSize(item.size, item.size_unit)}</span>,
+    },
     vendor: {
       sortField: 'vendor',
       stopPropagation: true,
@@ -519,9 +534,6 @@ export default function Inventory() {
           showEditIcon={false}
         />
       ),
-    },
-    size: {
-      renderCell: (item) => item.size ? `${item.size} ${item.size_unit || 'cu ft'}`.trim() : '-',
     },
     location: {
       sortField: 'location_code',
@@ -763,26 +775,35 @@ export default function Inventory() {
                   <SelectItem value="disposed">Disposed</SelectItem>
                 </SelectContent>
               </Select>
-              <Select
-                value={activeViewId || defaultItemViewId || 'default'}
-                onValueChange={setActiveViewId}
-                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-              >
-                <SelectTrigger className="w-full sm:w-44">
-                  <div className="flex items-center gap-2">
-                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                    <SelectValue placeholder="View" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {itemDisplaySettings.views.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                      {v.is_default ? ' (default)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex w-full sm:w-auto gap-2">
+                <Select
+                  value={activeViewId || defaultItemViewId || 'default'}
+                  onValueChange={setActiveViewId}
+                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                >
+                  <SelectTrigger className="flex-1 sm:w-44">
+                    <div className="flex items-center gap-2">
+                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                      <SelectValue placeholder="View" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {itemDisplaySettings.views.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                        {v.is_default ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <ItemColumnsPopover
+                  settings={itemDisplaySettings}
+                  viewId={activeViewId || defaultItemViewId || 'default'}
+                  disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                  onSave={saveItemDisplaySettings}
+                />
+              </div>
               <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
             </div>
 
@@ -818,6 +839,12 @@ export default function Inventory() {
                           <span className="text-muted-foreground">Qty:</span>
                           <span className="font-medium">{item.quantity}</span>
                         </div>
+                        {visibleColumns.includes('size') && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Size:</span>
+                            <span className="truncate ml-1">{formatItemSize(item.size, item.size_unit)}</span>
+                          </div>
+                        )}
                         {visibleColumns.includes('sku') && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">SKU:</span>
@@ -855,13 +882,11 @@ export default function Inventory() {
                   <TableHeader><TableRow>
                     <TableHead className="w-10"><Checkbox checked={selectedItems.size === filteredAndSortedItems.length && filteredAndSortedItems.length > 0} onCheckedChange={toggleSelectAll} className="h-3.5 w-3.5" /></TableHead>
                     {visibleColumns.map(renderTableHead)}
-                    <TableHead className="w-8"><ColumnSettingsPopover /></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>{filteredAndSortedItems.map((item) => (
                     <TableRow key={item.id} className={`cursor-pointer hover:bg-muted/50 ${selectedItems.has(item.id) ? 'bg-muted/30' : ''}`} onClick={() => navigate(`/inventory/${item.id}`)}>
                       <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selectedItems.has(item.id)} onCheckedChange={() => toggleItemSelection(item.id)} className="h-3.5 w-3.5" /></TableCell>
                       {visibleColumns.map((key) => renderTableCell(key, item))}
-                      <TableCell />
                     </TableRow>
                   ))}</TableBody>
                 </Table>

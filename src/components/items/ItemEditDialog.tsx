@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -10,6 +10,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Form,
   FormControl,
@@ -38,9 +48,9 @@ import { ClassSelect } from '@/components/ui/class-select';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
-import { useClasses } from '@/hooks/useClasses';
 import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { Switch } from '@/components/ui/switch';
+import { formatClassCubicFeetLabel, getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 const itemSchema = z.object({
   description: z.string().optional(),
@@ -112,6 +122,22 @@ const SIZE_UNITS = [
   { value: 'feet', label: 'feet' },
 ];
 
+function nearlyEqual(a: number, b: number, epsilon = 0.0001): boolean {
+  return Math.abs(a - b) <= epsilon;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 export function ItemEditDialog({
   open,
   onOpenChange,
@@ -122,6 +148,13 @@ export function ItemEditDialog({
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [sizeManuallyOverridden, setSizeManuallyOverridden] = useState(false);
+  const [overwriteSizeDialogOpen, setOverwriteSizeDialogOpen] = useState(false);
+  const [pendingAutoSize, setPendingAutoSize] = useState<{ size: number; sizeUnit: string; classId: string; classLabel?: string } | null>(null);
+
+  const classSizeCacheRef = useRef<Map<string, { single: number | null; label: string | null }>>(new Map());
+  const lastAutoSizeRef = useRef<number | null>(null);
+  const lastAutoClassIdRef = useRef<string | null>(null);
 
   // Field suggestions for room and sidemark
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
@@ -173,45 +206,31 @@ export function ItemEditDialog({
   const { sidemarks: accountSidemarks, addSidemark: addAccountSidemark } = useAccountSidemarks(selectedAccountId || undefined);
   const sidemarkSuggestions = accountSidemarks.map((s) => ({ value: s.sidemark, label: s.sidemark }));
 
-  // Classes for size auto-population
-  const { classes } = useClasses();
-  const [sizeManuallySet, setSizeManuallySet] = useState(false);
+  const fetchClassSizeInfo = useCallback(async (classId: string) => {
+    if (!profile?.tenant_id) return null;
+    if (!classId) return null;
 
-  const watchedClassId = form.watch('class_id');
-  useEffect(() => {
-    if (!watchedClassId || !open) return;
-    if (sizeManuallySet) return;
+    const cached = classSizeCacheRef.current.get(classId);
+    if (cached) return cached;
 
-    const cls = classes.find((c) => c.id === watchedClassId);
-    if (!cls) return;
+    try {
+      const { data, error } = await (supabase.from('classes') as any)
+        .select('id, code, name, min_cubic_feet, max_cubic_feet')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', classId)
+        .maybeSingle();
 
-    const min = cls.min_cubic_feet;
-    const max = cls.max_cubic_feet;
-    let autoSize: number | undefined;
+      if (error || !data) return null;
 
-    if (min !== null && max !== null) {
-      autoSize = Math.round(((min + max) / 2) * 10) / 10;
-    } else if (min !== null) {
-      autoSize = min;
-    } else if (max !== null) {
-      autoSize = max;
+      const single = getClassCubicFeetSingleValue(data);
+      const label = formatClassCubicFeetLabel(data);
+      const info = { single, label };
+      classSizeCacheRef.current.set(classId, info);
+      return info;
+    } catch {
+      return null;
     }
-
-    if (autoSize !== undefined) {
-      const currentSize = form.getValues('size');
-      if (!currentSize) {
-        form.setValue('size', autoSize);
-        if (!form.getValues('size_unit')) {
-          form.setValue('size_unit', 'cu_ft');
-        }
-      }
-    }
-  }, [watchedClassId, classes, open, sizeManuallySet]);
-
-  // Reset manual flag when dialog opens
-  useEffect(() => {
-    if (open) setSizeManuallySet(false);
-  }, [open]);
+  }, [profile?.tenant_id]);
 
   useEffect(() => {
     if (open && item) {
@@ -224,7 +243,7 @@ export function ItemEditDialog({
         class_id: item.class_id || '',
         account_id: item.account_id || '',
         vendor: item.vendor || '',
-        size: item.size || undefined,
+        size: item.size ?? undefined,
         size_unit: item.size_unit || '',
         room: item.room || '',
         link: item.link || '',
@@ -235,10 +254,93 @@ export function ItemEditDialog({
       const meta = item.metadata && typeof item.metadata === 'object' ? item.metadata : null;
       const custom = meta && typeof (meta as any).custom_fields === 'object' ? (meta as any).custom_fields : null;
       setCustomFieldDraft(custom && typeof custom === 'object' ? { ...(custom as any) } : {});
+
+      // Initialize "manual size override" tracking so we can prompt on class changes.
+      // Best-effort: if size matches the current class cubic-feet default, treat as NOT overridden.
+      setOverwriteSizeDialogOpen(false);
+      setPendingAutoSize(null);
+      void (async () => {
+        const currentSize = item.size;
+        if (currentSize === null || currentSize === undefined) {
+          lastAutoSizeRef.current = null;
+          lastAutoClassIdRef.current = item.class_id || null;
+          setSizeManuallyOverridden(false);
+          return;
+        }
+
+        if (!item.class_id) {
+          lastAutoSizeRef.current = null;
+          lastAutoClassIdRef.current = null;
+          setSizeManuallyOverridden(true);
+          return;
+        }
+
+        const info = await fetchClassSizeInfo(item.class_id);
+        const classDefault = info?.single ?? null;
+        lastAutoSizeRef.current = classDefault;
+        lastAutoClassIdRef.current = item.class_id;
+
+        const unit = item.size_unit;
+        if (classDefault !== null && nearlyEqual(currentSize, classDefault) && (!unit || unit === 'cu_ft')) {
+          setSizeManuallyOverridden(false);
+        } else {
+          setSizeManuallyOverridden(true);
+        }
+      })();
     } else if (open) {
       setCustomFieldDraft({});
+      lastAutoSizeRef.current = null;
+      lastAutoClassIdRef.current = null;
+      setSizeManuallyOverridden(false);
+      setOverwriteSizeDialogOpen(false);
+      setPendingAutoSize(null);
     }
   }, [open, item]);
+
+  const applyAutoSize = useCallback((nextClassId: string, nextSize: number) => {
+    form.setValue('size', nextSize, { shouldDirty: true });
+    form.setValue('size_unit', 'cu_ft', { shouldDirty: true });
+    lastAutoSizeRef.current = nextSize;
+    lastAutoClassIdRef.current = nextClassId;
+    setSizeManuallyOverridden(false);
+    setOverwriteSizeDialogOpen(false);
+    setPendingAutoSize(null);
+  }, [form]);
+
+  const maybeAutoFillSizeFromClass = useCallback(async (nextClassId: string) => {
+    if (!nextClassId) return;
+    const info = await fetchClassSizeInfo(nextClassId);
+
+    if (!info) return;
+
+    if (info.single === null) {
+      // Legacy range or missing size — don't guess a single value.
+      if (info.label) {
+        toast({
+          title: 'Class size needs a single value',
+          description: `Selected class is configured as "${info.label}". Set a single cubic-feet value in Settings → Service Rates → Classes to enable auto-fill.`,
+        });
+      }
+      return;
+    }
+
+    const currentSize = toOptionalNumber(form.getValues('size'));
+    const hasManualSize = currentSize !== undefined && currentSize !== null;
+
+    // If user has manually edited size, prompt before overwriting.
+    if (sizeManuallyOverridden && hasManualSize) {
+      setPendingAutoSize({
+        size: info.single,
+        sizeUnit: 'cu_ft',
+        classId: nextClassId,
+        classLabel: info.label ?? undefined,
+      });
+      setOverwriteSizeDialogOpen(true);
+      return;
+    }
+
+    applyAutoSize(nextClassId, info.single);
+  }, [applyAutoSize, fetchClassSizeInfo, form, sizeManuallyOverridden, toast]);
 
   const onSubmit = async (data: ItemFormData) => {
     if (!item) return;
@@ -258,7 +360,7 @@ export function ItemEditDialog({
         class_id: data.class_id || null,
         account_id: data.account_id || null,
         vendor: data.vendor || null,
-        size: data.size || null,
+        size: data.size ?? null,
         size_unit: data.size_unit || null,
         room: data.room || null,
         link: data.link || null,
@@ -313,6 +415,22 @@ export function ItemEditDialog({
 
       // Log activity for key field changes
       if (profile?.tenant_id) {
+        // Custom field diffs (stored under metadata.custom_fields)
+        for (const f of customFieldsForForm) {
+          const fromVal = (existingCustom as any)[f.key] ?? null;
+          const toVal = (nextCustom as any)[f.key] ?? null;
+          if (fromVal === toVal) continue;
+
+          logItemActivity({
+            tenantId: profile.tenant_id,
+            itemId: item.id,
+            actorUserId: profile.id,
+            eventType: 'item_custom_field_updated',
+            eventLabel: `${f.label} updated`,
+            details: { field_key: f.key, label: f.label, from: fromVal, to: toVal },
+          });
+        }
+
         if (data.status !== item.status) {
           logItemActivity({
             tenantId: profile.tenant_id,
@@ -392,7 +510,10 @@ export function ItemEditDialog({
                     <FormControl>
                       <ClassSelect
                         value={field.value}
-                        onChange={field.onChange}
+                        onChange={(next) => {
+                          field.onChange(next);
+                          void maybeAutoFillSizeFromClass(next);
+                        }}
                         placeholder="Select class..."
                       />
                     </FormControl>
@@ -663,11 +784,25 @@ export function ItemEditDialog({
                       <FormControl>
                         <Input
                           type="number"
+                          inputMode="decimal"
                           placeholder="Size"
-                          {...field}
+                          value={field.value ?? ''}
                           onChange={(e) => {
-                            setSizeManuallySet(true);
-                            field.onChange(e);
+                            const raw = e.target.value;
+                            if (!raw) {
+                              field.onChange(undefined);
+                              setSizeManuallyOverridden(false);
+                              return;
+                            }
+                            const n = e.target.valueAsNumber;
+                            if (Number.isFinite(n)) {
+                              field.onChange(n);
+                              setSizeManuallyOverridden(true);
+                              return;
+                            }
+                            // Fallback: keep raw so the user can finish typing.
+                            field.onChange(raw as any);
+                            setSizeManuallyOverridden(true);
                           }}
                         />
                       </FormControl>
@@ -682,7 +817,15 @@ export function ItemEditDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Size Unit</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                      <Select
+                        onValueChange={(val) => {
+                          field.onChange(val);
+                          if (toOptionalNumber(form.getValues('size')) !== undefined) {
+                            setSizeManuallyOverridden(true);
+                          }
+                        }}
+                        value={field.value || undefined}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Unit" />
@@ -712,6 +855,32 @@ export function ItemEditDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Prompt before overwriting a manually-entered size */}
+      <AlertDialog open={overwriteSizeDialogOpen} onOpenChange={setOverwriteSizeDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Overwrite item size?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This item&apos;s size was manually edited. Changing the class can auto-fill size from the selected class
+              {pendingAutoSize?.classLabel ? ` (${pendingAutoSize.classLabel})` : ''}. Do you want to overwrite your manual size?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setOverwriteSizeDialogOpen(false); setPendingAutoSize(null); }}>
+              Keep manual size
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingAutoSize) return;
+                applyAutoSize(pendingAutoSize.classId, pendingAutoSize.size);
+              }}
+            >
+              Overwrite
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

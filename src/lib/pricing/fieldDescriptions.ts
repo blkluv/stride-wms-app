@@ -35,8 +35,7 @@ export const fieldDescriptions = {
   // === Classes Tab ===
   classCode: 'Short code for this class (e.g., SM, LG, PLAT). Displayed in compact views and used in pricing rule lookups.',
   className: 'Full display name for this class (e.g., Small, Large, Platinum).',
-  classMinCubicFeet: 'Items with cubic feet at or above this value may be assigned to this class. Leave empty for no lower bound.',
-  classMaxCubicFeet: 'Items with cubic feet at or below this value may be assigned to this class. Leave empty for no upper bound.',
+  classCubicFeet: 'Default cubic-feet size for this class. Used to auto-fill item size when a class is selected. Leave empty if you do not want a default size.',
   classSortOrder: 'Display order in lists and rate grids. Lower numbers appear first.',
   classAlertOnReceive: 'When an item of this class is received, send an alert to the organization contact email. Useful for high-value or oversized items that need special attention.',
   classExplanation: 'Classes let you group items so different groups can have different rates. You define the groups — the system applies the right rate automatically. You can classify by size, value, handling needs, or anything that makes sense for your business.',

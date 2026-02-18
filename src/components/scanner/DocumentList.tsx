@@ -24,6 +24,8 @@ import type { DocumentContextType, Document } from '@/lib/scanner/types';
 import { format } from 'date-fns';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { logActivity } from '@/lib/activity/logActivity';
 
 interface DocumentListProps {
   contextType: DocumentContextType;
@@ -53,6 +55,7 @@ export function DocumentList({
     contextId,
   });
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   // Refetch when refetchKey changes
   useEffect(() => {
@@ -81,6 +84,36 @@ export function DocumentList({
     
     try {
       await deleteDocument(deletingDoc.id);
+
+      // Activity log (best-effort) for supported entity types
+      if (profile?.tenant_id && profile?.id && contextId) {
+        const entityType =
+          contextType === 'item' ? 'item'
+          : contextType === 'shipment' ? 'shipment'
+          : contextType === 'task' ? 'task'
+          : null;
+
+        if (entityType) {
+          void logActivity({
+            entityType,
+            tenantId: profile.tenant_id,
+            entityId: contextId,
+            actorUserId: profile.id,
+            eventType: entityType === 'item' ? 'item_document_removed' : 'document_removed',
+            eventLabel: `Document removed: ${deletingDoc.label || deletingDoc.file_name}`,
+            details: {
+              document_id: deletingDoc.id,
+              mime_type: deletingDoc.mime_type,
+              document: {
+                storage_key: deletingDoc.storage_key,
+                file_name: deletingDoc.file_name,
+                label: deletingDoc.label || null,
+              },
+            },
+          });
+        }
+      }
+
       toast({
         title: 'Document deleted',
         description: 'The document has been removed.',

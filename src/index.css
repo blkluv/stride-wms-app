@@ -181,6 +181,16 @@
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
 
+  /* Hide scrollbars (iOS-style horizontal tab bars, etc.) */
+  .scrollbar-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge legacy */
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
   .scrollbar-hide {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -188,6 +198,11 @@
 
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Momentum scrolling for iOS */
+  .scroll-momentum {
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Safe area insets for native apps (iOS notch, Android gesture bar) */

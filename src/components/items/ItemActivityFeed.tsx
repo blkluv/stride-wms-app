@@ -3,25 +3,44 @@
  * Shows all logged events from item_activity with filters, actor name, and time.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { useItemActivity, type ActivityFilterCategory } from '@/hooks/useItemActivity';
+import { useItemActivity } from '@/hooks/useItemActivity';
 import { format, formatDistanceToNow } from 'date-fns';
 import { parseMessageWithLinks } from '@/utils/parseEntityLinks';
+import { useEntityMap } from '@/hooks/useEntityMap';
 import { ActivityDetailsDisplay } from '@/components/activity/ActivityDetailsDisplay';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ItemActivityFeedProps {
   itemId: string;
 }
 
-const FILTER_OPTIONS: { value: Exclude<ActivityFilterCategory, 'all'>; label: string; icon: string }[] = [
+type ItemActivityFilterCategory =
+  | 'all'
+  | 'movements'
+  | 'tasks'
+  | 'shipments'
+  | 'notes'
+  | 'billing'
+  | 'photos_docs'
+  | 'status_account'
+  | 'repair';
+
+const FILTER_OPTIONS: { value: ItemActivityFilterCategory; label: string; icon: string }[] = [
+  { value: 'all', label: 'All', icon: 'list' },
   { value: 'movements', label: 'Movements', icon: 'location_on' },
   { value: 'tasks', label: 'Tasks', icon: 'assignment' },
   { value: 'shipments', label: 'Shipments', icon: 'local_shipping' },
@@ -29,7 +48,50 @@ const FILTER_OPTIONS: { value: Exclude<ActivityFilterCategory, 'all'>; label: st
   { value: 'billing', label: 'Billing', icon: 'attach_money' },
   { value: 'photos_docs', label: 'Photos & Docs', icon: 'photo_library' },
   { value: 'status_account', label: 'Status/Account', icon: 'tune' },
+  { value: 'repair', label: 'Repair', icon: 'handyman' },
 ];
+
+function matchesCategory(eventType: string, category: Exclude<ItemActivityFilterCategory, 'all'>): boolean {
+  switch (category) {
+    case 'movements':
+      return (
+        eventType === 'item_moved' ||
+        eventType === 'item_location_changed' ||
+        eventType === 'location_override' ||
+        eventType === 'quarantine_override'
+      );
+    case 'tasks':
+      return eventType.startsWith('task_');
+    case 'shipments':
+      return eventType.startsWith('item_shipment_');
+    case 'notes':
+      return eventType.startsWith('item_note_');
+    case 'billing':
+      return (
+        eventType.startsWith('billing_') ||
+        eventType === 'billing_charge_added' ||
+        eventType.startsWith('item_flag_') ||
+        eventType.startsWith('indicator_') ||
+        eventType === 'flag_alert_sent' ||
+        eventType === 'item_scan_charge_applied'
+      );
+    case 'photos_docs':
+      return eventType.startsWith('item_photo_') || eventType.startsWith('item_document_');
+    case 'status_account':
+      return (
+        eventType.startsWith('item_status_') ||
+        eventType.startsWith('item_account_') ||
+        eventType.startsWith('item_class_') ||
+        eventType === 'item_field_updated' ||
+        eventType === 'item_custom_field_updated' ||
+        eventType === 'inventory_count_recorded' ||
+        eventType === 'damage_cleared' ||
+        eventType === 'item_coverage_changed'
+      );
+    case 'repair':
+      return eventType.startsWith('item_repair_quote_');
+  }
+}
 
 function getEventIcon(eventType: string): string {
   if (eventType.startsWith('item_flag')) return 'flag';
@@ -37,16 +99,16 @@ function getEventIcon(eventType: string): string {
   if (eventType.startsWith('item_note')) return 'sticky_note_2';
   if (eventType.startsWith('item_photo')) return 'photo_camera';
   if (eventType.startsWith('item_document')) return 'description';
+  if (eventType.startsWith('item_shipment') || eventType.startsWith('item_manifest')) return 'local_shipping';
+  if (eventType.startsWith('item_repair_quote') || eventType.startsWith('repair_quote')) return 'handyman';
+  if (eventType.startsWith('item_coverage')) return 'verified_user';
   if (eventType.startsWith('item_status')) return 'swap_horiz';
   if (eventType.startsWith('item_account')) return 'business';
   if (eventType.startsWith('item_class')) return 'category';
   if (eventType.startsWith('item_moved') || eventType.startsWith('item_location')) return 'location_on';
   if (eventType.startsWith('item_field') || eventType.startsWith('item_custom_field')) return 'edit';
-  if (eventType.startsWith('item_coverage')) return 'verified_user';
-  if (eventType.startsWith('item_shipment') || eventType.startsWith('item_manifest')) return 'local_shipping';
   if (eventType.startsWith('task_')) return 'assignment';
   if (eventType.startsWith('inventory_count')) return 'inventory';
-  if (eventType.startsWith('repair_quote')) return 'handyman';
   if (eventType.startsWith('indicator')) return 'warning';
   if (eventType.startsWith('flag_alert')) return 'notifications';
   return 'history';
@@ -101,10 +163,33 @@ function getEventCategory(eventType: string): string {
 }
 
 export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
-  const { activities, loading, multiFilter, toggleFilterCategory, clearFilters } = useItemActivity(itemId);
-  const [filterOpen, setFilterOpen] = useState(false);
+  const { activities, loading } = useItemActivity(itemId);
+  const [selectedCategories, setSelectedCategories] = useState<ItemActivityFilterCategory[]>(['all']);
 
-  const activeFilterCount = multiFilter.size;
+  const filteredActivities = useMemo(() => {
+    if (selectedCategories.includes('all')) return activities;
+    const selected = selectedCategories.filter((c) => c !== 'all') as Array<Exclude<ItemActivityFilterCategory, 'all'>>;
+    return activities.filter((a) => selected.some((cat) => matchesCategory(a.event_type, cat)));
+  }, [activities, selectedCategories]);
+
+  const entityMap = useEntityMap(filteredActivities, '[ItemActivityFeed] entity resolution failed:');
+
+  const activeFilterCount = selectedCategories.includes('all') ? 0 : selectedCategories.length;
+
+  const toggleCategory = (cat: ItemActivityFilterCategory, nextChecked: boolean) => {
+    setSelectedCategories((prev) => {
+      // All is a special state
+      if (cat === 'all') return ['all'];
+
+      const withoutAll = prev.filter((c) => c !== 'all');
+      const has = withoutAll.includes(cat);
+      const next = nextChecked
+        ? (has ? withoutAll : [...withoutAll, cat])
+        : withoutAll.filter((c) => c !== cat);
+
+      return next.length === 0 ? ['all'] : next;
+    });
+  };
 
   if (loading) {
     return (
@@ -134,8 +219,8 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
               <MaterialIcon name="timeline" size="md" />
               Activity
@@ -145,53 +230,56 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
             </CardDescription>
           </div>
 
-          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="relative h-8 w-8 p-0">
+          {/* Filter button */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="relative h-9 w-9 flex-shrink-0" aria-label="Filter activity">
                 <MaterialIcon name="filter_list" size="sm" />
                 {activeFilterCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 text-[10px] font-medium bg-primary text-primary-foreground rounded-full">
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-primary text-primary-foreground rounded-full">
                     {activeFilterCount}
                   </span>
                 )}
               </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 p-2">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <span className="text-xs font-medium text-muted-foreground">Filter by category</span>
-                  {activeFilterCount > 0 && (
-                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs" onClick={clearFilters}>
-                      Clear
-                    </Button>
-                  )}
-                </div>
-                {FILTER_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.value}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={multiFilter.has(opt.value)}
-                      onCheckedChange={() => toggleFilterCategory(opt.value)}
-                      className="h-4 w-4"
-                    />
-                    <MaterialIcon name={opt.icon} className="text-[14px] text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[220px]">
+              <DropdownMenuLabel>Filter</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {FILTER_OPTIONS.map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={selectedCategories.includes(opt.value)}
+                  onCheckedChange={(checked) => toggleCategory(opt.value, !!checked)}
+                >
+                  <div className="flex items-center gap-2">
+                    <MaterialIcon name={opt.icon} size="sm" className="text-muted-foreground" />
                     <span>{opt.label}</span>
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
+                  </div>
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full justify-start h-8 px-2 text-sm"
+                onClick={() => setSelectedCategories(['all'])}
+              >
+                <MaterialIcon name="restart_alt" size="sm" className="mr-2 text-muted-foreground" />
+                Reset
+              </Button>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardHeader>
 
       <CardContent>
-        {activities.length === 0 ? (
+        {filteredActivities.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center">
             <MaterialIcon name="timeline" className="text-[36px] text-muted-foreground mb-2" />
             <p className="text-sm text-muted-foreground">
-              {activeFilterCount === 0 ? 'No activity recorded yet' : 'No matching activity for the selected filters'}
+              {selectedCategories.includes('all')
+                ? 'No activity recorded yet'
+                : 'No matching activity for the selected filters'}
             </p>
           </div>
         ) : (
@@ -202,7 +290,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
 
               {/* Events */}
               <div className="space-y-3">
-                {activities.map((activity) => (
+                {filteredActivities.map((activity) => (
                   <div key={activity.id} className="relative flex gap-3 pl-10">
                     {/* Timeline dot */}
                     <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${getEventColor(activity.event_type)}`}>
@@ -213,7 +301,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
                     <div className="flex-1 bg-muted/50 rounded-lg p-3 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-0.5">
                         <span className="font-medium text-sm leading-tight">
-                          {parseMessageWithLinks(activity.event_label, undefined, { variant: 'inline' })}
+                          {parseMessageWithLinks(activity.event_label, entityMap, { variant: 'inline' })}
                         </span>
                         <Badge variant="outline" className="text-[10px] px-1 flex-shrink-0">
                           {getEventCategory(activity.event_type)}
@@ -234,7 +322,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
                       </div>
 
                       {/* Expandable details */}
-                      <ActivityDetailsDisplay details={activity.details} linkVariant="inline" />
+                      <ActivityDetailsDisplay details={activity.details} entityMap={entityMap} linkVariant="inline" />
                     </div>
                   </div>
                 ))}
