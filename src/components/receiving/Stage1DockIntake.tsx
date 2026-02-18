@@ -29,6 +29,7 @@ import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentException
 import { AccountSelect } from '@/components/ui/account-select';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import { BillingCalculator } from '@/components/billing/BillingCalculator';
 import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
@@ -655,6 +656,17 @@ export function Stage1DockIntake({
 
       if (error) throw error;
 
+      // Stop Stage 1 timer interval (best-effort)
+      try {
+        await supabase.rpc('rpc_timer_end_job', {
+          p_job_type: 'shipment',
+          p_job_id: shipmentId,
+          p_reason: 'stage1_complete',
+        });
+      } catch (timerErr) {
+        console.warn('[Stage1] Failed to end timer interval:', timerErr);
+      }
+
       toast({ title: 'Stage 1 Complete', description: 'Dock intake has been recorded.' });
       onComplete();
     } catch (err: any) {
@@ -689,7 +701,15 @@ export function Stage1DockIntake({
                 Record the delivery at the dock. All fields autosave.
               </CardDescription>
             </div>
-            <AutosaveIndicator status={autosave.status} onRetry={autosave.retryNow} />
+            <div className="flex items-center gap-2">
+              <JobTimerWidget
+                jobType="shipment"
+                jobId={shipmentId}
+                variant="inline"
+                showControls={false}
+              />
+              <AutosaveIndicator status={autosave.status} onRetry={autosave.retryNow} />
+            </div>
           </div>
         </CardHeader>
       </Card>
