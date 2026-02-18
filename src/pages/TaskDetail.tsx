@@ -72,6 +72,9 @@ interface TaskDetail {
   assigned_to: string | null;
   warehouse_id: string | null;
   account_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_minutes: number | null;
   completed_at: string | null;
   completed_by: string | null;
   unable_to_complete_note: string | null;
@@ -1231,6 +1234,69 @@ export default function TaskDetailPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left Column - Details */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
+            {/* Service Time Summary (Estimated vs Actual) */}
+            {(() => {
+              const st = (task.metadata as any)?.service_time as any | undefined;
+              const estimatedMinutes = typeof st?.estimated_minutes === 'number' ? st.estimated_minutes : null;
+              const actualLaborMinutesFromMeta = typeof st?.actual_labor_minutes === 'number' ? st.actual_labor_minutes : null;
+              const actualCycleMinutesFromMeta = typeof st?.actual_cycle_minutes === 'number' ? st.actual_cycle_minutes : null;
+
+              const actualLaborMinutes =
+                task.status === 'in_progress'
+                  ? taskTimer.laborMinutes
+                  : (actualLaborMinutesFromMeta ?? task.duration_minutes ?? null);
+
+              const actualCycleMinutes =
+                task.status === 'in_progress'
+                  ? taskTimer.cycleMinutes
+                  : (actualCycleMinutesFromMeta ?? null);
+
+              const show =
+                (estimatedMinutes != null && estimatedMinutes > 0) ||
+                (actualLaborMinutes != null && actualLaborMinutes > 0) ||
+                task.status === 'in_progress';
+
+              if (!show) return null;
+
+              return (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MaterialIcon name="schedule" size="sm" />
+                      Service Time
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {estimatedMinutes != null && estimatedMinutes > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          Est: {formatMinutesShort(estimatedMinutes)}
+                        </Badge>
+                      )}
+                      {actualLaborMinutes != null && actualLaborMinutes > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          Actual: {formatMinutesShort(actualLaborMinutes)}
+                        </Badge>
+                      )}
+                      {actualCycleMinutes != null &&
+                        actualLaborMinutes != null &&
+                        actualCycleMinutes > 0 &&
+                        actualCycleMinutes !== actualLaborMinutes && (
+                          <Badge variant="outline" className="text-xs">
+                            Cycle: {formatMinutesShort(actualCycleMinutes)}
+                          </Badge>
+                        )}
+                      {task.status === 'in_progress' && !taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
+                        <Badge variant="outline" className="text-xs">
+                          Paused
+                        </Badge>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {/* Task Description */}
             {task.description && (
               <Card>
