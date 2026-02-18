@@ -1445,6 +1445,7 @@ export default function ItemDetail() {
                   contextType="item"
                   contextId={item.id}
                   showSearch
+                  canDelete={!isClientUser}
                 />
               </CardContent>
             </Card>

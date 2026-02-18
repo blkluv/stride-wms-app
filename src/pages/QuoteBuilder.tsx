@@ -50,7 +50,9 @@ import { calculateQuote, formatCurrency, computeStorageDays } from '@/lib/quotes
 import { downloadQuotePdf, exportQuoteToExcel, transformQuoteToPdfData, QuotePdfData } from '@/lib/quotes/export';
 import { useTenantSettings } from '@/hooks/useTenantSettings';
 import { useCommunications } from '@/hooks/useCommunications';
-import { QuoteAttachments } from '@/components/quotes/QuoteAttachments';
+import { DocumentCapture } from '@/components/scanner/DocumentCapture';
+import { useDocuments } from '@/hooks/useDocuments';
+import { HelpTip } from '@/components/ui/help-tip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,13 +73,20 @@ export default function QuoteBuilder() {
   const isNew = !id || id === 'new';
 
   // Data hooks
-  const { fetchQuoteDetails, createQuote, updateQuote, sendQuote, uploadQuoteAttachment, removeQuoteAttachment } = useQuotes();
+  const { fetchQuoteDetails, createQuote, updateQuote, sendQuote } = useQuotes();
   const { classes, loading: classesLoading } = useQuoteClasses();
   const { services, classBasedServices, nonClassBasedServices, loading: servicesLoading } = useQuoteServices();
   const { rates, loading: ratesLoading } = useQuoteServiceRates();
   const { accounts } = useAccounts();
   const { settings: tenantSettings } = useTenantSettings();
   const { brandSettings } = useCommunications();
+
+  // Quote documents (redesigned Documents field, upload-only)
+  const { documents: quoteDocuments, refetch: refetchQuoteDocuments } = useDocuments({
+    enabled: !isNew && !!id,
+    contextType: 'quote',
+    contextId: !isNew && id ? id : undefined,
+  });
 
   // Edit lock
   const { lock, lockedByOther, acquireLock } = useEditLock('quote', isNew ? null : id);
@@ -1384,18 +1393,37 @@ export default function QuoteBuilder() {
               </CardContent>
             </Card>
 
-            {/* Attachments */}
+            {/* Documents (upload-only; matches Intake Documents UI) */}
             {!isNew && quote && (
-              <QuoteAttachments
-                attachments={quote.attachments || []}
-                canEdit={!!canEdit}
-                onUpload={(file) => uploadQuoteAttachment(id!, file)}
-                onRemove={(attachment) => removeQuoteAttachment(id!, attachment)}
-                onAttachmentsChanged={async () => {
-                  const updated = await fetchQuoteDetails(id!);
-                  if (updated) setQuote(updated);
-                }}
-              />
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MaterialIcon name="description" size="sm" />
+                    Documents
+                    <Badge variant="outline">{quoteDocuments.length}</Badge>
+                    <HelpTip
+                      tooltip="Upload quote-related documents (specs, photos, paperwork). Tap a thumbnail to open, or use the download icon to download."
+                      pageKey="quotes.detail"
+                      fieldKey="documents"
+                    />
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DocumentCapture
+                    context={{ type: 'quote', quoteId: id!, quoteNumber: quote.quote_number }}
+                    maxDocuments={12}
+                    ocrEnabled={true}
+                    scanEnabled={false}
+                    canEdit={!!canEdit}
+                    onDocumentAdded={() => {
+                      void refetchQuoteDocuments();
+                    }}
+                    onDocumentRemoved={() => {
+                      void refetchQuoteDocuments();
+                    }}
+                  />
+                </CardContent>
+              </Card>
             )}
           </div>
 

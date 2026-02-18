@@ -27,12 +27,14 @@ interface Shipment {
   id: string;
   shipment_number: string;
   shipment_type: string;
+  inbound_kind?: string | null;
   status: string;
   carrier: string | null;
   tracking_number: string | null;
   expected_arrival_date: string | null;
   received_at: string | null;
   shipped_at: string | null;
+  completed_at?: string | null;
   release_type: string | null;
   outbound_type_name: string | null;
   created_at: string;
@@ -107,12 +109,14 @@ export default function ShipmentsList() {
             id,
             shipment_number,
             shipment_type,
+            inbound_kind,
             status,
             carrier,
             tracking_number,
             expected_arrival_date,
             received_at,
             shipped_at,
+            completed_at,
             release_type,
             created_at,
             accounts:account_id(account_name, account_code),
@@ -131,15 +135,28 @@ export default function ShipmentsList() {
             break;
           case 'received':
             query = query
+              .eq('shipment_type', 'inbound')
+              .eq('inbound_kind', 'dock_intake')
               .in('status', ['received']);
             break;
           case 'released':
             query = query
+              .eq('shipment_type', 'outbound')
               .in('status', ['released', 'shipped', 'completed']);
             break;
         }
 
-        query = query.order('created_at', { ascending: false });
+        // Default ordering per Hub/list decisions:
+        // - Received: newest received first
+        // - Released: newest completed first
+        // - Else: newest created first
+        if (activeTab === 'received') {
+          query = query.order('received_at', { ascending: false }).order('created_at', { ascending: false });
+        } else if (activeTab === 'released') {
+          query = query.order('completed_at', { ascending: false }).order('created_at', { ascending: false });
+        } else {
+          query = query.order('created_at', { ascending: false });
+        }
 
         const { data, error } = await query;
 
@@ -153,12 +170,14 @@ export default function ShipmentsList() {
           id: s.id,
           shipment_number: s.shipment_number,
           shipment_type: s.shipment_type,
+          inbound_kind: s.inbound_kind || null,
           status: s.status,
           carrier: s.carrier,
           tracking_number: s.tracking_number,
           expected_arrival_date: s.expected_arrival_date,
           received_at: s.received_at,
           shipped_at: s.shipped_at,
+          completed_at: s.completed_at,
           release_type: s.release_type,
           outbound_type_name: s.outbound_type?.name || null,
           created_at: s.created_at,
@@ -312,13 +331,15 @@ export default function ShipmentsList() {
                 </div>
                 <div className="col-span-2">
                   <span className="text-muted-foreground">
-                    {activeTab === 'received' ? 'Received: ' : 'Expected: '}
+                    {activeTab === 'received' ? 'Received: ' : activeTab === 'released' ? 'Shipped: ' : 'Expected: '}
                   </span>
                   {activeTab === 'received' && shipment.received_at
                     ? format(new Date(shipment.received_at), 'MMM d, yyyy')
-                    : shipment.expected_arrival_date
-                      ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
-                      : '-'}
+                    : activeTab === 'released' && shipment.completed_at
+                      ? format(new Date(shipment.completed_at), 'MMM d, yyyy')
+                      : shipment.expected_arrival_date
+                        ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
+                        : '-'}
                 </div>
               </div>
             </MobileDataCard>
@@ -364,8 +385,8 @@ export default function ShipmentsList() {
               <TableCell>
                 {activeTab === 'received' && shipment.received_at
                   ? format(new Date(shipment.received_at), 'MMM d, yyyy')
-                  : activeTab === 'released' && shipment.shipped_at
-                    ? format(new Date(shipment.shipped_at), 'MMM d, yyyy')
+                  : activeTab === 'released' && shipment.completed_at
+                    ? format(new Date(shipment.completed_at), 'MMM d, yyyy')
                     : shipment.expected_arrival_date
                       ? format(new Date(shipment.expected_arrival_date), 'MMM d, yyyy')
                       : '-'}
@@ -427,9 +448,10 @@ export default function ShipmentsList() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Filters — hidden for outbound tab since OutboundContent has its own */}
+        {/* Filters — outbound tab uses its own component */}
         {activeTab !== 'outbound' && (
           <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+            {/* Search is always available (received/released are search + default sort only) */}
             <div className="relative flex-1 min-w-[200px]">
               <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -439,39 +461,45 @@ export default function ShipmentsList() {
                 className="pl-10"
               />
             </div>
-            <Select value={accountFilter} onValueChange={setAccountFilter}>
-              <SelectTrigger className="w-full sm:w-44">
-                <SelectValue placeholder="All accounts" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All accounts</SelectItem>
-                {uniqueAccounts.map(account => (
-                  <SelectItem key={account} value={account}>{account}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={carrierFilter} onValueChange={setCarrierFilter}>
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="All carriers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All carriers</SelectItem>
-                {uniqueCarriers.map(carrier => (
-                  <SelectItem key={carrier} value={carrier}>{carrier}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {uniqueStatuses.map(status => (
-                  <SelectItem key={status} value={status}>{status}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+            {/* Incoming tab keeps additional filters; received/released are simplified */}
+            {activeTab === 'incoming' && (
+              <>
+                <Select value={accountFilter} onValueChange={setAccountFilter}>
+                  <SelectTrigger className="w-full sm:w-44">
+                    <SelectValue placeholder="All accounts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All accounts</SelectItem>
+                    {uniqueAccounts.map(account => (
+                      <SelectItem key={account} value={account}>{account}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={carrierFilter} onValueChange={setCarrierFilter}>
+                  <SelectTrigger className="w-full sm:w-36">
+                    <SelectValue placeholder="All carriers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All carriers</SelectItem>
+                    {uniqueCarriers.map(carrier => (
+                      <SelectItem key={carrier} value={carrier}>{carrier}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-36">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    {uniqueStatuses.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
           </div>
         )}
 
