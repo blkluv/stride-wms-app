@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type BuiltinItemColumnKey,
@@ -226,23 +227,6 @@ export default function TaskDetailPage() {
   const [startSwitchOpen, setStartSwitchOpen] = useState(false);
   const [startSwitchActiveLabel, setStartSwitchActiveLabel] = useState<string | null>(null);
   const [startSwitchLoading, setStartSwitchLoading] = useState(false);
-
-  const resolveActiveJobLabel = useCallback(async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-    if (jobType !== 'task') return `${jobType} job`;
-    try {
-      const { data } = await (supabase.from('tasks') as any)
-        .select('title, task_type')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('id', jobId)
-        .maybeSingle();
-      if (data?.title) return data.title;
-      if (data?.task_type) return `${data.task_type} task`;
-      return 'another task';
-    } catch {
-      return 'another task';
-    }
-  }, [profile?.tenant_id]);
 
   // After completing a job, prompt to resume a paused task (auto-paused by starting another job)
   const [resumePromptOpen, setResumePromptOpen] = useState(false);
@@ -530,7 +514,9 @@ export default function TaskDetailPage() {
       }
 
       if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
-        setStartSwitchActiveLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setStartSwitchActiveLabel(
+          await resolveActiveJobLabel(profile?.tenant_id, result.active_job_type, result.active_job_id),
+        );
         setStartSwitchOpen(true);
         return;
       }

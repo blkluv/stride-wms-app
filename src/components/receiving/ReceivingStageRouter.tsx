@@ -223,6 +223,8 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     if (startingStage2) return;
     setStartingStage2(true);
     try {
+      let timerStarted = false;
+
       // Start Stage 2 timer interval first (prevents "inbound_status=receiving" with no timer)
       const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
         p_job_type: 'shipment',
@@ -264,13 +266,28 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
         }
         throw new Error(timerResult.error_message || 'Failed to start timer');
       }
+      timerStarted = true;
 
       const { error } = await supabase
         .from('shipments')
         .update({ inbound_status: 'receiving' } as any)
         .eq('id', shipmentId);
 
-      if (error) throw error;
+      if (error) {
+        // Best-effort rollback: end the interval we just started
+        if (timerStarted) {
+          try {
+            await supabase.rpc('rpc_timer_end_job', {
+              p_job_type: 'shipment',
+              p_job_id: shipmentId,
+              p_reason: 'rollback',
+            });
+          } catch {
+            // ignore
+          }
+        }
+        throw error;
+      }
 
       try {
         localStorage.setItem(stage2ExpandedKey, 'true');
@@ -1004,6 +1021,8 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               e.preventDefault();
               setStage2ConfirmLoading(true);
               try {
+                let timerStarted = false;
+
                 const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
                   p_job_type: 'shipment',
                   p_job_id: shipmentId,
@@ -1019,13 +1038,28 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   });
                   return;
                 }
+                timerStarted = true;
 
                 const { error } = await supabase
                   .from('shipments')
                   .update({ inbound_status: 'receiving' } as any)
                   .eq('id', shipmentId);
 
-                if (error) throw error;
+                if (error) {
+                  // Best-effort rollback: end the interval we just started
+                  if (timerStarted) {
+                    try {
+                      await supabase.rpc('rpc_timer_end_job', {
+                        p_job_type: 'shipment',
+                        p_job_id: shipmentId,
+                        p_reason: 'rollback',
+                      });
+                    } catch {
+                      // ignore
+                    }
+                  }
+                  throw error;
+                }
 
                 try {
                   localStorage.setItem(stage2ExpandedKey, 'true');

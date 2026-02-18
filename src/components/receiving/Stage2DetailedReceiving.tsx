@@ -47,6 +47,7 @@ import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
 import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
 import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
@@ -1075,13 +1076,6 @@ export function Stage2DetailedReceiving({
           .eq('tenant_id', profile.tenant_id)
           .eq('job_type', 'shipment')
           .eq('job_id', shipmentId);
-
-        const minutesBetweenIso = (startIso: string, endIso: string) => {
-          const start = new Date(startIso).getTime();
-          const end = new Date(endIso).getTime();
-          if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-          return (end - start) / 60000;
-        };
 
         const laborMinutes = Math.round(
           (rows || []).reduce((sum: number, r: any) => {

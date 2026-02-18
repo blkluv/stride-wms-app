@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 
 // Allow "plug-in" future job types while preserving autocomplete for core ones.
 export type JobType = 'task' | 'shipment' | 'stocktake' | (string & {});
@@ -29,13 +30,6 @@ export interface TimerStartResult {
   active_interval_id?: string | null;
   active_job_type?: string | null;
   active_job_id?: string | null;
-}
-
-function minutesBetween(startIso: string, endIso: string): number {
-  const start = new Date(startIso).getTime();
-  const end = new Date(endIso).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-  return (end - start) / 60000;
 }
 
 export function useJobTimer(jobType: JobType, jobId: string | undefined) {
@@ -110,7 +104,7 @@ export function useJobTimer(jobType: JobType, jobId: string | undefined) {
     const nowIso = new Date(nowTick).toISOString();
     const total = intervals.reduce((sum, i) => {
       const end = i.ended_at || nowIso;
-      return sum + minutesBetween(i.started_at, end);
+      return sum + minutesBetweenIso(i.started_at, end);
     }, 0);
     return Math.round(total);
   }, [intervals, nowTick]);

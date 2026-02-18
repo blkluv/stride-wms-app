@@ -16,6 +16,7 @@ import {
   type ServiceTimeSnapshotV1,
   type ServiceTimeActualSnapshotV1,
 } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 
 type TimerRpcResult = {
   ok: boolean;
@@ -831,34 +832,6 @@ export function useTasks(filters?: {
     }
   };
 
-  const startTask = async (taskId: string, options?: { pauseExisting?: boolean }) => {
-    const result = await startTaskDetailed(taskId, options);
-    if (result.ok) {
-      const paused = !!(options?.pauseExisting && result.paused_interval_id);
-      toast({
-        title: 'Task Started',
-        description: paused ? 'Paused your previous job and started this task.' : 'Task is now in progress.',
-      });
-      return true;
-    }
-
-    if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
-      toast({
-        variant: 'destructive',
-        title: 'Another job is already in progress',
-        description: 'Pause your active job before starting this task.',
-      });
-      return false;
-    }
-
-    toast({
-      variant: 'destructive',
-      title: 'Error',
-      description: result.error_message || 'Failed to start task',
-    });
-    return false;
-  };
-
   // -------------------------------------------------------------------------
   // Estimated Service Time snapshot (for historical reporting)
   // -------------------------------------------------------------------------
@@ -1059,13 +1032,6 @@ export function useTasks(filters?: {
   }): Promise<ServiceTimeActualSnapshotV1 | null> => {
     if (!profile?.tenant_id || !profile?.id) return null;
 
-    const minutesBetweenIso = (startIso: string, endIso: string) => {
-      const start = new Date(startIso).getTime();
-      const end = new Date(endIso).getTime();
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-      return (end - start) / 60000;
-    };
-
     try {
       // End any active interval for THIS user + task (idempotent)
       try {
@@ -1172,15 +1138,6 @@ export function useTasks(filters?: {
 
       // Handle Will Call completion - requires pickup name
       if (taskData.task_type === SPECIAL_TASK_TYPES.WILL_CALL) {
-        if (!pickupName) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'Pickup name is required for Will Call completion',
-          });
-          return false;
-        }
-
         // Update task with pickup info
         const willCallUpdates: any = {
             status: 'completed',
@@ -2053,7 +2010,6 @@ export function useTasks(filters?: {
     createTask,
     updateTask,
     startTaskDetailed,
-    startTask,
     completeTask,
     completeTaskWithServices,
     getTaskServiceLineCount,
