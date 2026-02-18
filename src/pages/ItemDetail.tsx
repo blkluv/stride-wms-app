@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -222,6 +222,16 @@ export default function ItemDetail() {
   const initialTab = searchParams.get('tab') || 'details';
   const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'repair'];
   const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : 'details');
+  const tabsListRef = useRef<HTMLDivElement | null>(null);
+
+  // On small screens, keep the active tab visible in the horizontal scroller.
+  useEffect(() => {
+    const listEl = tabsListRef.current;
+    if (!listEl) return;
+    if (listEl.scrollWidth <= listEl.clientWidth) return;
+    const activeEl = listEl.querySelector('[data-state="active"]') as HTMLElement | null;
+    activeEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [activeTab]);
 
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -939,9 +949,17 @@ export default function ItemDetail() {
         {/* Status Badges Row - Removed per UI update */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList>
-            <TabsTrigger value="details">📋 Details</TabsTrigger>
-            <TabsTrigger value="photos" className="relative">
+          <TabsList
+            ref={tabsListRef}
+            className={cn(
+              // Mobile: scrollable pill bar inside card width
+              'flex w-full max-w-full overflow-x-auto overflow-y-hidden whitespace-nowrap justify-start scrollbar-none scroll-momentum',
+              // Desktop/tablet: standard centered tabs
+              'sm:w-auto sm:overflow-visible sm:justify-center'
+            )}
+          >
+            <TabsTrigger value="details" className="flex-shrink-0">📋 Details</TabsTrigger>
+            <TabsTrigger value="photos" className="relative flex-shrink-0">
               📷 Photos
               {photoCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
@@ -949,7 +967,7 @@ export default function ItemDetail() {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="documents" className="relative">
+            <TabsTrigger value="documents" className="relative flex-shrink-0">
               📄 Docs
               {docsCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
@@ -957,7 +975,7 @@ export default function ItemDetail() {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="notes" className="relative">
+            <TabsTrigger value="notes" className="relative flex-shrink-0">
               💬 Notes
               {notesCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
@@ -966,10 +984,10 @@ export default function ItemDetail() {
               )}
             </TabsTrigger>
             {!isClientUser && (
-              <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>
+              <TabsTrigger value="coverage" className="flex-shrink-0">🛡️ Coverage</TabsTrigger>
             )}
-            {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
-            {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
+            {!isClientUser && <TabsTrigger value="activity" className="flex-shrink-0">📊 Activity</TabsTrigger>}
+            {item.needs_repair && <TabsTrigger value="repair" className="flex-shrink-0">🔧 Repair</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="details" className="space-y-6 mt-6">

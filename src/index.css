@@ -181,6 +181,21 @@
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
 
+  /* Hide scrollbars (iOS-style horizontal tab bars, etc.) */
+  .scrollbar-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge legacy */
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  /* Momentum scrolling for iOS */
+  .scroll-momentum {
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Safe area insets for native apps (iOS notch, Android gesture bar) */
   .pt-safe {
     padding-top: max(0.5rem, env(safe-area-inset-top));

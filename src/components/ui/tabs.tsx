@@ -5,14 +5,26 @@ import { cn } from "@/lib/utils";
 
 const Tabs = TabsPrimitive.Root;
 
+type TabsListProps = React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & {
+  /**
+   * When true, renders a horizontally scrollable "pill bar" style tabs list
+   * (useful on mobile when there are many tabs).
+   *
+   * NOTE: Auto-scrolling the active tab into view is handled by the caller.
+   */
+  scrollable?: boolean;
+};
+
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
+  TabsListProps
+>(({ className, scrollable, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
     className={cn(
       "inline-flex h-10 items-center justify-center rounded-xl bg-muted p-1 text-muted-foreground",
+      scrollable &&
+        "flex w-full max-w-full overflow-x-auto overflow-y-hidden whitespace-nowrap justify-start scrollbar-none scroll-momentum",
       className,
     )}
     {...props}
