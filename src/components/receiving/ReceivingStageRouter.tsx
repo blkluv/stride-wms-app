@@ -76,6 +76,14 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   const stage2ExpandedKey = `receiving.stage2.expanded.${shipmentId}`;
   const [stage2Expanded, setStage2Expanded] = useState<boolean>(false);
   const [startingStage2, setStartingStage2] = useState(false);
+  const [closedEditMode, setClosedEditMode] = useState(false);
+
+  useEffect(() => {
+    // Leaving closed state should re-lock edits by default.
+    if (shipment?.inbound_status !== 'closed') {
+      setClosedEditMode(false);
+    }
+  }, [shipment?.inbound_status]);
 
   const fetchShipment = useCallback(async () => {
     if (!shipmentId) return;
@@ -145,7 +153,7 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
   useEffect(() => {
     const inboundStatus = (shipment?.inbound_status || 'draft') as InboundStatus;
 
-    if (inboundStatus !== 'receiving') {
+    if (inboundStatus !== 'receiving' && inboundStatus !== 'closed') {
       setStage2Expanded(false);
       setEntryCount(0);
       return;
@@ -520,32 +528,108 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
 
       case 'closed':
         return (
-          <div className="text-center py-12">
-            <MaterialIcon name="check_circle" size="xl" className="mb-3 text-green-500" />
-            <h3 className="text-lg font-medium mb-1">Receiving Complete</h3>
-            <p className="text-sm text-muted-foreground">
-              This dock intake has been fully received and closed.
-            </p>
-            <div className="flex items-center justify-center gap-4 mt-4 text-sm">
-              <span>Signed: {shipment.signed_pieces ?? '-'}</span>
-              <span>Received: {shipment.received_pieces ?? '-'}</span>
-            </div>
-            <div className="flex items-center justify-center gap-3 mt-6">
-              <Button variant="outline" onClick={handleDownloadPdf}>
-                <MaterialIcon name="picture_as_pdf" size="sm" className="mr-2" />
-                {hasPdf ? 'Download PDF' : 'Generate PDF'}
-              </Button>
-              {!hasPdf && (
-                <Button variant="outline" onClick={handleRetryPdf} disabled={pdfRetrying}>
-                  {pdfRetrying ? (
-                    <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
-                  ) : (
-                    <MaterialIcon name="refresh" size="sm" className="mr-2" />
-                  )}
-                  Retry PDF
-                </Button>
-              )}
-            </div>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MaterialIcon name="check_circle" size="sm" className="text-green-500" />
+                      Receiving Complete
+                      <Badge variant="outline" className="font-mono whitespace-nowrap">
+                        {shipment.shipment_number}
+                      </Badge>
+                      {closedEditMode ? (
+                        <Badge variant="secondary" className="text-xs">
+                          Editing unlocked
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">
+                          Read-only
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      This dock intake is closed. You can still view it, and optionally unlock edits.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={handleDownloadPdf}>
+                      <MaterialIcon name="picture_as_pdf" size="sm" className="mr-2" />
+                      {hasPdf ? 'Download PDF' : 'Generate PDF'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleRetryPdf} disabled={pdfRetrying}>
+                      {pdfRetrying ? (
+                        <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                      ) : (
+                        <MaterialIcon name="refresh" size="sm" className="mr-2" />
+                      )}
+                      Regenerate PDF
+                    </Button>
+                    <Button
+                      variant={closedEditMode ? 'secondary' : 'default'}
+                      size="sm"
+                      onClick={() => setClosedEditMode((prev) => !prev)}
+                    >
+                      <MaterialIcon name={closedEditMode ? 'lock' : 'edit'} size="sm" className="mr-2" />
+                      {closedEditMode ? 'Done' : 'Edit'}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <span>Signed: {shipment.signed_pieces ?? '-'}</span>
+                <span>Dock: {shipment.received_pieces ?? '-'}</span>
+                <span>Entry: {entryCount}</span>
+              </CardContent>
+            </Card>
+
+            <Stage1DockIntake
+              shipmentId={shipmentId}
+              shipmentNumber={shipment.shipment_number}
+              shipment={shipment as any}
+              onComplete={handleStageChange}
+              onRefresh={fetchShipment}
+              onMatchingParamsChange={handleMatchingParamsChange}
+              onOpenExceptions={() => setTab('exceptions')}
+              entryCount={entryCount}
+              showCompleteButton={false}
+              readOnly={!closedEditMode}
+            />
+
+            <Collapsible open={stage2Expanded} onOpenChange={handleStage2ExpandedChange}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <MaterialIcon name="inventory_2" size="sm" className="text-primary" />
+                  <span className="font-medium">Stage 2</span>
+                  <Badge variant={entryCount > 0 ? 'default' : 'outline'} className="h-5 text-xs">
+                    Entry {entryCount}
+                  </Badge>
+                </div>
+                <CollapsibleTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <MaterialIcon name={stage2Expanded ? 'expand_less' : 'expand_more'} size="sm" />
+                    {stage2Expanded ? 'Minimize' : 'Expand'}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+
+              <CollapsibleContent forceMount className="mt-4">
+                <Stage2DetailedReceiving
+                  shipmentId={shipmentId}
+                  shipmentNumber={shipment.shipment_number}
+                  shipment={shipment as any}
+                  dockCount={liveMatchingParams?.dockCount ?? shipment.received_pieces ?? null}
+                  onComplete={handleReceivingComplete}
+                  onRefresh={fetchShipment}
+                  onItemMatchingParamsChange={handleItemMatchingParamsChange}
+                  onEntryCountChange={setEntryCount}
+                  onOpenExceptions={() => setTab('exceptions')}
+                  readOnly={!closedEditMode}
+                  showCompleteButton={false}
+                />
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         );
 

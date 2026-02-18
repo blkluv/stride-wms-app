@@ -156,13 +156,9 @@ export function TaggablePhotoGrid({
     return null;
   }
 
-  const gridCols = columns === 3
-    ? 'grid-cols-2 sm:grid-cols-3'
-    : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
-
   return (
     <>
-      <div className={`grid ${gridCols} gap-2`}>
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
         {normalizedPhotos.map((photo, index) => {
           return (
             <div
@@ -202,7 +198,7 @@ export function TaggablePhotoGrid({
               </div>
 
               {/* Action buttons - visible on mobile, hover on desktop */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <div className="flex gap-1 justify-end">
                   <button
                     type="button"
@@ -212,7 +208,7 @@ export function TaggablePhotoGrid({
                     }}
                     className="p-2 text-white hover:text-blue-400"
                   >
-                    <MaterialIcon name="download" className="h-5 w-5" />
+                    <MaterialIcon name="download" size="sm" />
                   </button>
                   {enableTagging && !readonly && onPhotosChange && (
                     <>
@@ -225,7 +221,7 @@ export function TaggablePhotoGrid({
                           }}
                           className="p-2 text-amber-400 hover:text-amber-300"
                         >
-                          <MaterialIcon name="star" className="h-5 w-5" />
+                          <MaterialIcon name="star" size="sm" />
                         </button>
                       )}
                       <button
@@ -236,7 +232,7 @@ export function TaggablePhotoGrid({
                         }}
                         className={`p-2 ${photo.needsAttention ? 'text-red-400 bg-red-500/20 rounded' : 'text-white'} hover:text-red-400`}
                       >
-                        <MaterialIcon name="warning" className="h-5 w-5" />
+                        <MaterialIcon name="warning" size="sm" />
                       </button>
                       <button
                         type="button"
@@ -246,7 +242,7 @@ export function TaggablePhotoGrid({
                         }}
                         className={`p-2 ${photo.isRepair ? 'text-green-400 bg-green-500/20 rounded' : 'text-white'} hover:text-green-400`}
                       >
-                        <MaterialIcon name="build" className="h-5 w-5" />
+                        <MaterialIcon name="build" size="sm" />
                       </button>
                     </>
                   )}
@@ -259,7 +255,7 @@ export function TaggablePhotoGrid({
                       }}
                       className="p-2 text-white hover:text-destructive"
                     >
-                      <MaterialIcon name="close" className="h-5 w-5" />
+                      <MaterialIcon name="close" size="sm" />
                     </button>
                   )}
                 </div>
@@ -271,7 +267,7 @@ export function TaggablePhotoGrid({
 
       {/* Lightbox */}
       <Dialog open={!!lightboxPhoto} onOpenChange={() => setLightboxPhoto(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               Photo
@@ -287,11 +283,11 @@ export function TaggablePhotoGrid({
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative">
+            <div className="relative flex flex-col min-h-0">
               <img
                 src={lightboxPhoto.url}
                 alt="Photo"
-                className="w-full max-h-[70vh] object-contain rounded-lg"
+                className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
               <div className="flex gap-2 mt-4 justify-end flex-wrap">
                 <Button

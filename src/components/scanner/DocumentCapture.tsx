@@ -9,6 +9,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useDocuments } from '@/hooks/useDocuments';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { DocumentThumbnail } from './DocumentThumbnail';
 import { DocumentScanner } from './DocumentScanner';
 import { uploadDocument } from '@/lib/scanner/uploadService';
@@ -19,6 +20,10 @@ interface DocumentCaptureProps {
   context: DocumentContext;
   maxDocuments?: number;
   ocrEnabled?: boolean;
+  /** If false, hide scan button and scanner modal (upload-only mode). */
+  scanEnabled?: boolean;
+  /** If false, users can view but cannot add/remove. */
+  canEdit?: boolean;
   onDocumentAdded?: (documentId: string) => void;
   onDocumentRemoved?: (documentId: string) => void;
   /** Change this value to trigger an internal refetch without remounting */
@@ -29,24 +34,31 @@ export function DocumentCapture({
   context,
   maxDocuments = 10,
   ocrEnabled = true,
+  scanEnabled = true,
+  canEdit = true,
   onDocumentAdded,
   onDocumentRemoved,
   refetchKey,
 }: DocumentCaptureProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   
   const [scannerOpen, setScannerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   // Get context type and ID for the hook
   const contextType = context.type;
-  const contextId = 
+  const contextId =
     context.type === 'shipment' ? context.shipmentId :
+    context.type === 'quote' ? context.quoteId :
     context.type === 'item' ? context.itemId :
+    context.type === 'task' ? context.taskId :
     context.type === 'employee' ? context.employeeId :
     context.type === 'delivery' ? context.deliveryId :
-    context.type === 'invoice' ? context.invoiceNumber :
+    // NOTE: invoice context is historically inconsistent in this codebase.
+    // Prefer vendorId if present, otherwise fall back to invoiceNumber.
+    context.type === 'invoice' ? (context.vendorId || context.invoiceNumber) :
     undefined;
 
   const { documents, loading, deleteDocument, refetch } = useDocuments({
@@ -220,7 +232,14 @@ export function DocumentCapture({
     }
   };
 
-  const canAddMore = documents.length < maxDocuments;
+  // "Real scan" is mobile/tablet-focused; desktop uses upload.
+  const canWebScan =
+    isMobile ||
+    (typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches);
+  const effectiveScanEnabled = scanEnabled && canWebScan;
+  const canAddMore = canEdit && documents.length < maxDocuments;
 
   return (
     <div className="space-y-3">
@@ -234,7 +253,7 @@ export function DocumentCapture({
 
       {/* Document Thumbnail Grid */}
       {!loading && documents.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
           {documents.map((doc) => (
             <DocumentThumbnail
               key={doc.id}
@@ -243,7 +262,7 @@ export function DocumentCapture({
               fileName={doc.file_name}
               label={doc.label}
               mimeType={doc.mime_type}
-              onRemove={() => handleRemoveDocument(doc)}
+              onRemove={canEdit ? () => handleRemoveDocument(doc) : undefined}
             />
           ))}
         </div>
@@ -257,22 +276,23 @@ export function DocumentCapture({
 
       {/* Upload Buttons */}
       {canAddMore && (
-        <div className="flex gap-2">
-          {/* Scan Button - Goes directly to camera */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setScannerOpen(true)}
-            disabled={uploading}
-            className="flex-1"
-          >
-            <MaterialIcon name="document_scanner" size="sm" className="mr-2" />
-            Scan
-          </Button>
+        <div className={effectiveScanEnabled ? 'flex gap-2' : undefined}>
+          {effectiveScanEnabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setScannerOpen(true)}
+              disabled={uploading}
+              className="flex-1"
+            >
+              <MaterialIcon name="document_scanner" size="sm" className="mr-2" />
+              Scan
+            </Button>
+          ) : null}
 
           {/* Upload Button - File picker (overlay input for mobile reliability) */}
-          <div className="relative flex-1">
+          <div className={effectiveScanEnabled ? 'relative flex-1' : 'relative w-full'}>
             <Button
               type="button"
               variant="outline"
@@ -308,16 +328,18 @@ export function DocumentCapture({
       </p>
 
       {/* Document Scanner Dialog - Opens directly to camera */}
-      <DocumentScanner
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        context={context}
-        isSensitive={false}
-        enableOcr={ocrEnabled}
-        onSuccess={handleScanSuccess}
-        onError={handleScanError}
-        initialMode="camera"
-      />
+      {effectiveScanEnabled && canEdit ? (
+        <DocumentScanner
+          open={scannerOpen}
+          onOpenChange={setScannerOpen}
+          context={context}
+          isSensitive={false}
+          enableOcr={ocrEnabled}
+          onSuccess={handleScanSuccess}
+          onError={handleScanError}
+          initialMode="camera"
+        />
+      ) : null}
     </div>
   );
 }

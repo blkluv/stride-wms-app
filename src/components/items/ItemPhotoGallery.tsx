@@ -154,7 +154,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
   const isTaskPhoto = (photo: ItemPhoto) => photo.is_from_task === true;
 
   const renderPhotoGrid = (photosToRender: ItemPhoto[]) => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
       {photosToRender.map((photo) => {
         return (
           <div
@@ -422,7 +422,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
 
       {/* Lightbox Dialog */}
       <Dialog open={!!lightboxPhoto} onOpenChange={() => setLightboxPhoto(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="w-[calc(100vw-1.5rem)] h-[calc(100vh-1.5rem)] max-w-6xl max-h-[calc(100vh-1.5rem)] overflow-hidden">
           <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
               Photo
@@ -468,7 +468,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
             </DialogTitle>
           </DialogHeader>
           {lightboxPhoto && (
-            <div className="relative">
+            <div className="relative flex flex-col min-h-0">
               {/* Task info banner for task photos */}
               {isTaskPhoto(lightboxPhoto) && lightboxPhoto.source_task_title && (
                 <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm flex items-center gap-2">
@@ -486,7 +486,7 @@ export function ItemPhotoGallery({ itemId, isClientUser = false }: ItemPhotoGall
               <img
                 src={lightboxPhoto.storage_url || ''}
                 alt={lightboxPhoto.file_name}
-                className="w-full max-h-[70vh] object-contain rounded-lg"
+                className="w-full flex-1 min-h-0 object-contain rounded-lg"
               />
               <div className="flex gap-2 mt-4 justify-end flex-wrap">
                 <Button

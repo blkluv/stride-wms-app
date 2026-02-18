@@ -98,7 +98,8 @@ export function hapticError(): void {
     return;
   }
   if (canVibrate()) {
-    navigator.vibrate([100, 50, 100]);
+    // Longer pattern so users can clearly distinguish an error scan.
+    navigator.vibrate([150, 60, 150]);
   }
 }
 
