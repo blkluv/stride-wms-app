@@ -3,11 +3,14 @@
  * Shows all logged events from item_activity with filters, actor name, and time.
  */
 
+import { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useItemActivity, type ActivityFilterCategory } from '@/hooks/useItemActivity';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -18,13 +21,14 @@ interface ItemActivityFeedProps {
   itemId: string;
 }
 
-const FILTER_OPTIONS: { value: ActivityFilterCategory; label: string; icon: string }[] = [
-  { value: 'all', label: 'All', icon: 'list' },
+const FILTER_OPTIONS: { value: Exclude<ActivityFilterCategory, 'all'>; label: string; icon: string }[] = [
   { value: 'movements', label: 'Movements', icon: 'location_on' },
-  { value: 'billing', label: 'Billing', icon: 'attach_money' },
   { value: 'tasks', label: 'Tasks', icon: 'assignment' },
-  { value: 'notes_photos', label: 'Notes/Photos', icon: 'photo_library' },
-  { value: 'status_account_class', label: 'Status/Account', icon: 'tune' },
+  { value: 'shipments', label: 'Shipments', icon: 'local_shipping' },
+  { value: 'notes', label: 'Notes', icon: 'sticky_note_2' },
+  { value: 'billing', label: 'Billing', icon: 'attach_money' },
+  { value: 'photos_docs', label: 'Photos & Docs', icon: 'photo_library' },
+  { value: 'status_account', label: 'Status/Account', icon: 'tune' },
 ];
 
 function getEventIcon(eventType: string): string {
@@ -97,7 +101,10 @@ function getEventCategory(eventType: string): string {
 }
 
 export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
-  const { activities, loading, filter, setFilter } = useItemActivity(itemId);
+  const { activities, loading, multiFilter, toggleFilterCategory, clearFilters } = useItemActivity(itemId);
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  const activeFilterCount = multiFilter.size;
 
   if (loading) {
     return (
@@ -127,28 +134,55 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MaterialIcon name="timeline" size="md" />
-          Activity
-        </CardTitle>
-        <CardDescription>
-          Complete timeline of all changes to this item
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <MaterialIcon name="timeline" size="md" />
+              Activity
+            </CardTitle>
+            <CardDescription>
+              Complete timeline of all changes to this item
+            </CardDescription>
+          </div>
 
-        {/* Filter chips */}
-        <div className="flex flex-wrap gap-1.5 pt-2">
-          {FILTER_OPTIONS.map((opt) => (
-            <Button
-              key={opt.value}
-              variant={filter === opt.value ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => setFilter(opt.value)}
-            >
-              <MaterialIcon name={opt.icon} className="text-[12px] mr-1" />
-              {opt.label}
-            </Button>
-          ))}
+          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="relative h-8 w-8 p-0">
+                <MaterialIcon name="filter_list" size="sm" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 text-[10px] font-medium bg-primary text-primary-foreground rounded-full">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-2">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between px-2 py-1">
+                  <span className="text-xs font-medium text-muted-foreground">Filter by category</span>
+                  {activeFilterCount > 0 && (
+                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs" onClick={clearFilters}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                {FILTER_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={multiFilter.has(opt.value)}
+                      onCheckedChange={() => toggleFilterCategory(opt.value)}
+                      className="h-4 w-4"
+                    />
+                    <MaterialIcon name={opt.icon} className="text-[14px] text-muted-foreground" />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </CardHeader>
 
@@ -157,7 +191,7 @@ export function ItemActivityFeed({ itemId }: ItemActivityFeedProps) {
           <div className="flex flex-col items-center justify-center h-32 text-center">
             <MaterialIcon name="timeline" className="text-[36px] text-muted-foreground mb-2" />
             <p className="text-sm text-muted-foreground">
-              {filter === 'all' ? 'No activity recorded yet' : `No ${filter.replace('_', ' ')} activity`}
+              {activeFilterCount === 0 ? 'No activity recorded yet' : 'No matching activity for the selected filters'}
             </p>
           </div>
         ) : (

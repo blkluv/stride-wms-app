@@ -78,6 +78,7 @@ export function useItemActivity(itemId: string | undefined) {
   const [activities, setActivities] = useState<ItemActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ActivityFilterCategory>('all');
+  const [multiFilter, setMultiFilter] = useState<Set<Exclude<ActivityFilterCategory, 'all'>>>(new Set());
 
   const fetchActivities = useCallback(async () => {
     if (!itemId) return;
@@ -90,18 +91,21 @@ export function useItemActivity(itemId: string | undefined) {
         .order('created_at', { ascending: false })
         .limit(200);
 
-      // Apply filter if not 'all'
-      if (filter !== 'all') {
-        const prefixes = CATEGORY_PREFIX_MAP[filter];
-        if (prefixes && prefixes.length > 0) {
-          query = query.in('event_type', prefixes);
+      // Apply multi-filter if any categories selected
+      if (multiFilter.size > 0) {
+        const allPrefixes: string[] = [];
+        for (const cat of multiFilter) {
+          const prefixes = CATEGORY_PREFIX_MAP[cat];
+          if (prefixes) allPrefixes.push(...prefixes);
+        }
+        if (allPrefixes.length > 0) {
+          query = query.in('event_type', allPrefixes);
         }
       }
 
       const { data, error } = await query;
 
       if (error) {
-        // Table might not exist yet
         if (error.code !== '42P01') {
           console.error('[useItemActivity] Error:', error);
         }
@@ -116,17 +120,36 @@ export function useItemActivity(itemId: string | undefined) {
     } finally {
       setLoading(false);
     }
-  }, [itemId, filter]);
+  }, [itemId, multiFilter]);
 
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
+
+  const toggleFilterCategory = useCallback((category: Exclude<ActivityFilterCategory, 'all'>) => {
+    setMultiFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setMultiFilter(new Set());
+  }, []);
 
   return {
     activities,
     loading,
     filter,
     setFilter,
+    multiFilter,
+    toggleFilterCategory,
+    clearFilters,
     refetch: fetchActivities,
   };
 }
