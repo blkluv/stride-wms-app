@@ -2814,6 +2814,51 @@ export default function ShipmentDetail() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Inbound dock-intake signature (carrier sign-for) */}
+        {!isOutbound && (shipment.signature_data || shipment.signature_name) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MaterialIcon name="draw" size="sm" />
+                Signature
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="border rounded-md p-2 bg-white">
+                {shipment.signature_data ? (
+                  <img
+                    src={shipment.signature_data}
+                    alt="Signature"
+                    className="max-h-24 mx-auto"
+                  />
+                ) : (
+                  <div className="min-h-24 flex items-center justify-center">
+                    <span className="text-3xl font-cursive italic text-gray-800">
+                      {(shipment.signature_name || '').trim()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <div>
+                  Signed by:{' '}
+                  <span className="text-foreground">
+                    {(shipment.signature_name || '').trim() || '—'}
+                  </span>
+                </div>
+                {shipment.signature_timestamp ? (
+                  <div>
+                    Signed at:{' '}
+                    <span className="text-foreground">
+                      {format(new Date(shipment.signature_timestamp), 'MMM d, yyyy h:mm a')}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Shipment Items */}
@@ -3074,7 +3119,7 @@ export default function ShipmentDetail() {
         <CardContent>
           <DocumentCapture
             refetchKey={documentRefreshKey}
-            context={{ type: 'shipment', shipmentId: shipment.id }}
+            context={{ type: 'shipment', shipmentId: shipment.id, shipmentNumber: shipment.shipment_number }}
             maxDocuments={12}
             ocrEnabled={true}
             onDocumentAdded={() => {

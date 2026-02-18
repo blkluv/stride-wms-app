@@ -37,6 +37,8 @@ interface RecentShipment {
   id: string;
   shipment_number: string;
   status: string;
+  inbound_kind?: string | null;
+  inbound_status?: string | null;
   account_name?: string;
   carrier?: string;
   created_at: string;
@@ -81,6 +83,8 @@ export default function Shipments() {
 
   const fetchShipmentData = async () => {
     try {
+      const todayDate = format(new Date(), 'yyyy-MM-dd');
+
       // UTC day window
       const startOfToday = new Date();
       startOfToday.setUTCHours(0, 0, 0, 0);
@@ -96,9 +100,8 @@ export default function Shipments() {
           .from('shipments')
           .select('id', { count: 'exact', head: true })
           .eq('shipment_type', 'inbound')
-          .eq('inbound_kind', 'expected')
-          .lte('eta_start', todayISO)
-          .gte('eta_end', todayISO)
+          .in('inbound_kind', ['expected', 'manifest'])
+          .eq('expected_arrival_date', todayDate)
           .is('deleted_at', null),
         // Intakes In Progress count
         supabase
@@ -112,6 +115,8 @@ export default function Shipments() {
         supabase
           .from('shipments')
           .select('id', { count: 'exact', head: true })
+          .eq('shipment_type', 'inbound')
+          .eq('inbound_kind', 'dock_intake')
           .in('status', ['received'])
           .gte('received_at', todayISO)
           .lt('received_at', tomorrowISO)
@@ -128,18 +133,17 @@ export default function Shipments() {
         // Expected Today items
         supabase
           .from('shipments')
-          .select('id, shipment_number, status, created_at, carrier, shipment_exception_type, accounts(account_name)')
+          .select('id, shipment_number, status, inbound_kind, inbound_status, created_at, carrier, shipment_exception_type, accounts(account_name)')
           .eq('shipment_type', 'inbound')
-          .eq('inbound_kind', 'expected')
-          .lte('eta_start', todayISO)
-          .gte('eta_end', todayISO)
+          .in('inbound_kind', ['expected', 'manifest'])
+          .eq('expected_arrival_date', todayDate)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(10),
         // Intakes In Progress items
         supabase
           .from('shipments')
-          .select('id, shipment_number, status, created_at, carrier, shipment_exception_type, accounts(account_name)')
+          .select('id, shipment_number, status, inbound_kind, inbound_status, created_at, carrier, shipment_exception_type, accounts(account_name)')
           .eq('shipment_type', 'inbound')
           .eq('inbound_kind', 'dock_intake')
           .in('inbound_status', ['draft', 'stage1_complete', 'receiving'])
@@ -149,8 +153,10 @@ export default function Shipments() {
         // Received Today items
         supabase
           .from('shipments')
-          .select('id, shipment_number, status, created_at, received_at, carrier, shipment_exception_type, accounts(account_name)')
-          .in('status', ['received'])
+          .select('id, shipment_number, status, inbound_kind, inbound_status, created_at, received_at, carrier, shipment_exception_type, accounts(account_name)')
+          .eq('shipment_type', 'inbound')
+          .eq('inbound_kind', 'dock_intake')
+          .eq('status', 'received')
           .gte('received_at', todayISO)
           .lt('received_at', tomorrowISO)
           .is('deleted_at', null)
@@ -181,6 +187,8 @@ export default function Shipments() {
           id: s.id,
           shipment_number: s.shipment_number,
           status: s.status,
+          inbound_kind: s.inbound_kind || null,
+          inbound_status: s.inbound_status || null,
           account_name: s.accounts?.account_name,
           carrier: s.carrier,
           created_at: s.created_at,
@@ -254,15 +262,13 @@ export default function Shipments() {
   const handleCardTap = (key: ExpandedCard) => {
     switch (key) {
       case 'expectedToday':
-        setIncomingSubTab('expected');
-        setActiveTab('incoming');
+        navigate('/incoming/manager?tab=expected');
         break;
       case 'intakesInProgress':
-        setIncomingSubTab('intakes');
-        setActiveTab('incoming');
+        navigate('/incoming/manager?tab=intakes');
         break;
       case 'receivedToday':
-        navigate('/shipments/received');
+        navigate('/incoming/manager?tab=intakes');
         break;
       case 'shippedToday':
         navigate('/shipments/released');
@@ -270,13 +276,38 @@ export default function Shipments() {
     }
   };
 
-  const renderShipmentRow = (item: RecentShipment) => (
+  const renderShipmentRow = (cardKey: ExpandedCard, item: RecentShipment) => {
+    const handleRowClick = () => {
+      // Card-specific navigation (see Q&A log decisions).
+      if (cardKey === 'expectedToday') {
+        if (item.inbound_kind === 'manifest') {
+          navigate(`/incoming/manifest/${item.id}`);
+          return;
+        }
+        // Default to expected inbound detail
+        navigate(`/incoming/expected/${item.id}`);
+        return;
+      }
+      if (cardKey === 'receivedToday') {
+        navigate(`/incoming/dock-intake/${item.id}`);
+        return;
+      }
+      // Intakes in progress + shipped today go to shipment details.
+      navigate(`/shipments/${item.id}`);
+    };
+
+    const statusForBadge =
+      cardKey === 'intakesInProgress'
+        ? 'in_progress'
+        : item.status;
+
+    return (
     <div
       key={item.id}
       className="flex items-center justify-between p-2 rounded-md hover:bg-muted cursor-pointer group"
       onClick={(e) => {
         e.stopPropagation();
-        navigate(`/shipments/${item.id}`);
+        handleRowClick();
       }}
       role="button"
     >
@@ -286,7 +317,7 @@ export default function Shipments() {
             shipmentNumber={item.shipment_number}
             exceptionType={item.shipment_exception_type}
           />
-          <StatusIndicator status={item.status} size="sm" />
+          <StatusIndicator status={statusForBadge} size="sm" />
         </div>
         <div className="text-xs text-muted-foreground truncate">
           {item.account_name || 'No account'} {item.carrier ? `/ ${item.carrier}` : ''}
@@ -294,7 +325,8 @@ export default function Shipments() {
       </div>
       <MaterialIcon name="chevron_right" size="sm" className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2" />
     </div>
-  );
+    );
+  };
 
   const hubCards = [
     {
@@ -447,7 +479,7 @@ export default function Shipments() {
                         <div className="mt-4 border-t pt-3">
                           <ScrollArea className="max-h-64">
                             <div className="space-y-1">
-                              {items.slice(0, 10).map((item) => renderShipmentRow(item))}
+                              {items.slice(0, 10).map((item) => renderShipmentRow(card.key, item))}
                             </div>
                           </ScrollArea>
                           {card.count > 10 && (

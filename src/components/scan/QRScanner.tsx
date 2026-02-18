@@ -152,7 +152,7 @@ export function QRScanner({ onScan, onError, scanning = true, className }: QRSca
     if (decodedText !== lastScannedRef.current || now - lastScanTimeRef.current > 1500) {
       lastScannedRef.current = decodedText;
       lastScanTimeRef.current = now;
-      // Short tick so pages can provide success/error patterns.
+      // Very short tick so we don't double-buzz (pages often do their own success/error haptics)
       hapticSelection();
       onScan(decodedText);
     }
