@@ -164,3 +164,8 @@ User decision (status display model):
 User decision (issue badge scope):
 - Email Ops tenant table should show issue badges for any issues that would prevent a tenant from successfully setting up email.
 
+### QA-2026-02-17-ADMINOPS-030
+User decision (warnings as badges):
+- Show non-blocking warnings (e.g., deliverability risk like DKIM/SPF incomplete) as badges too.
+- Warnings must be visually distinct (yellow) and must not count as “blocked”.
+
