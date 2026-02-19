@@ -363,7 +363,9 @@ export default function ShipmentDetail() {
       });
     }
     const result = await rawFinishSession(verificationData, createItems);
-    promptResumePausedTask();
+    if (result.success) {
+      promptResumePausedTask();
+    }
     // Track competency after completion
     if (promptContext?.trackCompetencyEvent) {
       promptContext.trackCompetencyEvent('receiving', 'task_completed');

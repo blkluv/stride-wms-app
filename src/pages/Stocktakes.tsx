@@ -89,7 +89,6 @@ export default function Stocktakes() {
     refetch,
     createStocktake,
     startStocktakeDetailed,
-    startStocktake,
     closeStocktake,
     cancelStocktake,
   } = useStocktakes({
