@@ -12,7 +12,13 @@ export interface WarehouseMapLocationCapacityRow {
   utilization_pct: number | null;
 }
 
-export function useWarehouseMapLocationCapacity(mapId?: string) {
+/**
+ * Location-level capacity rollup for Heat Map drill-down.
+ *
+ * Important: do not fetch on initial heat map load (can be large).
+ * Fetch on-demand when a zone is selected.
+ */
+export function useWarehouseMapLocationCapacity(mapId?: string, zoneId?: string | null) {
   const { toast } = useToast();
   const [rows, setRows] = useState<WarehouseMapLocationCapacityRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -20,7 +26,7 @@ export function useWarehouseMapLocationCapacity(mapId?: string) {
 
   const fetchLocations = useCallback(async (overrideMapId?: string) => {
     const targetMapId = overrideMapId || mapId;
-    if (!targetMapId) {
+    if (!targetMapId || !zoneId) {
       setRows([]);
       setLastRefreshedAt(null);
       return;
@@ -28,8 +34,9 @@ export function useWarehouseMapLocationCapacity(mapId?: string) {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase.rpc('rpc_get_warehouse_map_location_capacity', {
+      const { data, error } = await supabase.rpc('rpc_get_warehouse_zone_location_capacity', {
         p_map_id: targetMapId,
+        p_zone_id: zoneId,
       });
       if (error) throw error;
 
@@ -45,7 +52,7 @@ export function useWarehouseMapLocationCapacity(mapId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [mapId, toast]);
+  }, [mapId, toast, zoneId]);
 
   useEffect(() => {
     fetchLocations();

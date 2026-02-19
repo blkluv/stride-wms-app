@@ -36,6 +36,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useWarehouses } from '@/hooks/useWarehouses';
 import { useWarehouseZones, WarehouseZone } from '@/hooks/useWarehouseZones';
+import { useWarehouseZoneUsage } from '@/hooks/useWarehouseZoneUsage';
 
 type ZoneDraft = Pick<WarehouseZone, 'zone_code' | 'description' | 'sort_order'>;
 
@@ -65,6 +66,12 @@ export default function WarehouseZones() {
     batchGenerateZones,
   } = useWarehouseZones(warehouseId);
 
+  const {
+    byZoneId: usageByZoneId,
+    loading: usageLoading,
+    refetch: refetchUsage,
+  } = useWarehouseZoneUsage(warehouseId);
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
@@ -75,6 +82,7 @@ export default function WarehouseZones() {
   const [editZone, setEditZone] = useState<WarehouseZone | null>(null);
   const [editDraft, setEditDraft] = useState<ZoneDraft>(DEFAULT_CREATE_DRAFT);
   const [zoneToDelete, setZoneToDelete] = useState<WarehouseZone | null>(null);
+  const deleteUsage = zoneToDelete ? usageByZoneId.get(zoneToDelete.id) : null;
 
   const [batchPrefix, setBatchPrefix] = useState('ZN-');
   const [batchStart, setBatchStart] = useState(1);
@@ -111,6 +119,7 @@ export default function WarehouseZones() {
       });
       setCreateOpen(false);
       setCreateDraft(DEFAULT_CREATE_DRAFT);
+      refetchUsage();
       toast({ title: 'Zone created', description: 'Zone has been created.' });
     } catch (err) {
       console.error(err);
@@ -136,6 +145,7 @@ export default function WarehouseZones() {
       });
       setEditOpen(false);
       setEditZone(null);
+      refetchUsage();
       toast({ title: 'Zone updated', description: 'Zone has been saved.' });
     } catch (err) {
       console.error(err);
@@ -150,6 +160,7 @@ export default function WarehouseZones() {
     try {
       setSaving(true);
       await deleteZone(zoneToDelete.id);
+      refetchUsage();
       toast({ title: 'Zone deleted', description: `${zoneToDelete.zone_code} was deleted.` });
     } catch (err) {
       console.error(err);
@@ -171,6 +182,7 @@ export default function WarehouseZones() {
         padLength: batchPad,
       });
       setBatchOpen(false);
+      refetchUsage();
       toast({ title: 'Zones generated', description: `Created ${batchCount} zones.` });
     } catch (err) {
       console.error(err);
@@ -238,28 +250,42 @@ export default function WarehouseZones() {
                     <TableRow>
                       <TableHead>Zone Code</TableHead>
                       <TableHead>Description</TableHead>
+                      <TableHead className="w-[120px] text-right">Locations</TableHead>
+                      <TableHead className="w-[120px] text-right">Map Nodes</TableHead>
                       <TableHead className="w-[120px]">Sort</TableHead>
                       <TableHead className="w-[120px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {zones.map((z) => (
-                      <TableRow key={z.id}>
-                        <TableCell className="font-mono text-sm">{z.zone_code}</TableCell>
-                        <TableCell className="text-muted-foreground">{z.description || '—'}</TableCell>
-                        <TableCell className="text-muted-foreground">{z.sort_order ?? '—'}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button size="sm" variant="outline" onClick={() => openEdit(z)}>
-                              Edit
-                            </Button>
-                            <Button size="sm" variant="outline" className="text-destructive" onClick={() => openDelete(z)}>
-                              Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {zones.map((z) => {
+                      const usage = usageByZoneId.get(z.id);
+                      const locationCount = usage?.location_count ?? 0;
+                      const nodeCount = usage?.node_count ?? 0;
+
+                      return (
+                        <TableRow key={z.id}>
+                          <TableCell className="font-mono text-sm">{z.zone_code}</TableCell>
+                          <TableCell className="text-muted-foreground">{z.description || '—'}</TableCell>
+                          <TableCell className="text-muted-foreground text-right">
+                            {usageLoading ? '…' : locationCount}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-right">
+                            {usageLoading ? '…' : nodeCount}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{z.sort_order ?? '—'}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button size="sm" variant="outline" onClick={() => openEdit(z)}>
+                                Edit
+                              </Button>
+                              <Button size="sm" variant="outline" className="text-destructive" onClick={() => openDelete(z)}>
+                                Delete
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -398,6 +424,17 @@ export default function WarehouseZones() {
             <AlertDialogTitle>Delete Zone</AlertDialogTitle>
             <AlertDialogDescription>
               Delete <strong>{zoneToDelete?.zone_code}</strong>? Assigned locations will be unassigned (zone cleared).
+              <div className="mt-2 text-sm">
+                Impact:{' '}
+                {usageLoading ? (
+                  <span className="text-muted-foreground">Loading…</span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {deleteUsage?.location_count ?? 0} location{(deleteUsage?.location_count ?? 0) === 1 ? '' : 's'} unassigned •{' '}
+                    {deleteUsage?.node_count ?? 0} map node{(deleteUsage?.node_count ?? 0) === 1 ? '' : 's'} unbound
+                  </span>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
