@@ -226,3 +226,8 @@ User decision (cleanup failures do not block):
 User decision (Resend cleanup timing):
 - When a tenant cancels custom sender setup, Resend domain cleanup/removal should be handled by a nightly cleanup job (not immediate on toggle-off), to reduce thrash/risk from repeated toggling.
 
+### QA-2026-02-17-ADMINOPS-042
+User decision (cleanup job operation):
+- The Resend cleanup job should run fully automatically (nightly) without requiring an admin-only manual “run now” button.
+- Email Ops may include logs/status for cleanup attempts.
+
