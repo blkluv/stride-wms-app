@@ -236,3 +236,10 @@ User decision (Cleanup Logs panel):
 - Add a Cleanup Logs panel in the admin_dev console page (`/admin/saas-ops`) under Email Ops.
 - Show the Cleanup Logs panel by default (simple view of recent cleanup events).
 
+### QA-2026-02-17-ADMINOPS-044
+User decision (Cleanup Logs defaults + table UX):
+- Cleanup Logs should show failures only by default, with a toggle to show successes.
+- Cleanup Logs should display as a table with filters.
+- Column headers should be clickable/tappable to sort.
+- Ensure client account (tenant/customer) is included as a column, plus any other relevant fields needed for troubleshooting.
+
