@@ -114,14 +114,14 @@ export default function Dashboard() {
       },
       {
         key: 'incoming_shipments' as ExpandedCard,
-        title: 'EXPECTED SHIPMENTS',
+        title: 'EXPECTED TODAY',
         emoji: '🚚',
         count: stats.incomingShipments,
         urgent: stats.incomingShipmentsUrgentCount,
-        description: 'Expected / not received',
+        description: 'Inbound shipments expected today',
         bgColor: 'bg-card border border-border shadow-sm',
         countColor: 'text-orange-500 dark:text-orange-400',
-        onClick: () => navigate('/incoming/manager?tab=expected'),
+        onClick: () => navigate('/shipments'),
         timeEstimate: stats.incomingShipmentsTimeEstimate,
       },
       {
