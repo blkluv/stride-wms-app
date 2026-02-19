@@ -1042,11 +1042,11 @@ export default function ItemDetail() {
                       </Badge>
                     )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openTaskMenu('SPLIT')}>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Split')}>
                     ✂️ Split
-                    {tasks.filter(t => t.task_type === 'SPLIT' && t.status !== 'completed').length > 0 && (
+                    {tasks.filter(t => t.task_type === 'Split' && t.status !== 'completed').length > 0 && (
                       <Badge variant="secondary" className="ml-auto">
-                        {tasks.filter(t => t.task_type === 'SPLIT' && t.status !== 'completed').length}
+                        {tasks.filter(t => t.task_type === 'Split' && t.status !== 'completed').length}
                       </Badge>
                     )}
                   </DropdownMenuItem>
