@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { logItemActivity } from '@/lib/activity/logItemActivity';
+import type { TimerStartResult } from '@/hooks/useJobTimer';
+import { mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 // Type-safe supabase client cast for tables/functions not in generated types
 const db = supabase as any;
@@ -35,7 +41,9 @@ export interface Stocktake {
   expected_item_count: number | null;
   counted_item_count: number | null;
   variance_count: number | null;
+  duration_minutes: number | null;
   notes: string | null;
+  metadata: Json | null;
   deleted_at: string | null;
   warehouse?: { id: string; name: string } | null;
   locations?: { id: string; code: string; name: string | null }[];
@@ -218,37 +226,81 @@ export function useStocktakes(filters?: StocktakeFilters) {
     return result;
   };
 
+  const startStocktakeDetailed = useCallback(async (
+    id: string,
+    options?: { pauseExisting?: boolean },
+  ): Promise<TimerStartResult> => {
+    if (!profile?.tenant_id || !profile?.id) {
+      return { ok: false, error_code: 'NOT_AUTHENTICATED', error_message: 'Not authenticated' } as TimerStartResult;
+    }
+
+    const nowIso = new Date().toISOString();
+
+    try {
+      // Start the timer first (so we count the full workflow from the user's click).
+      const timerResult = await timerStartJob({
+        tenantId: profile.tenant_id,
+        userId: profile.id,
+        jobType: 'stocktake',
+        jobId: id,
+        pauseExisting: options?.pauseExisting ?? false,
+      });
+      if (timerResult?.ok === false) return timerResult;
+
+      // Initialize expected items using RPC
+      const { data: itemCount, error: initError } = await db.rpc(
+        'initialize_stocktake_expected_items',
+        { p_stocktake_id: id }
+      );
+      if (initError) throw initError;
+
+      // Update status to active
+      const { error } = await db
+        .from('stocktakes')
+        .update({
+          status: 'active',
+          started_at: nowIso,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      toast({
+        title: 'Stocktake Started',
+        description: `Found ${itemCount} items to count`,
+      });
+
+      await fetchStocktakes();
+      return timerResult;
+    } catch (err: any) {
+      // Best-effort rollback: don't leave a timer running if we failed to start the stocktake.
+      try {
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'stocktake',
+          jobId: id,
+          reason: 'rollback',
+        });
+      } catch {
+        // ignore
+      }
+
+      return {
+        ok: false,
+        error_code: 'START_FAILED',
+        error_message: err?.message || 'Failed to start stocktake',
+      } as TimerStartResult;
+    }
+  }, [profile?.tenant_id, profile?.id, toast, fetchStocktakes]);
+
   const startStocktake = async (id: string) => {
-    if (!profile?.id) throw new Error('No user');
-
-    // Initialize expected items using RPC
-    const { data: itemCount, error: initError } = await db.rpc(
-      'initialize_stocktake_expected_items',
-      { p_stocktake_id: id }
-    );
-
-    if (initError) throw initError;
-
-    // Update status to active
-    const { data: result, error } = await db
-      .from('stocktakes')
-      .update({
-        status: 'active',
-        started_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    toast({
-      title: 'Stocktake Started',
-      description: `Found ${itemCount} items to count`,
-    });
-
-    await fetchStocktakes();
-    return result;
+    const res = await startStocktakeDetailed(id, { pauseExisting: false });
+    if ((res as any)?.ok === false) {
+      throw new Error((res as any)?.error_message || 'Failed to start stocktake');
+    }
+    return res;
   };
 
   const closeStocktake = async (id: string) => {
@@ -272,6 +324,64 @@ export function useStocktakes(filters?: StocktakeFilters) {
         : 'Completed with no variances',
     });
 
+    // Stop timer interval (best-effort)
+    try {
+      await timerEndJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: 'stocktake',
+        jobId: id,
+        reason: 'complete',
+      });
+    } catch (timerErr) {
+      console.warn('[useStocktakes] Failed to end stocktake timer:', timerErr);
+    }
+
+    // Snapshot actual minutes on the stocktake record (best-effort; must not block close)
+    try {
+      if (profile?.tenant_id) {
+        const snapshotAt = new Date().toISOString();
+
+        const { data: rows } = await (supabase
+          .from('job_time_intervals') as any)
+          .select('started_at, ended_at')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('job_type', 'stocktake')
+          .eq('job_id', id);
+
+        const laborMinutes = Math.round(
+          (rows || []).reduce((sum: number, r: any) => {
+            const start = r.started_at as string;
+            const end = (r.ended_at as string | null) || snapshotAt;
+            return sum + minutesBetweenIso(start, end);
+          }, 0)
+        );
+
+        const { data: stRow } = await db
+          .from('stocktakes')
+          .select('metadata')
+          .eq('id', id)
+          .maybeSingle();
+
+        const merged = mergeServiceTimeActualSnapshot(stRow?.metadata ?? null, {
+          actual_cycle_minutes: laborMinutes,
+          actual_labor_minutes: laborMinutes,
+          actual_snapshot_at: snapshotAt,
+          actual_version: 1,
+        });
+
+        await db
+          .from('stocktakes')
+          .update({
+            duration_minutes: laborMinutes,
+            metadata: merged,
+          })
+          .eq('id', id);
+      }
+    } catch (snapshotErr) {
+      console.warn('[useStocktakes] Failed to snapshot stocktake actual time:', snapshotErr);
+    }
+
     await fetchStocktakes();
     return result;
   };
@@ -288,6 +398,19 @@ export function useStocktakes(filters?: StocktakeFilters) {
       title: 'Stocktake Cancelled',
     });
 
+    // Stop timer interval if it was running (best-effort)
+    try {
+      await timerEndJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: 'stocktake',
+        jobId: id,
+        reason: 'cancel',
+      });
+    } catch {
+      // ignore
+    }
+
     await fetchStocktakes();
   };
 
@@ -296,6 +419,7 @@ export function useStocktakes(filters?: StocktakeFilters) {
     loading,
     refetch: fetchStocktakes,
     createStocktake,
+    startStocktakeDetailed,
     startStocktake,
     closeStocktake,
     cancelStocktake,
@@ -414,6 +538,27 @@ export function useStocktakeScan(stocktakeId: string) {
     if (error) throw error;
 
     const result = data?.[0];
+
+    // Activity log on the item (best-effort)
+    if (profile?.tenant_id) {
+      const stNumber = stocktake?.stocktake_number || null;
+      logItemActivity({
+        tenantId: profile.tenant_id,
+        itemId,
+        actorUserId: profile.id,
+        eventType: 'inventory_count_recorded',
+        eventLabel: `Count recorded${stNumber ? ` (${stNumber})` : ''}`,
+        details: {
+          stocktake_id: stocktakeId,
+          stocktake_number: stNumber,
+          scanned_location_id: locationId,
+          item_code: itemCode,
+          scan_result: result?.result ?? null,
+          was_expected: result?.was_expected ?? null,
+          auto_fixed: result?.auto_fixed ?? null,
+        },
+      });
+    }
 
     // Refresh data
     await Promise.all([fetchScans(), fetchStats()]);

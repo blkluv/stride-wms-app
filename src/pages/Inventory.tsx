@@ -48,12 +48,13 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantPreferences } from '@/hooks/useTenantPreferences';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -63,6 +64,7 @@ import {
   getVisibleColumnsForView,
   parseCustomFieldColumnKey,
 } from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 import {
   MobileDataCard,
   MobileDataCardHeader,
@@ -78,6 +80,8 @@ interface Item {
   description: string | null;
   status: string;
   quantity: number;
+  size: number | null;
+  size_unit: string | null;
   client_account: string | null;
   sidemark: string | null;
   vendor: string | null;
@@ -100,6 +104,7 @@ type SortField =
   | 'vendor'
   | 'description'
   | 'quantity'
+  | 'size'
   | 'location_code'
   | 'client_account'
   | 'sidemark'
@@ -144,7 +149,14 @@ export default function Inventory() {
   const { preferences } = useTenantPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
 
-  const { settings: itemDisplaySettings, defaultViewId: defaultItemViewId, loading: itemDisplayLoading } = useItemDisplaySettings();
+  const {
+    settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettingsForUser();
   const [activeViewId, setActiveViewId] = useState<string>('');
 
   useEffect(() => {
@@ -223,7 +235,7 @@ export default function Inventory() {
       const { data, error } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, description, status, quantity, client_account, sidemark, vendor, room, metadata,
+          id, item_code, sku, description, status, quantity, size, size_unit, client_account, sidemark, vendor, room, metadata,
           current_location_id, account_id, received_at, primary_photo_url, warehouse_id,
           location:locations!items_current_location_id_fkey(id, code, name),
           warehouse:warehouses!items_warehouse_id_fkey(id, name),
@@ -243,6 +255,8 @@ export default function Inventory() {
         description: item.description,
         status: item.status,
         quantity: item.quantity,
+        size: item.size ?? null,
+        size_unit: item.size_unit ?? null,
         // Use account name from joined accounts table, fallback to client_account text field
         client_account: item.account?.account_name || item.client_account,
         sidemark: item.sidemark,
@@ -488,6 +502,13 @@ export default function Inventory() {
         />
       ),
     },
+    size: {
+      sortField: 'size',
+      headClassName: 'text-right',
+      headLabelClassName: 'flex items-center justify-end gap-1',
+      cellClassName: 'text-right tabular-nums',
+      renderCell: (item) => <span className="text-sm">{formatItemSize(item.size, item.size_unit)}</span>,
+    },
     vendor: {
       sortField: 'vendor',
       stopPropagation: true,
@@ -720,8 +741,8 @@ export default function Inventory() {
         <Card>
           <CardHeader><CardTitle>Items</CardTitle><CardDescription>{filteredAndSortedItems.length} items found{selectedItems.size > 0 && ` • ${selectedItems.size} selected`}</CardDescription></CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="relative flex-1">
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center mb-6">
+              <div className="relative col-span-2 sm:flex-1">
                 <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search item code, SKU, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
               </div>
@@ -755,27 +776,40 @@ export default function Inventory() {
                   <SelectItem value="disposed">Disposed</SelectItem>
                 </SelectContent>
               </Select>
-              <Select
-                value={activeViewId || defaultItemViewId || 'default'}
-                onValueChange={setActiveViewId}
-                disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-              >
-                <SelectTrigger className="w-full sm:w-44">
-                  <div className="flex items-center gap-2">
-                    <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                    <SelectValue placeholder="View" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {itemDisplaySettings.views.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                      {v.is_default ? ' (default)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
+              <div className="col-span-2 flex w-full gap-2 sm:col-span-auto sm:w-auto">
+                <Select
+                  value={activeViewId || defaultItemViewId || 'default'}
+                  onValueChange={setActiveViewId}
+                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                >
+                  <SelectTrigger className="flex-1 sm:w-44">
+                    <div className="flex items-center gap-2">
+                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                      <SelectValue placeholder="View" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {itemDisplaySettings.views.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                        {v.is_default ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <ItemColumnsPopover
+                  settings={itemDisplaySettings}
+                  baseSettings={tenantItemDisplaySettings}
+                  viewId={activeViewId || defaultItemViewId || 'default'}
+                  disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                  onSave={saveItemDisplaySettings}
+                />
+              </div>
+
+              <div className="col-span-2 sm:col-span-auto">
+                <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
+              </div>
             </div>
 
             {loading ? (<div className="flex items-center justify-center h-48"><MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" /></div>
@@ -810,6 +844,12 @@ export default function Inventory() {
                           <span className="text-muted-foreground">Qty:</span>
                           <span className="font-medium">{item.quantity}</span>
                         </div>
+                        {visibleColumns.includes('size') && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Size:</span>
+                            <span className="truncate ml-1">{formatItemSize(item.size, item.size_unit)}</span>
+                          </div>
+                        )}
                         {visibleColumns.includes('sku') && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">SKU:</span>

@@ -28,11 +28,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useTasks, useTaskTypes, Task } from '@/hooks/useTasks';
 import { useWarehouses } from '@/hooks/useWarehouses';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { WillCallCompletionDialog } from '@/components/tasks/WillCallCompletionDialog';
@@ -150,7 +162,7 @@ export default function Tasks() {
     loading,
     isRefetching,
     refetch,
-    startTask,
+    startTaskDetailed,
     completeTask,
     markUnableToComplete,
     claimTask,
@@ -164,6 +176,39 @@ export default function Tasks() {
     // Technicians only see their assigned tasks
     assignedTo: isTechnician ? profile?.id : undefined,
   });
+
+  // Start-task switch confirmation (pause existing job)
+  const [startSwitchOpen, setStartSwitchOpen] = useState(false);
+  const [startSwitchTask, setStartSwitchTask] = useState<Task | null>(null);
+  const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
+  const [startSwitchLoading, setStartSwitchLoading] = useState(false);
+
+  const handleStartTaskClick = async (task: Task) => {
+    if (!profile?.tenant_id) return;
+    setStartSwitchLoading(true);
+    try {
+      const result = await startTaskDetailed(task.id, { pauseExisting: false });
+      if (result.ok) {
+        toast({ title: 'Task Started', description: 'Task is now in progress.' });
+        return;
+      }
+
+      if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
+        setStartSwitchTask(task);
+        setActiveJobLabel(await resolveActiveJobLabel(profile?.tenant_id, result.active_job_type, result.active_job_id));
+        setStartSwitchOpen(true);
+        return;
+      }
+
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: result.error_message || 'Failed to start task',
+      });
+    } finally {
+      setStartSwitchLoading(false);
+    }
+  };
 
   // Filter tasks locally for search (avoid refetch on search)
   const filteredTasks = tasks
@@ -324,7 +369,8 @@ export default function Tasks() {
           key="start"
           size="sm"
           variant="outline"
-          onClick={() => startTask(task.id)}
+          onClick={() => handleStartTaskClick(task)}
+          disabled={startSwitchLoading}
           className="h-7 px-2 text-xs"
         >
           <span className="mr-1">▶️</span>
@@ -446,8 +492,8 @@ export default function Tasks() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
+          <div className="relative col-span-2 sm:flex-1 sm:max-w-sm">
             <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search tasks..."
@@ -458,7 +504,7 @@ export default function Tasks() {
           </div>
 
           <Select value={filters.status} onValueChange={(value) => setFilters(f => ({ ...f, status: value }))}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full sm:w-[150px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -471,7 +517,7 @@ export default function Tasks() {
           </Select>
 
           <Select value={filters.taskType} onValueChange={(value) => setFilters(f => ({ ...f, taskType: value }))}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full sm:w-[150px]">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -482,19 +528,21 @@ export default function Tasks() {
             </SelectContent>
           </Select>
 
-          <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Warehouse" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Warehouses</SelectItem>
-              {warehouses.map(wh => (
-                <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="col-span-2 sm:col-span-auto">
+            <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Warehouses</SelectItem>
+                {warehouses.map(wh => (
+                  <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Button variant="ghost" size="icon" onClick={refetch} disabled={isRefetching}>
+          <Button variant="ghost" size="icon" className="col-span-2 sm:col-span-auto justify-self-start" onClick={refetch} disabled={isRefetching}>
             <span className={isRefetching ? 'animate-spin inline-block' : ''}>🔄</span>
           </Button>
         </div>
@@ -535,12 +583,15 @@ export default function Tasks() {
                   <TableHead className="cursor-pointer select-none" onClick={() => handleSort('assigned_to')}>
                     Assigned To<SortIndicator field="assigned_to" />
                   </TableHead>
+                  <TableHead>
+                    Actual Time
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12">
+                    <TableCell colSpan={7} className="text-center py-12">
                       <div className="flex flex-col items-center gap-2">
                         <div className="text-5xl opacity-30">📝</div>
                         <p className="text-muted-foreground font-medium">
@@ -612,6 +663,15 @@ export default function Tasks() {
                           <span className="text-muted-foreground">Unassigned</span>
                         )}
                       </TableCell>
+                      <TableCell>
+                        {task.duration_minutes != null && task.duration_minutes > 0 ? (
+                          <span className="tabular-nums whitespace-nowrap">
+                            {formatMinutesShort(task.duration_minutes)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -655,6 +715,57 @@ export default function Tasks() {
         onOpenChange={setCompletionBlockedOpen}
         validationResult={completionValidationResult}
       />
+
+      {/* Pause existing job confirmation */}
+      <AlertDialog open={startSwitchOpen} onOpenChange={setStartSwitchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{activeJobLabel ? ` (${activeJobLabel})` : ''}.
+              Do you want to pause it and start this task?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setStartSwitchTask(null);
+                setActiveJobLabel(null);
+              }}
+              disabled={startSwitchLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!startSwitchTask) return;
+                setStartSwitchLoading(true);
+                try {
+                  const result = await startTaskDetailed(startSwitchTask.id, { pauseExisting: true });
+                  if (!result.ok) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to start task',
+                      description: result.error_message || 'Failed to start task',
+                    });
+                    return;
+                  }
+                  toast({ title: 'Task Started', description: 'Paused your previous job and started this task.' });
+                  setStartSwitchOpen(false);
+                  setStartSwitchTask(null);
+                  setActiveJobLabel(null);
+                } finally {
+                  setStartSwitchLoading(false);
+                }
+              }}
+              disabled={startSwitchLoading}
+            >
+              Pause & Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

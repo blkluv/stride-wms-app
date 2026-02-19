@@ -195,6 +195,62 @@ export async function queueTaskCompletedAlert(
 }
 
 /**
+ * Queue a Split Required alert (grouped-item partial request).
+ * Typically points at the generated Split task.
+ */
+export async function queueSplitRequiredAlert(
+  tenantId: string,
+  splitTaskId: string,
+  parentItemCode: string
+): Promise<boolean> {
+  return queueAlert({
+    tenantId,
+    alertType: 'split.required',
+    entityType: 'task',
+    entityId: splitTaskId,
+    subject: `Split required — ${parentItemCode}`,
+  });
+}
+
+/**
+ * Queue a Split Completed alert (notify requesting portal user).
+ * Uses explicit recipientEmails so we can target the requesting user first.
+ */
+export async function queueSplitCompletedAlert(
+  tenantId: string,
+  splitTaskId: string,
+  parentItemCode: string,
+  recipientEmail: string
+): Promise<boolean> {
+  return queueAlert({
+    tenantId,
+    alertType: 'split.completed',
+    entityType: 'task',
+    entityId: splitTaskId,
+    subject: `Split completed — ${parentItemCode}`,
+    recipientEmails: recipientEmail ? [recipientEmail] : undefined,
+  });
+}
+
+/**
+ * Queue a Split Pending Review alert (manual review flow when client partial requests are disabled).
+ */
+export async function queueSplitManualReviewAlert(
+  tenantId: string,
+  entityType: 'shipment' | 'task',
+  entityId: string,
+  parentItemCode: string
+): Promise<boolean> {
+  return queueAlert({
+    tenantId,
+    alertType: 'split.manual_review',
+    entityType,
+    entityId,
+    subject: `Pending review — ${parentItemCode}`,
+  });
+}
+
+/**
  * Queue an item damaged alert
  */
 export async function queueItemDamagedAlert(
@@ -693,6 +749,23 @@ export async function queueReceivingDiscrepancyAlert(
   shipmentNumber: string,
   discrepancyCount: number
 ): Promise<boolean> {
+  // Guard: only queue if tenant explicitly enabled this trigger.
+  // Otherwise send-alerts can "fail open" and send a generic email.
+  try {
+    const { data: trigger } = await supabase
+      .from('communication_alerts')
+      .select('is_enabled, channels')
+      .eq('tenant_id', tenantId)
+      .eq('trigger_event', 'receiving.discrepancy_created')
+      .maybeSingle();
+
+    if (!trigger || !trigger.is_enabled || (trigger.channels as any)?.email !== true) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
   return queueAlert({
     tenantId,
     alertType: 'receiving.discrepancy_created',
@@ -711,6 +784,22 @@ export async function queueReceivingExceptionAlert(
   shipmentNumber: string,
   exceptionType: string
 ): Promise<boolean> {
+  // Guard: only queue if tenant explicitly enabled this trigger.
+  try {
+    const { data: trigger } = await supabase
+      .from('communication_alerts')
+      .select('is_enabled, channels')
+      .eq('tenant_id', tenantId)
+      .eq('trigger_event', 'receiving.exception_noted')
+      .maybeSingle();
+
+    if (!trigger || !trigger.is_enabled || (trigger.channels as any)?.email !== true) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
   return queueAlert({
     tenantId,
     alertType: 'receiving.exception_noted',

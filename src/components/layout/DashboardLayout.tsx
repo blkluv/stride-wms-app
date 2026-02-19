@@ -23,6 +23,8 @@ import { AppleBanner } from '@/components/ui/AppleBanner';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { ResumePausedTaskPrompt } from '@/components/time/ResumePausedTaskPrompt';
+import { TimerOfflineSyncManager } from '@/components/time/TimerOfflineSyncManager';
 import {
   DndContext,
   closestCenter,
@@ -56,7 +58,7 @@ const navItems: NavItem[] = [
   { label: 'Inventory', href: '/inventory', icon: 'inventory_2' },
   { label: 'Tasks', href: '/tasks', icon: 'task_alt' },
   { label: 'Stocktake', href: '/stocktakes', icon: 'fact_check' },
-  { label: 'Scan', href: '/scan', icon: 'qr_code_scanner', requiredRole: ['admin', 'tenant_admin', 'warehouse_user', 'technician'] },
+  { label: 'Scan', href: '/scan', icon: 'qr_code_scanner', requiredRole: ['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff', 'repair_tech'] },
 
   { label: 'Analytics', href: '/reports', icon: 'analytics', requiredRole: ['admin', 'tenant_admin'] },
   { label: 'Quotes', href: '/quotes', icon: 'request_quote', requiredRole: ['admin', 'tenant_admin', 'manager'] },
@@ -652,6 +654,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Page content - scrollable with extra bottom padding for full scrolling */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 animate-fade-in">{children}</main>
+
+        {/* Global (internal) prompt: resume paused task after job switch */}
+        <ResumePausedTaskPrompt />
+
+        {/* Offline timer queue + background sync */}
+        <TimerOfflineSyncManager />
       </div>
     </div>
   );

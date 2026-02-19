@@ -38,6 +38,27 @@ function parseCommaEmails(str: string | null | undefined): string[] {
   return str.split(',').map(e => e.trim().toLowerCase()).filter(e => EMAIL_REGEX.test(e));
 }
 
+function escapeHtml(input: string): string {
+  return (input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+const SHIPMENT_EXCEPTION_LABELS: Record<string, string> = {
+  SHORTAGE: 'Shortage',
+  OVERAGE: 'Overage',
+  MIS_SHIP: 'Mis-Ship',
+  DAMAGE: 'Damage',
+  WET: 'Wet',
+  OPEN: 'Open',
+  MISSING_DOCS: 'Missing Docs',
+  CRUSHED_TORN_CARTONS: 'Crushed/Torn Cartons',
+  OTHER: 'Other',
+};
+
 // =============================================================================
 // RECIPIENT RESOLUTION (Hardened)
 // =============================================================================
@@ -652,6 +673,15 @@ async function buildTemplateVariables(
     office_alert_email_primary: officeAlertEmailPrimary,
     // ── Portal deep-link tokens (defaults; overridden per entity below) ──
     shipment_link: '',
+    // ── Shipment exception aggregate tokens (optional) ──
+    exceptions_count: '0',
+    exceptions_list_text: '',
+    exceptions_section_html: '',
+    // ── Item flag tokens (item.flag_added / item.flag_added.{SERVICE_CODE}) ──
+    flag_service_name: '',
+    flag_service_code: '',
+    flag_added_by_name: '',
+    flag_added_at: '',
     portal_invoice_url: '',
     portal_claim_url: '',
     portal_release_url: '',
@@ -667,6 +697,17 @@ async function buildTemplateVariables(
       month: 'long',
       day: 'numeric'
     }),
+    // ── Split workflow (optional) ──
+    split_grouped_qty: '',
+    split_keep_qty: '',
+    split_leftover_qty: '',
+    split_requested_by_name: '',
+    split_requested_by_email: '',
+    split_request_notes: '',
+    origin_job_type: '',
+    origin_job_number: '',
+    origin_job_link: '',
+    split_child_codes_list_text: '',
   };
 
   let itemIds: string[] = [];
@@ -700,6 +741,29 @@ async function buildTemplateVariables(
         variables.shipment_link = portalBase ? `${portalBase}/shipments/${entityId}` : '';
         if (shipment.account_id) {
           variables.portal_account_url = portalBase ? `${portalBase}/accounts/${shipment.account_id}` : '';
+        }
+
+        // Split workflow tokens (manual review or split-required metadata on the shipment)
+        try {
+          const meta = shipment.metadata && typeof shipment.metadata === 'object' ? shipment.metadata : null;
+          const split = meta && typeof (meta as any).split_workflow === 'object' ? (meta as any).split_workflow : null;
+          if (split) {
+            variables.origin_job_type = 'Shipment';
+            variables.origin_job_number = shipment.shipment_number || entityId;
+            variables.origin_job_link = variables.shipment_link || '';
+
+            if (split.grouped_qty != null) variables.split_grouped_qty = String(split.grouped_qty);
+            if (split.keep_qty != null) variables.split_keep_qty = String(split.keep_qty);
+            if (split.leftover_qty != null) variables.split_leftover_qty = String(split.leftover_qty);
+            if (split.requested_by_name) variables.split_requested_by_name = String(split.requested_by_name);
+            if (split.requested_by_email) variables.split_requested_by_email = String(split.requested_by_email);
+            if (split.request_notes) variables.split_request_notes = String(split.request_notes);
+
+            if (split.parent_item_code) variables.item_code = String(split.parent_item_code);
+            if (split.parent_item_location) variables.item_location = String(split.parent_item_location);
+          }
+        } catch {
+          // optional
         }
 
         // Backward-compatible token aliases for will-call communication templates.
@@ -758,6 +822,67 @@ async function buildTemplateVariables(
         } else {
           variables.items_count = '0';
         }
+
+        // Shipment exceptions (open) — optional section for Shipment Received templates
+        try {
+          const { data: exRows, error: exErr } = await supabase
+            .from('shipment_exceptions')
+            .select('code, note')
+            .eq('tenant_id', tenantId)
+            .eq('shipment_id', entityId)
+            .eq('status', 'open');
+
+          if (exErr) throw exErr;
+
+          const exceptions = Array.isArray(exRows) ? exRows : [];
+          variables.exceptions_count = String(exceptions.length);
+
+          if (exceptions.length > 0) {
+            const formatted = exceptions.map((ex: any) => {
+              const code = String(ex.code || '').trim();
+              const label = SHIPMENT_EXCEPTION_LABELS[code] || code.replace(/_/g, ' ');
+              const note = String(ex.note || '').trim();
+              return { code, label, note };
+            });
+
+            variables.exceptions_list_text = formatted
+              .map((e) => `- ${e.label}${e.note ? `: ${e.note}` : ''}`)
+              .join('\n');
+
+            const listItems = formatted
+              .map((e) => {
+                const safeLabel = escapeHtml(e.label);
+                const safeNote = escapeHtml(e.note);
+                return `
+                  <li style="margin:0 0 10px;">
+                    <strong style="color:#92400e;">${safeLabel}</strong>
+                    ${safeNote ? `<div style="margin-top:2px;color:#475569;white-space:pre-wrap;">${safeNote}</div>` : ''}
+                  </li>
+                `;
+              })
+              .join('');
+
+            variables.exceptions_section_html = `
+              <div style="margin-top:24px;padding:16px;border:1px solid #fde68a;background:#fffbeb;border-radius:12px;">
+                <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#92400e;letter-spacing:0.3px;text-transform:uppercase;">
+                  Exceptions
+                </p>
+                <ul style="margin:0;padding-left:18px;color:#92400e;font-size:14px;">
+                  ${listItems}
+                </ul>
+              </div>
+            `;
+          } else {
+            variables.exceptions_list_text = '';
+            variables.exceptions_section_html = '';
+          }
+        } catch (exBuildErr) {
+          // Exceptions are optional; don't block alert delivery if this fails.
+          console.warn('[send-alerts] failed to build shipment exception tokens:', exBuildErr);
+          variables.exceptions_count = variables.exceptions_count || '0';
+          variables.exceptions_list_text = variables.exceptions_list_text || '';
+          variables.exceptions_section_html = variables.exceptions_section_html || '';
+        }
       }
     } else if (entityType === 'item') {
       const { data: item } = await supabase
@@ -781,6 +906,75 @@ async function buildTemplateVariables(
         variables.item_photos_link = portalBase ? `${portalBase}/inventory/${entityId}` : '';
         variables.items_count = '1';
         itemIds = [entityId];
+
+        // Item flag tokens (service flags): available for item.flag_added and per-flag triggers.
+        // Per-flag triggers use: item.flag_added.{SERVICE_CODE}
+        if (alertType === 'item.flag_added' || alertType.startsWith('item.flag_added.')) {
+          const explicitCode = alertType.startsWith('item.flag_added.')
+            ? alertType.slice('item.flag_added.'.length).trim()
+            : '';
+
+          try {
+            let query = supabase
+              .from('item_flags')
+              .select('service_code, created_at, created_by')
+              .eq('tenant_id', tenantId)
+              .eq('item_id', entityId);
+
+            if (explicitCode) {
+              query = query.eq('service_code', explicitCode);
+            }
+
+            const { data: flagRow } = await query
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const serviceCode = explicitCode || flagRow?.service_code || '';
+            variables.flag_service_code = serviceCode;
+
+            if (flagRow?.created_at) {
+              variables.flag_added_at = new Date(flagRow.created_at).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              });
+            }
+
+            if (flagRow?.created_by) {
+              const { data: actor } = await supabase
+                .from('users')
+                .select('first_name, last_name, email')
+                .eq('id', flagRow.created_by)
+                .maybeSingle();
+
+              const fullName = `${actor?.first_name || ''} ${actor?.last_name || ''}`.trim();
+              variables.flag_added_by_name = fullName || actor?.email || flagRow.created_by;
+            }
+          } catch (flagErr) {
+            console.warn('[send-alerts] failed to resolve item flag tokens:', flagErr);
+          }
+
+          try {
+            if (variables.flag_service_code) {
+              const { data: svc } = await supabase
+                .from('service_events')
+                .select('service_name')
+                .eq('tenant_id', tenantId)
+                .eq('service_code', variables.flag_service_code)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              variables.flag_service_name = svc?.service_name || variables.flag_service_code;
+            }
+          } catch (svcErr) {
+            console.warn('[send-alerts] failed to resolve flag service name:', svcErr);
+            variables.flag_service_name = variables.flag_service_name || variables.flag_service_code || '';
+          }
+        }
 
         // Repair-specific tokens (for repair_started, repair_completed, repair_requires_approval)
         if (alertType.startsWith('repair')) {
@@ -826,7 +1020,60 @@ async function buildTemplateVariables(
           : 'No due date';
         variables.account_name = task.account?.account_name || 'N/A';
         variables.account_contact_name = task.account?.primary_contact_name || 'Customer';
-        variables.task_link = portalBase ? `${portalBase}/tasks` : '';
+        variables.task_link = portalBase ? `${portalBase}/tasks/${entityId}` : '';
+
+        // Split workflow tokens (stored on split tasks)
+        try {
+          const meta = task.metadata && typeof task.metadata === 'object' ? task.metadata : null;
+          const split = meta && typeof (meta as any).split_workflow === 'object' ? (meta as any).split_workflow : null;
+          if (split) {
+            if (split.grouped_qty != null) variables.split_grouped_qty = String(split.grouped_qty);
+            if (split.keep_qty != null) variables.split_keep_qty = String(split.keep_qty);
+            if (split.leftover_qty != null) variables.split_leftover_qty = String(split.leftover_qty);
+            if (split.requested_by_name) variables.split_requested_by_name = String(split.requested_by_name);
+            if (split.requested_by_email) variables.split_requested_by_email = String(split.requested_by_email);
+            if (split.request_notes) variables.split_request_notes = String(split.request_notes);
+
+            // Origin job routing (best-effort; fall back to current task link)
+            const originType = split.origin_entity_type ? String(split.origin_entity_type) : '';
+            const originId = split.origin_entity_id ? String(split.origin_entity_id) : '';
+            const originNumber = split.origin_entity_number ? String(split.origin_entity_number) : '';
+            variables.origin_job_type =
+              originType === 'shipment' ? 'Shipment'
+              : originType === 'task' ? 'Task'
+              : originType ? originType
+              : '';
+            variables.origin_job_number = originNumber || originId || '';
+            if (portalBase && originType === 'shipment' && originId) {
+              variables.origin_job_link = `${portalBase}/shipments/${originId}`;
+            } else if (portalBase && originType === 'task' && originId) {
+              variables.origin_job_link = `${portalBase}/tasks/${originId}`;
+            } else {
+              variables.origin_job_link = variables.task_link || '';
+            }
+
+            if (split.parent_item_code) variables.item_code = String(split.parent_item_code);
+
+            // For split.completed, include the new child codes list (if stored in metadata)
+            if (Array.isArray(split.child_item_codes) && split.child_item_codes.length > 0) {
+              variables.split_child_codes_list_text = split.child_item_codes.map((c: any) => String(c)).join('\n');
+            }
+
+            // Parent item location token (best-effort)
+            if (split.parent_item_id) {
+              const { data: parentItem } = await supabase
+                .from('items')
+                .select('item_code, current_location')
+                .eq('id', split.parent_item_id)
+                .eq('tenant_id', tenantId)
+                .maybeSingle();
+              if (parentItem?.item_code) variables.item_code = parentItem.item_code;
+              if (parentItem?.current_location) variables.item_location = parentItem.current_location;
+            }
+          }
+        } catch {
+          // optional
+        }
 
         if (task.assigned_user) {
           variables.assigned_to_name = `${task.assigned_user.first_name || ''} ${task.assigned_user.last_name || ''}`.trim() || 'Unassigned';
@@ -1477,27 +1724,36 @@ const handler = async (req: Request): Promise<Response> => {
         let clientRecipients: string[] = [];
         let clientSource = 'none';
         if (audience === 'client' || audience === 'both') {
-          const accountCtx = await getAccountContext(
-            supabase,
-            alert.entity_type,
-            alert.entity_id,
-            alert.tenant_id
-          );
-
-          if (accountCtx) {
-            const clientResult = await resolveClientRecipients(
-              supabase,
-              alert.tenant_id,
-              accountCtx.accountId,
-              accountCtx.accountName
-            );
-            clientRecipients = clientResult.emails;
-            clientSource = clientResult.source;
+          // If alert_queue provided explicit recipients, prefer them.
+          // This is required for workflows that target a specific requester
+          // (e.g., client portal user who submitted the request).
+          const explicitClientRecipients = cleanEmails(alert.recipient_emails || []);
+          if (explicitClientRecipients.length > 0) {
+            clientRecipients = explicitClientRecipients;
+            clientSource = 'alert_queue.recipient_emails';
           } else {
-            // NO_ACCOUNT_CONTEXT already logged by getAccountContext
-            if (audience === 'client') {
-              // Client-only trigger with no account context → skip
-              console.log(`[send-alerts] Alert ${alert.id}: audience=client but NO_ACCOUNT_CONTEXT, skipping client routing`);
+            const accountCtx = await getAccountContext(
+              supabase,
+              alert.entity_type,
+              alert.entity_id,
+              alert.tenant_id
+            );
+
+            if (accountCtx) {
+              const clientResult = await resolveClientRecipients(
+                supabase,
+                alert.tenant_id,
+                accountCtx.accountId,
+                accountCtx.accountName
+              );
+              clientRecipients = clientResult.emails;
+              clientSource = clientResult.source;
+            } else {
+              // NO_ACCOUNT_CONTEXT already logged by getAccountContext
+              if (audience === 'client') {
+                // Client-only trigger with no account context → skip
+                console.log(`[send-alerts] Alert ${alert.id}: audience=client but NO_ACCOUNT_CONTEXT, skipping client routing`);
+              }
             }
           }
         }

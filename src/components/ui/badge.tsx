@@ -4,23 +4,24 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  // Consistent "pill" formatting everywhere (padding/height), iOS-style chips.
+  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 min-h-6 text-xs font-medium leading-none transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
         default:
-          "border-blue-500/20 text-white badge-gradient-default",
+          "border-blue-500/20 text-white badge-gradient-default shadow-sm",
         secondary:
-          "border-gray-300/40 text-gray-700 dark:text-gray-200 badge-gradient-secondary",
+          "border-gray-300/40 text-gray-700 dark:text-gray-200 badge-gradient-secondary shadow-sm",
         destructive:
-          "border-red-500/20 text-white badge-gradient-destructive",
+          "border-red-500/20 text-white badge-gradient-destructive shadow-sm",
         outline:
-          "border-gray-300 dark:border-gray-600 bg-transparent text-foreground",
+          "border-gray-300/70 dark:border-gray-600/70 bg-muted/40 text-foreground",
         success:
-          "border-green-500/20 text-white badge-gradient-success",
+          "border-green-500/20 text-white badge-gradient-success shadow-sm",
         warning:
-          "border-amber-500/20 text-white badge-gradient-warning",
-        info: "border-blue-500/20 text-white badge-gradient-default",
+          "border-amber-500/20 text-white badge-gradient-warning shadow-sm",
+        info: "border-blue-500/20 text-white badge-gradient-default shadow-sm",
       },
     },
     defaultVariants: {
@@ -35,23 +36,11 @@ export interface BadgeProps
 
 const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
   ({ className, variant, style, ...props }, ref) => {
-    const isOutline = variant === "outline";
-
-    const gradientStyle: React.CSSProperties = isOutline
-      ? {}
-      : {
-          boxShadow:
-            "0 1px 2px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.15)",
-          fontSize: "12px",
-          letterSpacing: "0.01em",
-          padding: "2px 10px",
-        };
-
     return (
       <div
         ref={ref}
         className={cn(badgeVariants({ variant }), className)}
-        style={{ ...gradientStyle, ...style }}
+        style={style}
         {...props}
       />
     );

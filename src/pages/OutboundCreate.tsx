@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useOutboundTypes, useAccountItems } from '@/hooks/useOutbound';
 import { useSidemarks } from '@/hooks/useSidemarks';
 import { useDocuments } from '@/hooks/useDocuments';
+import { useShipmentExceptions } from '@/hooks/useShipmentExceptions';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect, SelectOption } from '@/components/ui/searchable-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -34,6 +36,21 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { HelpButton } from '@/components/prompts';
 import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
+import { logActivity } from '@/lib/activity/logActivity';
+import { queueSplitRequiredAlert } from '@/lib/alertQueue';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { formatItemSize } from '@/lib/items/formatItemSize';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 
 // ============================================
 // TYPES
@@ -73,6 +90,36 @@ export default function OutboundCreate() {
 
   // Hooks
   const { outboundTypes, loading: typesLoading } = useOutboundTypes();
+
+  // Item table view (tenant-managed)
+  const {
+    settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettingsForUser();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const outboundItemVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
 
   // Draft outbound shipment (create immediately to get OUT-##### number)
   const [draftShipmentId, setDraftShipmentId] = useState<string | null>(null);
@@ -159,10 +206,13 @@ export default function OutboundCreate() {
     documents,
     refetch: refetchDocuments,
   } = useDocuments({ contextType: 'shipment', contextId: draftShipmentId || undefined });
+  const { openCount: draftOpenExceptionCount } = useShipmentExceptions(draftShipmentId || undefined);
 
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
   const [searchQuery, setSearchQuery] = useState('');
+  // Requested quantity per selected item (defaults to full available qty)
+  const [requestedQtyByItemId, setRequestedQtyByItemId] = useState<Record<string, number>>({});
 
   // Fetch account items
   const { items: accountItems, loading: itemsLoading } = useAccountItems(accountId || undefined);
@@ -413,6 +463,11 @@ export default function OutboundCreate() {
     [accounts]
   );
 
+  const selectedAccountName = useMemo(
+    () => accounts.find((a) => a.id === accountId)?.account_name || '',
+    [accounts, accountId]
+  );
+
   const warehouseOptions: SelectOption[] = useMemo(
     () => warehouses.map(w => ({ value: w.id, label: w.name })),
     [warehouses]
@@ -451,7 +506,7 @@ export default function OutboundCreate() {
     );
   }, [accountItems, searchQuery]);
 
-  const itemQuantityById = useMemo(() => {
+  const availableQtyById = useMemo(() => {
     const map = new Map<string, number>();
     for (const item of accountItems as any[]) {
       const qty = typeof item?.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
@@ -462,6 +517,28 @@ export default function OutboundCreate() {
     return map;
   }, [accountItems]);
 
+  const getRequestedQty = useCallback((itemId: string): number => {
+    const available = availableQtyById.get(itemId) ?? 1;
+    const raw = requestedQtyByItemId[itemId];
+    const qty = typeof raw === 'number' && Number.isFinite(raw) ? raw : available;
+    // Clamp within [1, available]
+    return Math.max(1, Math.min(available, qty));
+  }, [availableQtyById, requestedQtyByItemId]);
+
+  // Keep requested qty map hydrated for selected items (including pre-selected)
+  useEffect(() => {
+    if (selectedItemIds.size === 0) return;
+    let changed = false;
+    const next: Record<string, number> = { ...requestedQtyByItemId };
+    for (const itemId of selectedItemIds) {
+      if (next[itemId] == null) {
+        next[itemId] = availableQtyById.get(itemId) ?? 1;
+        changed = true;
+      }
+    }
+    if (changed) setRequestedQtyByItemId(next);
+  }, [availableQtyById, requestedQtyByItemId, selectedItemIds]);
+
   // ------------------------------------------
   // Item selection handlers
   // ------------------------------------------
@@ -469,8 +546,22 @@ export default function OutboundCreate() {
     const newSet = new Set(selectedItemIds);
     if (newSet.has(itemId)) {
       newSet.delete(itemId);
+      // Optional cleanup: keep the map small (safe to rehydrate later)
+      setRequestedQtyByItemId((prev) => {
+        if (prev[itemId] == null) return prev;
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } else {
       newSet.add(itemId);
+      // Default requested qty to the full available qty
+      setRequestedQtyByItemId((prev) => {
+        if (prev[itemId] != null) return prev;
+        const next = { ...prev };
+        next[itemId] = availableQtyById.get(itemId) ?? 1;
+        return next;
+      });
     }
     setSelectedItemIds(newSet);
     if (errors.items) {
@@ -593,7 +684,7 @@ export default function OutboundCreate() {
       const toInsert = itemIds.map((item_id) => ({
         shipment_id: draftShipmentId,
         item_id,
-        expected_quantity: itemQuantityById.get(item_id) ?? 1,
+        expected_quantity: getRequestedQty(item_id),
         status: 'pending',
       }));
 
@@ -616,6 +707,244 @@ export default function OutboundCreate() {
         .update({ deleted_at: null })
         .eq('id', draftShipmentId);
       if (finalizeError) throw finalizeError;
+
+      // 5b) Activity log: items linked/unlinked to shipment
+      // Do this after finalize so activity doesn't point to a "hidden" draft.
+      try {
+        const shipmentNumberForLog = draftShipmentNumber || 'OUT';
+
+        // Resolve item codes in one query (best-effort)
+        const itemCodeMap = new Map<string, string>();
+        if (itemIds.length > 0) {
+          const { data: itemRows } = await (supabase.from('items') as any)
+            .select('id, item_code')
+            .in('id', itemIds);
+          (itemRows || []).forEach((r: any) => {
+            if (r?.id && r?.item_code) itemCodeMap.set(r.id, r.item_code);
+          });
+        }
+
+        // Linked (selected items)
+        void Promise.allSettled(
+          itemIds.map((iid) =>
+            logActivity({
+              entityType: 'item',
+              tenantId: profile.tenant_id,
+              entityId: iid,
+              actorUserId: profile.id,
+              eventType: 'item_shipment_linked',
+              eventLabel: `Added to outbound shipment ${shipmentNumberForLog}`,
+              details: {
+                shipment_id: draftShipmentId,
+                shipment_number: shipmentNumberForLog,
+                shipment_type: 'outbound',
+                item_code: itemCodeMap.get(iid) || null,
+              },
+            })
+          )
+        );
+
+        // Unlinked (deselected items)
+        if (removedItemIds.length > 0) {
+          void Promise.allSettled(
+            removedItemIds.map((iid) =>
+              logActivity({
+                entityType: 'item',
+                tenantId: profile.tenant_id,
+                entityId: iid,
+                actorUserId: profile.id,
+                eventType: 'item_shipment_unlinked',
+                eventLabel: `Removed from outbound shipment ${shipmentNumberForLog}`,
+                details: {
+                  shipment_id: draftShipmentId,
+                  shipment_number: shipmentNumberForLog,
+                  shipment_type: 'outbound',
+                },
+              })
+            )
+          );
+        }
+
+        // Shipment-level activity (selected items)
+        void Promise.allSettled(
+          itemIds.map((iid) =>
+            logActivity({
+              entityType: 'shipment',
+              tenantId: profile.tenant_id,
+              entityId: draftShipmentId,
+              actorUserId: profile.id,
+              eventType: 'item_added',
+              eventLabel: `Item ${itemCodeMap.get(iid) || iid} added`,
+              details: { item_id: iid, item_code: itemCodeMap.get(iid) || null },
+            })
+          )
+        );
+      } catch {
+        // Non-blocking: activity logging must not break shipment creation
+      }
+
+      // 5c) If any selected items are grouped (qty > 1) AND the requested qty is partial,
+      // create a blocking Split task per item and queue an internal alert.
+      //
+      // Internal users always follow the split-required workflow (no toggle).
+      const splitCandidates = itemIds
+        .map((item_id) => {
+          const available = availableQtyById.get(item_id) ?? 1;
+          const requested = getRequestedQty(item_id);
+          return {
+            item_id,
+            available,
+            requested,
+            leftover: Math.max(0, available - requested),
+          };
+        })
+        .filter((r) => r.available > 1 && r.requested < r.available);
+
+      if (splitCandidates.length > 0) {
+        const requestNotes = [
+          notes.trim() ? `Customer notes:\n${notes.trim()}` : '',
+          internalNotes.trim() ? `Internal notes:\n${internalNotes.trim()}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+        const splitTaskIds: string[] = [];
+        const splitItemsForMeta: any[] = [];
+
+        for (const c of splitCandidates) {
+          const { data: itemRow, error: itemErr } = await (supabase.from('items') as any)
+            .select('id, item_code, quantity, current_location')
+            .eq('id', c.item_id)
+            .maybeSingle();
+          if (itemErr || !itemRow?.id) throw itemErr || new Error('Item not found');
+
+          const groupedQty = typeof itemRow.quantity === 'number' && Number.isFinite(itemRow.quantity) ? itemRow.quantity : c.available;
+          const keepQty = c.requested;
+          const leftoverQty = Math.max(0, groupedQty - keepQty);
+
+          // Idempotency: if a split task already exists for this shipment+item, reuse it.
+          const { data: existingSplitTask } = await (supabase.from('tasks') as any)
+            .select('id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('task_type', 'Split')
+            .contains('metadata', {
+              split_workflow: {
+                origin_entity_type: 'shipment',
+                origin_entity_id: draftShipmentId,
+                parent_item_id: c.item_id,
+              },
+            })
+            .in('status', ['pending', 'in_progress'])
+            .limit(1)
+            .maybeSingle();
+
+          let splitTaskId: string | null = existingSplitTask?.id || null;
+
+          if (!splitTaskId) {
+            const nowIso = new Date().toISOString();
+            const title = draftShipmentNumber
+              ? `Split - ${itemRow.item_code} (for ${draftShipmentNumber})`
+              : `Split - ${itemRow.item_code}`;
+
+            const description = [
+              `Split required for grouped item ${itemRow.item_code}.`,
+              `Keep qty on parent label: ${keepQty} (of ${groupedQty}).`,
+              `Leftover qty to relabel: ${leftoverQty}.`,
+              '',
+              'Instructions:',
+              `- Scan the parent item code (${itemRow.item_code}) before splitting.`,
+              `- Parent label stays on the job; parent quantity will be set to ${keepQty}.`,
+              `- Leftover items get NEW child labels and should be placed in the default receiving location (unless overridden).`,
+              '- Print and attach ALL new labels, then scan each new child label to confirm application.',
+              requestNotes ? `\n${requestNotes}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n');
+
+            const { data: newTask, error: taskErr } = await (supabase.from('tasks') as any)
+              .insert({
+                tenant_id: profile.tenant_id,
+                account_id: accountId || null,
+                warehouse_id: warehouseId || null,
+                related_item_id: c.item_id,
+                task_type: 'Split',
+                title,
+                description,
+                priority: 'high',
+                status: 'pending',
+                assigned_department: 'warehouse',
+                metadata: {
+                  split_workflow: {
+                    origin_entity_type: 'shipment',
+                    origin_entity_id: draftShipmentId,
+                    origin_entity_number: draftShipmentNumber,
+                    parent_item_id: c.item_id,
+                    parent_item_code: itemRow.item_code,
+                    grouped_qty: groupedQty,
+                    keep_qty: keepQty,
+                    leftover_qty: leftoverQty,
+                    requested_by_user_id: profile.id,
+                    requested_by_name: 'Internal user',
+                    requested_by_email: null,
+                    request_notes: requestNotes || null,
+                    created_at: nowIso,
+                  },
+                } as Json,
+              })
+              .select('id')
+              .single();
+
+            if (taskErr) throw taskErr;
+            splitTaskId = newTask.id;
+
+            const { error: linkErr } = await (supabase.from('task_items') as any).insert({
+              task_id: splitTaskId,
+              item_id: c.item_id,
+            });
+            if (linkErr) throw linkErr;
+          }
+
+          if (splitTaskId) {
+            splitTaskIds.push(splitTaskId);
+            splitItemsForMeta.push({
+              parent_item_id: c.item_id,
+              parent_item_code: itemRow.item_code,
+              grouped_qty: groupedQty,
+              keep_qty: keepQty,
+              leftover_qty: leftoverQty,
+              current_location: itemRow.current_location || null,
+              split_task_id: splitTaskId,
+            });
+
+            // Notify office/warehouse (email + optional in-app configured by tenant)
+            void queueSplitRequiredAlert(profile.tenant_id, splitTaskId, itemRow.item_code);
+          }
+        }
+
+        // Mark the shipment as blocked by split-required tasks
+        const { data: existingShipmentRow, error: shipmentMetaErr } = await (supabase.from('shipments') as any)
+          .select('metadata')
+          .eq('id', draftShipmentId)
+          .maybeSingle();
+        if (shipmentMetaErr) throw shipmentMetaErr;
+
+        const existingMeta = existingShipmentRow?.metadata && typeof existingShipmentRow.metadata === 'object'
+          ? existingShipmentRow.metadata
+          : {};
+
+        const nextMeta = {
+          ...(existingMeta as any),
+          split_required: true,
+          split_required_task_ids: splitTaskIds,
+          split_required_items: splitItemsForMeta,
+          split_required_created_at: new Date().toISOString(),
+        };
+
+        const { error: splitMetaUpdateErr } = await (supabase.from('shipments') as any)
+          .update({ metadata: nextMeta as Json })
+          .eq('id', draftShipmentId);
+        if (splitMetaUpdateErr) throw splitMetaUpdateErr;
+      }
 
       // 6) Mark selected items as allocated (after the shipment is visible)
       if (itemIds.length > 0) {
@@ -871,7 +1200,14 @@ export default function OutboundCreate() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="public">Public</TabsTrigger>
                     <TabsTrigger value="internal">Internal</TabsTrigger>
-                    <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+                    <TabsTrigger value="exceptions" className="gap-2">
+                      Exceptions
+                      {draftOpenExceptionCount > 0 && (
+                        <Badge variant="destructive" className="h-5 min-w-5 text-xs">
+                          {draftOpenExceptionCount}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
                   </TabsList>
                   <TabsContent value="public" className="mt-2 space-y-2">
                     <p className="text-xs text-muted-foreground">
@@ -1062,15 +1398,48 @@ export default function OutboundCreate() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Search */}
-                  <div className="relative">
-                    <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search items..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9"
-                    />
+                  {/* Search + view */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[220px]">
+                      <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search items..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={activeItemViewId || defaultItemViewId || 'default'}
+                        onValueChange={setActiveItemViewId}
+                        disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                      >
+                        <SelectTrigger className="w-[140px] sm:w-[180px] h-10">
+                          <div className="flex items-center gap-2">
+                            <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                            <SelectValue placeholder="View" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {itemDisplaySettings.views.map((v) => (
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.name}
+                              {v.is_default ? ' (default)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <ItemColumnsPopover
+                        settings={itemDisplaySettings}
+                        baseSettings={tenantItemDisplaySettings}
+                        viewId={activeItemViewId || defaultItemViewId || 'default'}
+                        disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                        onSave={saveItemDisplaySettings}
+                      />
+                    </div>
                   </div>
 
                   {/* Error message */}
@@ -1084,19 +1453,26 @@ export default function OutboundCreate() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-12"></TableHead>
-                          <TableHead>Item Code</TableHead>
-                          <TableHead className="w-16 text-right">Qty</TableHead>
-                          <TableHead className="hidden md:table-cell">Vendor</TableHead>
-                          <TableHead className="hidden md:table-cell">Description</TableHead>
-                          <TableHead className="hidden sm:table-cell">Location</TableHead>
-                          <TableHead className="hidden md:table-cell">Sidemark</TableHead>
-                          <TableHead className="hidden lg:table-cell">Room</TableHead>
+                          {outboundItemVisibleColumns.map((col) => (
+                            <TableHead
+                              key={col}
+                              className={
+                                col === 'quantity' || col === 'size'
+                                  ? 'text-right'
+                                  : col === 'photo'
+                                  ? 'w-12'
+                                  : undefined
+                              }
+                            >
+                              {getColumnLabel(itemDisplaySettings, col)}
+                            </TableHead>
+                          ))}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={1 + outboundItemVisibleColumns.length} className="text-center py-8 text-muted-foreground">
                               No items match your search
                             </TableCell>
                           </TableRow>
@@ -1116,25 +1492,100 @@ export default function OutboundCreate() {
                                   className="h-4 w-4 rounded border border-primary accent-primary cursor-pointer"
                                 />
                               </TableCell>
-                              <TableCell className="font-medium">{item.item_code}</TableCell>
-                              <TableCell className="text-right">
-                                {typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {item.vendor || '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell max-w-[240px] truncate">
-                                {item.description || '-'}
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                {item.location?.code || '-'}
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {item.sidemark?.sidemark_name || '-'}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                {item.room || '-'}
-                              </TableCell>
+                              {outboundItemVisibleColumns.map((col) => {
+                                const cfKey = parseCustomFieldColumnKey(col);
+                                if (cfKey) {
+                                  const meta = (item as any).metadata;
+                                  const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                                  const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                                  const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                                  return <TableCell key={col} className="max-w-[180px] truncate">{display}</TableCell>;
+                                }
+
+                                switch (col as BuiltinItemColumnKey) {
+                                  case 'photo': {
+                                    const url = (item as any).primary_photo_url as string | null | undefined;
+                                    const node = url ? (
+                                      <img src={url} alt={item.item_code} className="h-8 w-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                                    );
+                                    return (
+                                      <TableCell key={col} className="w-12" onClick={(e) => e.stopPropagation()}>
+                                        <ItemPreviewCard itemId={item.id}>{node}</ItemPreviewCard>
+                                      </TableCell>
+                                    );
+                                  }
+                                  case 'item_code':
+                                    return <TableCell key={col} className="font-medium">{item.item_code}</TableCell>;
+                                  case 'sku':
+                                    return <TableCell key={col}>{(item as any).sku || '-'}</TableCell>;
+                                  case 'quantity': {
+                                    const available =
+                                      typeof (item as any).quantity === 'number' && Number.isFinite((item as any).quantity)
+                                        ? (item as any).quantity
+                                        : 1;
+                                    const selected = selectedItemIds.has(item.id);
+
+                                    if (!selected) {
+                                      return (
+                                        <TableCell key={col} className="text-right tabular-nums">
+                                          {typeof available === 'number' ? available : '-'}
+                                        </TableCell>
+                                      );
+                                    }
+
+                                    const requested = getRequestedQty(item.id);
+                                    const showMax = typeof available === 'number' && available > 1;
+
+                                    return (
+                                      <TableCell
+                                        key={col}
+                                        className="text-right tabular-nums"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex items-center justify-end gap-2">
+                                          <Input
+                                            type="number"
+                                            min={1}
+                                            max={available}
+                                            step={1}
+                                            value={requested}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={(e) => {
+                                              const raw = parseInt(e.target.value || '0', 10);
+                                              const next = Number.isFinite(raw) ? raw : 1;
+                                              const clamped = Math.max(1, Math.min(available, next));
+                                              setRequestedQtyByItemId((prev) => ({ ...prev, [item.id]: clamped }));
+                                            }}
+                                            className="h-8 w-20 text-right"
+                                            aria-label={`Requested quantity for ${item.item_code}`}
+                                          />
+                                          {showMax && (
+                                            <span className="text-xs text-muted-foreground">/ {available}</span>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    );
+                                  }
+                                  case 'size':
+                                    return <TableCell key={col} className="text-right tabular-nums">{formatItemSize((item as any).size ?? null, (item as any).size_unit ?? null)}</TableCell>;
+                                  case 'vendor':
+                                    return <TableCell key={col}>{item.vendor || '-'}</TableCell>;
+                                  case 'description':
+                                    return <TableCell key={col} className="max-w-[240px] truncate">{item.description || '-'}</TableCell>;
+                                  case 'location':
+                                    return <TableCell key={col}>{item.location?.code || '-'}</TableCell>;
+                                  case 'client_account':
+                                    return <TableCell key={col}>{selectedAccountName || '-'}</TableCell>;
+                                  case 'sidemark':
+                                    return <TableCell key={col}>{item.sidemark?.sidemark_name || '-'}</TableCell>;
+                                  case 'room':
+                                    return <TableCell key={col}>{item.room || '-'}</TableCell>;
+                                  default:
+                                    return <TableCell key={col}>-</TableCell>;
+                                }
+                              })}
                             </TableRow>
                           ))
                         )}
@@ -1171,6 +1622,18 @@ export default function OutboundCreate() {
             </Button>
           </div>
         </form>
+
+        {/* Activity (draft shipment timeline) */}
+        {draftShipmentId && (
+          <div className="pb-6">
+            <EntityActivityFeed
+              entityType="shipment"
+              entityId={draftShipmentId}
+              title="Activity"
+              description="Timeline of changes to this outbound shipment draft"
+            />
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

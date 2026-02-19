@@ -207,9 +207,8 @@ export default function Quotes() {
         {/* Filters and Actions */}
         <Card>
           <CardContent className="pt-4">
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-              <div className="flex flex-1 gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[200px]">
+            <div className="grid grid-cols-2 gap-3 md:flex md:flex-row md:flex-wrap md:items-center md:justify-between">
+              <div className="relative col-span-2 md:flex-1 md:min-w-[260px]">
                   <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search quotes..."
@@ -217,9 +216,11 @@ export default function Quotes() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-9"
                   />
-                </div>
+              </div>
+
+              <div className="col-span-1 md:col-span-auto">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="w-full md:w-[150px]">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -232,8 +233,11 @@ export default function Quotes() {
                     <SelectItem value="void">Void</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="col-span-1 md:col-span-auto">
                 <Select value={accountFilter} onValueChange={setAccountFilter}>
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full md:w-[220px]">
                     <SelectValue placeholder="Account" />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,15 +250,18 @@ export default function Quotes() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => fetchQuotes()}>
+
+              <div className="col-span-2 md:col-span-auto md:ml-auto">
+                <div className="grid grid-cols-2 gap-2 md:flex md:gap-2">
+                  <Button variant="outline" size="sm" className="w-full justify-center" onClick={() => fetchQuotes()}>
                   <MaterialIcon name="refresh" size="sm" className="mr-2" />
                   Refresh
                 </Button>
-                <Button onClick={() => navigate('/quotes/new')}>
+                  <Button onClick={() => navigate('/quotes/new')} className="w-full justify-center">
                   <MaterialIcon name="add" size="sm" className="mr-2" />
                   New Quote
                 </Button>
+                </div>
               </div>
             </div>
           </CardContent>

@@ -12,7 +12,10 @@ UPDATE public.warehouses w
 SET default_receiving_location_id = l.id
 FROM public.locations l
 WHERE l.warehouse_id = w.id
-  AND l.type = 'receiving'
+  AND (
+    lower(coalesce(l.type, '')) = 'receiving'
+    OR lower(coalesce(l.location_type, '')) = 'receiving'
+  )
   AND l.deleted_at IS NULL
   AND w.default_receiving_location_id IS NULL
   AND w.deleted_at IS NULL;
@@ -60,10 +63,11 @@ BEGIN
     SELECT l.id, l.code
     INTO v_effective_location_id, v_effective_location_code
     FROM locations l
+    JOIN warehouses w ON w.id = l.warehouse_id AND w.deleted_at IS NULL
     WHERE l.id = p_location_id
-      AND l.tenant_id = v_tenant_id
       AND l.warehouse_id = v_warehouse_id
-      AND l.deleted_at IS NULL;
+      AND l.deleted_at IS NULL
+      AND w.tenant_id = v_tenant_id;
 
     IF v_effective_location_id IS NULL THEN
       RETURN jsonb_build_object(
@@ -98,8 +102,12 @@ BEGIN
       INTO v_effective_location_id, v_effective_location_code
       FROM locations l
       WHERE l.warehouse_id = v_warehouse_id
-        AND l.type = 'receiving'
         AND l.deleted_at IS NULL
+        AND (
+          lower(coalesce(l.type, '')) = 'receiving'
+          OR lower(coalesce(l.location_type, '')) = 'receiving'
+        )
+      ORDER BY l.code
       LIMIT 1;
     END IF;
 
@@ -186,8 +194,12 @@ BEGIN
     INTO v_location_id, v_location_code
     FROM locations l
     WHERE l.warehouse_id = p_warehouse_id
-      AND l.type = 'receiving'
       AND l.deleted_at IS NULL
+      AND (
+        lower(coalesce(l.type, '')) = 'receiving'
+        OR lower(coalesce(l.location_type, '')) = 'receiving'
+      )
+    ORDER BY l.code
     LIMIT 1;
   END IF;
 

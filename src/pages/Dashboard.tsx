@@ -20,6 +20,7 @@ import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { useDashboardStats, PutAwayItem, TaskItem, ShipmentItem } from '@/hooks/useDashboardStats';
 import { useCountUp } from '@/hooks/useCountUp';
 import { CapacityCard } from '@/components/dashboard/CapacityCard';
+import { ActiveJobsCard } from '@/components/dashboard/ActiveJobsCard';
 
 /** Animated count display for dashboard tiles */
 function AnimatedCount({ value, delay = 0, className }: { value: number; delay?: number; className?: string }) {
@@ -387,6 +388,9 @@ export default function Dashboard() {
                 </Card>
               );
             })}
+
+            {/* Time tracking: active/paused jobs across tenant */}
+            <ActiveJobsCard className="md:col-span-2 lg:col-span-3" />
           </div>
         )}
       </div>

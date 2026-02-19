@@ -60,7 +60,7 @@ function extractTenantSubdomain(rawHost: string): string | null {
 }
 
 async function resolveTenantIdFromHost(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   rawHost: string
 ): Promise<string | null> {
   const subdomain = extractTenantSubdomain(rawHost);
