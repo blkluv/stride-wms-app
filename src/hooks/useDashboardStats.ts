@@ -7,6 +7,8 @@ export interface DashboardStats {
   needToInspect: number;
   needToAssemble: number;
   incomingShipments: number;
+  /** Cross-tenant "jobs in progress" (tasks + shipments + stocktakes) */
+  activeJobsCount: number;
   putAwayCount: number;
   willCallCount: number;
   disposalCount: number;
@@ -71,12 +73,22 @@ export interface PutAwayItem {
   };
 }
 
+export interface ActiveStocktakeJob {
+  id: string;
+  stocktake_number: string;
+  name: string | null;
+  status: string;
+  started_at: string | null;
+  warehouse?: { name: string } | null;
+}
+
 export function useDashboardStats() {
   const { profile } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     needToInspect: 0,
     needToAssemble: 0,
     incomingShipments: 0,
+    activeJobsCount: 0,
     putAwayCount: 0,
     willCallCount: 0,
     disposalCount: 0,
@@ -100,6 +112,9 @@ export function useDashboardStats() {
   const [repairTasks, setRepairTasks] = useState<TaskItem[]>([]);
   const [incomingShipments, setIncomingShipments] = useState<ShipmentItem[]>([]);
   const [putAwayItems, setPutAwayItems] = useState<PutAwayItem[]>([]);
+  const [activeJobTasks, setActiveJobTasks] = useState<TaskItem[]>([]);
+  const [activeJobShipments, setActiveJobShipments] = useState<ShipmentItem[]>([]);
+  const [activeJobStocktakes, setActiveJobStocktakes] = useState<ActiveStocktakeJob[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
@@ -179,6 +194,22 @@ export function useDashboardStats() {
         .order('due_date', { ascending: true, nullsFirst: false })
         .limit(10);
 
+      // Active tasks (started but not completed)
+      const { data: activeTasks, count: activeTaskCount } = await (supabase
+        .from('tasks') as any)
+        .select(
+          `
+          id, title, task_type, due_date, priority, status,
+          account:accounts(account_name)
+        `,
+          { count: 'exact' }
+        )
+        .eq('tenant_id', profile.tenant_id)
+        .eq('status', 'in_progress')
+        .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .limit(10);
+
       // Fetch incoming shipments (ordered by expected arrival)
       // Match the Logistics Console "Expected Today" logic.
       const todayDate = format(new Date(), 'yyyy-MM-dd');
@@ -194,6 +225,61 @@ export function useDashboardStats() {
         .eq('expected_arrival_date', todayDate)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
+        .limit(10);
+
+      // Active shipments (started but not completed)
+      const [{ data: inboundActiveShipments, count: inboundActiveCount }, { data: outboundActiveShipments, count: outboundActiveCount }] =
+        await Promise.all([
+          (supabase.from('shipments') as any)
+            .select(
+              `
+              id, shipment_number, expected_arrival_date, status, carrier, inbound_kind, inbound_status,
+              account:accounts(account_name)
+            `,
+              { count: 'exact' }
+            )
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_type', 'inbound')
+            .eq('inbound_kind', 'dock_intake')
+            .in('inbound_status', ['draft', 'stage1_complete', 'receiving'])
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(10),
+          (supabase.from('shipments') as any)
+            .select(
+              `
+              id, shipment_number, expected_arrival_date, status, carrier, inbound_kind, inbound_status,
+              account:accounts(account_name)
+            `,
+              { count: 'exact' }
+            )
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_type', 'outbound')
+            .eq('status', 'in_progress')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(10),
+        ]);
+
+      const activeShipmentsCombined: ShipmentItem[] = [
+        ...(inboundActiveShipments || []),
+        ...(outboundActiveShipments || []),
+      ];
+
+      // Active stocktakes
+      const { data: activeStocktakes, count: activeStocktakeCount } = await (supabase
+        .from('stocktakes') as any)
+        .select(
+          `
+          id, stocktake_number, name, status, started_at,
+          warehouse:warehouses(name)
+        `,
+          { count: 'exact' }
+        )
+        .eq('tenant_id', profile.tenant_id)
+        .eq('status', 'active')
+        .is('deleted_at', null)
+        .order('started_at', { ascending: false })
         .limit(10);
 
       // Fetch repair quotes needing action
@@ -340,10 +426,14 @@ export function useDashboardStats() {
       const receivingAvgTime = serviceTimeLookup['RECEIVING'] || 5; // default 5 min per shipment
       const incomingShipmentsTimeEstimate = (shipmentCount || 0) * receivingAvgTime;
 
+      const activeJobsCount =
+        (activeTaskCount || 0) + (inboundActiveCount || 0) + (outboundActiveCount || 0) + (activeStocktakeCount || 0);
+
       setStats({
         needToInspect: inspectCount || 0,
         needToAssemble: assemblyCount || 0,
         incomingShipments: shipmentCount || 0,
+        activeJobsCount,
         putAwayCount: putAwayCount,
         willCallCount: willCallCount || 0,
         disposalCount: disposalCount || 0,
@@ -368,6 +458,9 @@ export function useDashboardStats() {
       setRepairTasks(repairs || []);
       setIncomingShipments(shipments || []);
       setPutAwayItems(putAwayData);
+      setActiveJobTasks(activeTasks || []);
+      setActiveJobShipments(activeShipmentsCombined);
+      setActiveJobStocktakes((activeStocktakes || []) as unknown as ActiveStocktakeJob[]);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     } finally {
@@ -388,6 +481,9 @@ export function useDashboardStats() {
     repairTasks,
     incomingShipments,
     putAwayItems,
+    activeJobTasks,
+    activeJobShipments,
+    activeJobStocktakes,
     loading,
     refetch: fetchStats,
   };

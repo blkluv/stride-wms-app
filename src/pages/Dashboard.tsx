@@ -17,7 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
-import { useDashboardStats, PutAwayItem, TaskItem, ShipmentItem } from '@/hooks/useDashboardStats';
+import { useDashboardStats, PutAwayItem, TaskItem, ShipmentItem, ActiveStocktakeJob } from '@/hooks/useDashboardStats';
 import { useCountUp } from '@/hooks/useCountUp';
 import { CapacityCard } from '@/components/dashboard/CapacityCard';
 
@@ -60,11 +60,15 @@ export default function Dashboard() {
     assemblyTasks,
     repairTasks,
     incomingShipments,
+    activeJobTasks,
+    activeJobShipments,
+    activeJobStocktakes,
     loading,
     refetch
   } = useDashboardStats();
   const { warehouses, selectedWarehouseId, setSelectedWarehouseId } = useSelectedWarehouse();
   const [expandedCard, setExpandedCard] = useState<ExpandedCard>(null);
+  const [activeJobsExpanded, setActiveJobsExpanded] = useState(false);
 
   const toggleCard = (key: ExpandedCard) => {
     setExpandedCard(expandedCard === key ? null : key);
@@ -387,6 +391,174 @@ export default function Dashboard() {
                 </Card>
               );
             })}
+
+            {/* Active Jobs (cross-tenant view-only) */}
+            <Card className="hover:shadow-lg transition-shadow relative md:col-span-2 lg:col-span-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 h-6 w-6 z-10"
+                onClick={() => setActiveJobsExpanded((v) => !v)}
+                title={activeJobsExpanded ? 'Collapse' : 'Expand'}
+              >
+                <MaterialIcon
+                  name="expand_more"
+                  size="sm"
+                  className={cn("transition-transform duration-200", activeJobsExpanded && "rotate-180")}
+                />
+              </Button>
+
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-10">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+                    ACTIVE JOBS
+                  </CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={refetch} disabled={loading} className="h-8 px-2 text-xs">
+                    <MaterialIcon
+                      name={loading ? "sync" : "refresh"}
+                      size="sm"
+                      className={cn("mr-1", loading && "animate-spin")}
+                    />
+                    Refresh
+                  </Button>
+                  <div className="emoji-tile emoji-tile-lg rounded-lg bg-card border border-border shadow-sm">
+                    🗂️
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-foreground">
+                    {stats.activeJobsCount ?? 0}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  In progress tasks, dock intakes, outbound shipments, and active stocktakes.
+                </p>
+
+                {activeJobsExpanded && (
+                  <div className="mt-4 border-t pt-3 space-y-4">
+                    <ScrollArea className="max-h-72">
+                      <div className="space-y-4 pr-2">
+                        {/* Tasks */}
+                        <div>
+                          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground px-1">
+                            <span>Tasks</span>
+                            <span>{activeJobTasks.length}</span>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {activeJobTasks.length === 0 ? (
+                              <div className="text-sm text-muted-foreground px-2 py-2">No active tasks.</div>
+                            ) : (
+                              activeJobTasks.slice(0, 10).map((t) => (
+                                <div
+                                  key={t.id}
+                                  className="flex items-center justify-between p-2 rounded-md hover:bg-muted cursor-pointer group"
+                                  onClick={() => navigate(`/tasks?id=${t.id}`)}
+                                  role="button"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-medium truncate">
+                                      {t.title}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground truncate">
+                                      {t.account?.account_name || 'No account'} • {t.task_type}
+                                    </div>
+                                  </div>
+                                  <MaterialIcon
+                                    name="chevron_right"
+                                    size="sm"
+                                    className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2"
+                                  />
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Shipments */}
+                        <div>
+                          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground px-1">
+                            <span>Shipments</span>
+                            <span>{activeJobShipments.length}</span>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {activeJobShipments.length === 0 ? (
+                              <div className="text-sm text-muted-foreground px-2 py-2">No active shipments.</div>
+                            ) : (
+                              activeJobShipments.slice(0, 10).map((s) => {
+                                const kind = (s.inbound_kind || '').toLowerCase();
+                                const route =
+                                  kind === 'dock_intake'
+                                    ? `/incoming/dock-intake/${s.id}`
+                                    : `/shipments/${s.id}`;
+                                return (
+                                  <div
+                                    key={s.id}
+                                    className="flex items-center justify-between p-2 rounded-md hover:bg-muted cursor-pointer group"
+                                    onClick={() => navigate(route)}
+                                    role="button"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="font-mono text-sm font-medium truncate">{s.shipment_number}</div>
+                                      <div className="text-xs text-muted-foreground truncate">
+                                        {s.account?.account_name || 'Unknown'} • {kind ? kind.replace(/_/g, ' ') : 'outbound'}
+                                      </div>
+                                    </div>
+                                    <MaterialIcon
+                                      name="chevron_right"
+                                      size="sm"
+                                      className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2"
+                                    />
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Stocktakes */}
+                        <div>
+                          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground px-1">
+                            <span>Stocktakes</span>
+                            <span>{activeJobStocktakes.length}</span>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {activeJobStocktakes.length === 0 ? (
+                              <div className="text-sm text-muted-foreground px-2 py-2">No active stocktakes.</div>
+                            ) : (
+                              (activeJobStocktakes as ActiveStocktakeJob[]).slice(0, 10).map((st) => (
+                                <div
+                                  key={st.id}
+                                  className="flex items-center justify-between p-2 rounded-md hover:bg-muted cursor-pointer group"
+                                  onClick={() => navigate(`/stocktakes/${st.id}/scan`)}
+                                  role="button"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="font-mono text-sm font-medium truncate">{st.stocktake_number}</div>
+                                    <div className="text-xs text-muted-foreground truncate">
+                                      {st.name || 'Stocktake'}{st.warehouse?.name ? ` • ${st.warehouse.name}` : ''}
+                                    </div>
+                                  </div>
+                                  <MaterialIcon
+                                    name="chevron_right"
+                                    size="sm"
+                                    className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2"
+                                  />
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>
