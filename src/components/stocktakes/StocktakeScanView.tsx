@@ -396,6 +396,7 @@ export default function StocktakeScanView() {
   const lookupItem = async (input: string) => {
     const payload = parseScanPayload(input);
     if (!payload) return null;
+    if (payload.type === 'location') return null;
 
     let query = supabase
       .from('items')
@@ -422,6 +423,18 @@ export default function StocktakeScanView() {
     const input = data.trim();
 
     try {
+      const payload = parseScanPayload(input);
+      if (payload?.type === 'location') {
+        hapticError();
+        setLastScan({
+          itemCode: (payload.code || payload.id || input).trim(),
+          result: 'not_found',
+          message: 'This is a location barcode. Scan an item QR/barcode for this stocktake.',
+          autoFixed: false,
+        });
+        return;
+      }
+
       const item = await lookupItem(input);
 
       if (!item) {

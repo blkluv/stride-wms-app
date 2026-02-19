@@ -14,6 +14,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { QRScanner } from '@/components/scan/QRScanner';
 import { ItemSearchOverlay, LocationSearchOverlay } from '@/components/scan/SearchOverlays';
+import { useScanEngine } from '@/hooks/useScanEngine';
 import {
   hapticLight,
   hapticMedium,
@@ -728,6 +729,98 @@ export default function ScanHub() {
     setQuarantinePendingAction(null);
   };
 
+  // Standalone scan engine for service event scan (item-only flow)
+  const serviceScanEngine = useScanEngine({
+    enabled: mode === 'service',
+    isExternallyBusy: processing,
+    setExternallyBusy: setProcessing,
+    isBlocked: () => quarantineWarningOpenRef.current,
+    allowedTypes: ['item', 'unknown'],
+    onBlockedType: async (event) => {
+      // Treat explicit location/container payloads as invalid in service scan.
+      if (event.type === 'location' || isLikelyLocationCode(event.raw)) {
+        const loc = await lookupLocation(event.raw);
+        const locCode = loc?.code || event.code;
+        hapticError();
+        void playScanAudioFeedback('error');
+        toast({
+          variant: 'destructive',
+          title: 'Location Scanned',
+          description: `"${locCode}" is a location. Scan an item QR/barcode to add a service event.`,
+        });
+        return;
+      }
+
+      hapticError();
+      void playScanAudioFeedback('error');
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Scan',
+        description: 'Scan a valid item QR/barcode.',
+      });
+    },
+    onScan: async (event) => {
+      // Catch raw location scans that don't declare their type (ex: 1D location barcodes).
+      if (isLikelyLocationCode(event.raw)) {
+        const loc = await lookupLocation(event.raw);
+        const locCode = loc?.code || event.code;
+        hapticError();
+        void playScanAudioFeedback('error');
+        toast({
+          variant: 'destructive',
+          title: 'Location Scanned',
+          description: `"${locCode}" is a location. Scan an item QR/barcode to add a service event.`,
+        });
+        return;
+      }
+
+      const item = await lookupItemForService(event.raw);
+      if (!item) {
+        hapticError();
+        void playScanAudioFeedback('error');
+        toast({
+          variant: 'destructive',
+          title: 'Item Not Found',
+          description: 'Scan a valid item QR/barcode.',
+        });
+        return;
+      }
+
+      let added = false;
+      setServiceItems((prev) => {
+        if (prev.some((i) => i.id === item.id)) return prev;
+        added = true;
+        return [...prev, item];
+      });
+
+      if (added) {
+        hapticLight();
+        void playScanAudioFeedback('success');
+        toast({
+          title: `Added: ${item.item_code}`,
+          description: item.class_code
+            ? `Class: ${item.class_code}`
+            : 'No class assigned - default rate will be used',
+        });
+      } else {
+        toast({
+          title: 'Already added',
+          description: `${item.item_code} is already in the list.`,
+        });
+      }
+    },
+    onError: (error, raw) => {
+      console.error('[ScanHub] Service scan error:', error, { raw });
+      hapticError();
+      void playScanAudioFeedback('error');
+      toast({
+        variant: 'destructive',
+        title: 'Scan Error',
+        description: 'Failed to process scan.',
+      });
+    },
+  });
+
   const handleScanResult = (data: string) => {
     const input = data.trim();
     if (!input) return;
@@ -1308,6 +1401,7 @@ export default function ScanHub() {
   };
 
   const resetState = () => {
+    serviceScanEngine.reset();
     scanQueueRef.current = [];
     processingRef.current = false;
     inFlightScanRef.current = null;
@@ -1434,6 +1528,7 @@ export default function ScanHub() {
 
   const selectMode = (selectedMode: ScanMode) => {
     hapticLight(); // Mode selection feedback
+    serviceScanEngine.reset();
     scanQueueRef.current = [];
     processingRef.current = false;
     inFlightScanRef.current = null;
@@ -1669,9 +1764,9 @@ export default function ScanHub() {
                 {/* QR Scanner */}
                 <div className="mb-4">
                   <QRScanner
-                    onScan={handleScanResult}
+                    onScan={serviceScanEngine.onScan}
                     onError={(error) => console.error('Scanner error:', error)}
-                    scanning={true}
+                    scanning={!processing}
                   />
                 </div>
 
