@@ -52,6 +52,10 @@ type DragState = {
 
 type SidebarSection = 'properties' | 'zones' | 'alias' | 'groups';
 
+type ViewBox = { x: number; y: number; w: number; h: number };
+type PanState = { startClient: { x: number; y: number }; startView: ViewBox };
+type BoxSelectState = { start: { x: number; y: number }; current: { x: number; y: number } };
+
 export default function WarehouseMapBuilder() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -572,6 +576,16 @@ export default function WarehouseMapBuilder() {
   const mapHeight = mapDraft?.height ?? activeMap?.height ?? 1200;
   const gridSize = mapDraft?.grid_size ?? activeMap?.grid_size ?? 20;
 
+  const [view, setView] = useState<ViewBox>(() => ({ x: 0, y: 0, w: mapWidth, h: mapHeight }));
+  const [pan, setPan] = useState<PanState | null>(null);
+  const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
+  const suppressNextClickRef = useRef(false);
+
+  // Reset viewport when switching maps or resizing map dimensions.
+  useEffect(() => {
+    setView({ x: 0, y: 0, w: mapWidth, h: mapHeight });
+  }, [activeMap?.id, mapHeight, mapWidth]);
+
   const getSvgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -582,6 +596,52 @@ export default function WarehouseMapBuilder() {
     if (!ctm) return { x: 0, y: 0 };
     const p = pt.matrixTransform(ctm.inverse());
     return { x: p.x, y: p.y };
+  };
+
+  const clampView = (vb: ViewBox): ViewBox => {
+    const minW = 200;
+    const minH = 200;
+    const w = Math.min(Math.max(vb.w, minW), mapWidth);
+    const h = Math.min(Math.max(vb.h, minH), mapHeight);
+    const x = Math.min(Math.max(vb.x, 0), Math.max(0, mapWidth - w));
+    const y = Math.min(Math.max(vb.y, 0), Math.max(0, mapHeight - h));
+    return { x, y, w, h };
+  };
+
+  const zoomAtClient = (clientX: number, clientY: number, factor: number) => {
+    setView((prev) => {
+      const p = getSvgPoint(clientX, clientY);
+      const nextW = prev.w * factor;
+      const nextH = prev.h * factor;
+      const rx = prev.w > 0 ? (p.x - prev.x) / prev.w : 0.5;
+      const ry = prev.h > 0 ? (p.y - prev.y) / prev.h : 0.5;
+      const next: ViewBox = {
+        x: p.x - rx * nextW,
+        y: p.y - ry * nextH,
+        w: nextW,
+        h: nextH,
+      };
+      return clampView(next);
+    });
+  };
+
+  const zoomBy = (factor: number) => {
+    setView((prev) => {
+      const cx = prev.x + prev.w / 2;
+      const cy = prev.y + prev.h / 2;
+      const nextW = prev.w * factor;
+      const nextH = prev.h * factor;
+      return clampView({
+        x: cx - nextW / 2,
+        y: cy - nextH / 2,
+        w: nextW,
+        h: nextH,
+      });
+    });
+  };
+
+  const resetView = () => {
+    setView({ x: 0, y: 0, w: mapWidth, h: mapHeight });
   };
 
   const beginDrag = (e: React.PointerEvent, node: { id: string; label: string | null; zone_id: string | null; x: number; y: number; width: number; height: number }, mode: DragMode) => {
@@ -666,6 +726,87 @@ export default function WarehouseMapBuilder() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag, gridSize, mapHeight, mapWidth, selectedNodeId]);
+
+  // Background interactions: Alt+drag pan, Shift+drag box-select.
+  useEffect(() => {
+    if (!pan && !boxSelect) return;
+
+    const handleMove = (e: PointerEvent) => {
+      if (pan) {
+        const svg = svgRef.current;
+        const rect = svg?.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+          const scaleX = pan.startView.w / rect.width;
+          const scaleY = pan.startView.h / rect.height;
+          const dx = (e.clientX - pan.startClient.x) * scaleX;
+          const dy = (e.clientY - pan.startClient.y) * scaleY;
+          setView(clampView({
+            x: pan.startView.x - dx,
+            y: pan.startView.y - dy,
+            w: pan.startView.w,
+            h: pan.startView.h,
+          }));
+        }
+      }
+
+      if (boxSelect) {
+        setBoxSelect((prev) => {
+          if (!prev) return prev;
+          const p = getSvgPoint(e.clientX, e.clientY);
+          return { ...prev, current: p };
+        });
+      }
+    };
+
+    const finalizeBoxSelection = (box: BoxSelectState) => {
+      const minX = Math.min(box.start.x, box.current.x);
+      const maxX = Math.max(box.start.x, box.current.x);
+      const minY = Math.min(box.start.y, box.current.y);
+      const maxY = Math.max(box.start.y, box.current.y);
+      const hits: string[] = [];
+
+      for (const n of nodes) {
+        const x = n.id === selectedNodeId && draft ? draft.x : n.x;
+        const y = n.id === selectedNodeId && draft ? draft.y : n.y;
+        const w = n.id === selectedNodeId && draft ? draft.width : n.width;
+        const h = n.id === selectedNodeId && draft ? draft.height : n.height;
+
+        const intersects =
+          x < maxX &&
+          x + w > minX &&
+          y < maxY &&
+          y + h > minY;
+        if (intersects) hits.push(n.id);
+      }
+
+      if (hits.length === 0) return;
+
+      setSelectedNodeIds((prev) => {
+        const next = new Set(prev);
+        for (const id of hits) next.add(id);
+        return next;
+      });
+      setSelectedNodeId((prev) => prev ?? hits[0]);
+    };
+
+    const handleUp = () => {
+      if (boxSelect) {
+        finalizeBoxSelection(boxSelect);
+      }
+      setPan(null);
+      setBoxSelect(null);
+    };
+
+    window.addEventListener('pointermove', handleMove, { passive: true });
+    window.addEventListener('pointerup', handleUp, { passive: true });
+    window.addEventListener('pointercancel', handleUp, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boxSelect, clampView, draft, getSvgPoint, nodes, pan, selectedNodeId]);
 
   const defaultNodeSize = { width: 160, height: 100 };
 
@@ -911,6 +1052,33 @@ export default function WarehouseMapBuilder() {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => zoomBy(1.25)}
+                    title="Zoom out"
+                  >
+                    <MaterialIcon name="zoom_out" size="sm" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => zoomBy(0.8)}
+                    title="Zoom in"
+                  >
+                    <MaterialIcon name="zoom_in" size="sm" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={resetView}
+                    title="Reset view"
+                  >
+                    <MaterialIcon name="center_focus_strong" size="sm" />
+                  </Button>
                   <Button variant="outline" onClick={handleAddNode}>
                     <MaterialIcon name="crop_square" size="sm" className="mr-2" />
                     Add Rectangle
@@ -921,9 +1089,37 @@ export default function WarehouseMapBuilder() {
                 <div className="w-full overflow-auto rounded border bg-background">
                   <svg
                     ref={svgRef}
-                    viewBox={`0 0 ${mapWidth} ${mapHeight}`}
+                    viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
                     className="min-h-[420px] w-[1000px]"
-                    onClick={() => clearSelection()}
+                    onClick={() => {
+                      if (suppressNextClickRef.current) {
+                        suppressNextClickRef.current = false;
+                        return;
+                      }
+                      clearSelection();
+                    }}
+                    onPointerDown={(e) => {
+                      // Background-only: nodes stopPropagation in their handlers.
+                      if (e.altKey) {
+                        e.preventDefault();
+                        suppressNextClickRef.current = true;
+                        setPan({ startClient: { x: e.clientX, y: e.clientY }, startView: view });
+                        return;
+                      }
+                      if (e.shiftKey) {
+                        e.preventDefault();
+                        suppressNextClickRef.current = true;
+                        const p = getSvgPoint(e.clientX, e.clientY);
+                        setBoxSelect({ start: p, current: p });
+                      }
+                    }}
+                    onWheel={(e) => {
+                      // Zoom with Ctrl/trackpad pinch (prevents accidental zoom while scrolling).
+                      if (!e.ctrlKey && !e.metaKey) return;
+                      e.preventDefault();
+                      const factor = e.deltaY < 0 ? 0.9 : 1.1;
+                      zoomAtClient(e.clientX, e.clientY, factor);
+                    }}
                   >
                     <defs>
                       <pattern id="hmv-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
@@ -1038,6 +1234,19 @@ export default function WarehouseMapBuilder() {
                         </g>
                       );
                     })}
+
+                    {boxSelect && (
+                      <rect
+                        x={Math.min(boxSelect.start.x, boxSelect.current.x)}
+                        y={Math.min(boxSelect.start.y, boxSelect.current.y)}
+                        width={Math.abs(boxSelect.current.x - boxSelect.start.x)}
+                        height={Math.abs(boxSelect.current.y - boxSelect.start.y)}
+                        fill="rgba(59,130,246,0.12)"
+                        stroke="rgba(59,130,246,0.7)"
+                        strokeWidth={1}
+                        pointerEvents="none"
+                      />
+                    )}
                   </svg>
                 </div>
               </CardContent>
