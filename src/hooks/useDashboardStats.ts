@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { format } from 'date-fns';
 
 export interface DashboardStats {
   needToInspect: number;
@@ -179,6 +180,8 @@ export function useDashboardStats() {
         .limit(10);
 
       // Fetch incoming shipments (ordered by expected arrival)
+      // Match the Logistics Console "Expected Today" logic.
+      const todayDate = format(new Date(), 'yyyy-MM-dd');
       const { data: shipments, count: shipmentCount } = await (supabase
         .from('shipments') as any)
         .select(`
@@ -187,9 +190,10 @@ export function useDashboardStats() {
         `, { count: 'exact' })
         .eq('tenant_id', profile.tenant_id)
         .eq('shipment_type', 'inbound')
-        .in('status', ['expected', 'in_progress'])
+        .in('inbound_kind', ['expected', 'manifest'])
+        .eq('expected_arrival_date', todayDate)
         .is('deleted_at', null)
-        .order('expected_arrival_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
         .limit(10);
 
       // Fetch repair quotes needing action
