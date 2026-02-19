@@ -143,26 +143,14 @@ export function useWarehouseMaps(warehouseId?: string) {
       throw new Error('Missing warehouse context');
     }
 
-    // Unset any existing default (if any), then set target.
-    const { error: unsetError } = await supabase
-      .from('warehouse_maps')
-      .update({ is_default: false, updated_by: profile.id })
-      .eq('tenant_id', profile.tenant_id)
-      .eq('warehouse_id', warehouseId)
-      .eq('is_default', true);
-
-    if (unsetError) throw unsetError;
-
-    const { data, error } = await supabase
-      .from('warehouse_maps')
-      .update({ is_default: true, updated_by: profile.id })
-      .eq('id', mapId)
-      .select()
-      .single();
+    const { data, error } = await (supabase as any).rpc('rpc_set_default_warehouse_map', {
+      p_warehouse_id: warehouseId,
+      p_map_id: mapId,
+    });
 
     if (error) throw error;
     await fetchMaps();
-    return data;
+    return data as WarehouseMap;
   };
 
   const deleteMap = async (id: string) => {

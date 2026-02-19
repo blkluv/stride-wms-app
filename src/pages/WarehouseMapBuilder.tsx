@@ -247,6 +247,9 @@ export default function WarehouseMapBuilder() {
     }
   };
 
+  const saveDraftRef = useRef(saveDraft);
+  saveDraftRef.current = saveDraft;
+
   // Autosave node changes after 500ms idle.
   useEffect(() => {
     if (!selectedNode || !draft) return;
@@ -413,7 +416,7 @@ export default function WarehouseMapBuilder() {
       setDrag(null);
       // Save immediately on drag end; autosave will also catch any remaining changes.
       window.setTimeout(() => {
-        void saveDraft({ silent: true });
+        void saveDraftRef.current({ silent: true });
       }, 0);
     };
 
