@@ -250,11 +250,30 @@ export default function ManifestScan() {
 
       const { data: item } = await query.maybeSingle();
 
-      const itemId = item?.id || null;
-      const itemCode = item?.item_code || codeCandidate;
+      if (!item?.id) {
+        setLastScan({
+          itemCode: displayCode,
+          result: 'item_not_found',
+          message: 'Item not found in system',
+          isError: true,
+        });
 
-      // Record the scan
-      const result = await recordScan(activeLocationId, itemId || '', itemCode);
+        hapticError();
+        playAudio('error');
+
+        // Flash the screen red
+        document.body.classList.add('error-flash');
+        if (errorFlashRef.current) clearTimeout(errorFlashRef.current);
+        errorFlashRef.current = setTimeout(() => {
+          document.body.classList.remove('error-flash');
+        }, 500);
+        return;
+      }
+
+      const itemCode = item.item_code || codeCandidate;
+
+      // Record the scan (item_id must be a real UUID for the RPC)
+      const result = await recordScan(activeLocationId, item.id, itemCode);
 
       // Update last scan result
       setLastScan({
