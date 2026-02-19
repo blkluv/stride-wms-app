@@ -147,6 +147,10 @@ export interface TenantPreferences {
   show_warehouse_in_location: boolean;
   // Label Customization
   label_config: LabelConfig | null;
+  // Time tracking (ACTIVE)
+  time_tracking_allow_concurrent_tasks: boolean;
+  time_tracking_allow_concurrent_shipments: boolean;
+  time_tracking_allow_concurrent_stocktakes: boolean;
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -180,6 +184,9 @@ export function useTenantPreferences() {
         setPreferences({
           ...(data as unknown as TenantPreferences),
           label_config: mergeLabelConfigWithDefaults((data as any).label_config),
+          time_tracking_allow_concurrent_tasks: (data as any).time_tracking_allow_concurrent_tasks ?? true,
+          time_tracking_allow_concurrent_shipments: (data as any).time_tracking_allow_concurrent_shipments ?? true,
+          time_tracking_allow_concurrent_stocktakes: (data as any).time_tracking_allow_concurrent_stocktakes ?? true,
         });
       } else {
         // Auto-create default preferences if none exist
@@ -190,7 +197,13 @@ export function useTenantPreferences() {
           .single();
 
         if (insertError) throw insertError;
-        setPreferences(newPrefs as unknown as TenantPreferences);
+        setPreferences({
+          ...(newPrefs as unknown as TenantPreferences),
+          label_config: mergeLabelConfigWithDefaults((newPrefs as any).label_config),
+          time_tracking_allow_concurrent_tasks: (newPrefs as any).time_tracking_allow_concurrent_tasks ?? true,
+          time_tracking_allow_concurrent_shipments: (newPrefs as any).time_tracking_allow_concurrent_shipments ?? true,
+          time_tracking_allow_concurrent_stocktakes: (newPrefs as any).time_tracking_allow_concurrent_stocktakes ?? true,
+        });
       }
     } catch (error) {
       console.error('Error fetching tenant preferences:', error);

@@ -48,6 +48,10 @@ import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidati
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
+import { useAuth } from '@/contexts/AuthContext';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 
 const statusLabels: Record<StocktakeStatus, string> = {
   draft: 'Draft',
@@ -58,6 +62,7 @@ const statusLabels: Record<StocktakeStatus, string> = {
 
 export default function Stocktakes() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [statusFilter, setStatusFilter] = useState<StocktakeStatus | 'all'>('all');
   const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,6 +74,10 @@ export default function Stocktakes() {
   } | null>(null);
   const [sopValidationOpen, setSopValidationOpen] = useState(false);
   const [sopBlockers, setSopBlockers] = useState<SOPBlocker[]>([]);
+  const [startSwitchOpen, setStartSwitchOpen] = useState(false);
+  const [startSwitchLoading, setStartSwitchLoading] = useState(false);
+  const [startSwitchStocktakeId, setStartSwitchStocktakeId] = useState<string | null>(null);
+  const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
 
   const { toast } = useToast();
 
@@ -79,7 +88,7 @@ export default function Stocktakes() {
     loading,
     refetch,
     createStocktake,
-    startStocktake,
+    startStocktakeDetailed,
     closeStocktake,
     cancelStocktake,
   } = useStocktakes({
@@ -136,16 +145,38 @@ export default function Stocktakes() {
       }
 
       switch (confirmAction.type) {
-        case 'start':
-          await startStocktake(confirmAction.id);
+        case 'start': {
+          const res = await startStocktakeDetailed(confirmAction.id, { pauseExisting: false });
+          if ((res as any)?.ok === false) {
+            if ((res as any)?.error_code === 'ACTIVE_TIMER_EXISTS') {
+              setStartSwitchStocktakeId(confirmAction.id);
+              setActiveJobLabel(
+                await resolveActiveJobLabel(profile?.tenant_id, (res as any)?.active_job_type, (res as any)?.active_job_id)
+              );
+              setStartSwitchOpen(true);
+              return;
+            }
+            throw new Error((res as any)?.error_message || 'Failed to start stocktake');
+          }
+
+          navigate(`/stocktakes/${confirmAction.id}/scan`);
           break;
+        }
         case 'close':
           await closeStocktake(confirmAction.id);
+          promptResumePausedTask();
           break;
         case 'cancel':
           await cancelStocktake(confirmAction.id);
           break;
       }
+    } catch (err: any) {
+      console.error('[Stocktakes] action failed:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: err?.message || 'Action failed',
+      });
     } finally {
       setConfirmAction(null);
     }
@@ -343,6 +374,12 @@ export default function Stocktakes() {
                         <span className="font-medium">Items:</span> {st.counted_item_count || 0} /{' '}
                         {st.expected_item_count || 0}
                       </div>
+                      <div>
+                        <span className="font-medium">Actual Time:</span>{' '}
+                        {st.duration_minutes != null && st.duration_minutes > 0
+                          ? formatMinutesShort(st.duration_minutes)
+                          : '-'}
+                      </div>
                       {st.closed_at && (
                         <div>
                           <span className="font-medium">Closed:</span>{' '}
@@ -414,6 +451,7 @@ export default function Stocktakes() {
                   <TableHead>Locations</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Items</TableHead>
+                  <TableHead>Actual Time</TableHead>
                   <TableHead>Variance</TableHead>
                   <TableHead>Options</TableHead>
                   <TableHead></TableHead>
@@ -447,6 +485,15 @@ export default function Stocktakes() {
                     <TableCell>{getStatusBadge(st.status)}</TableCell>
                     <TableCell>
                       {st.counted_item_count || 0} / {st.expected_item_count || 0}
+                    </TableCell>
+                    <TableCell>
+                      {st.duration_minutes != null && st.duration_minutes > 0 ? (
+                        <span className="tabular-nums whitespace-nowrap">
+                          {formatMinutesShort(st.duration_minutes)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>{getVarianceBadge(st.variance_count)}</TableCell>
                     <TableCell>
@@ -593,6 +640,59 @@ export default function Stocktakes() {
               {confirmAction?.type === 'start' && 'Start'}
               {confirmAction?.type === 'close' && 'Close'}
               {confirmAction?.type === 'cancel' && 'Cancel Stocktake'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Start stocktake: pause existing job confirmation */}
+      <AlertDialog open={startSwitchOpen} onOpenChange={setStartSwitchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{activeJobLabel ? ` (${activeJobLabel})` : ''}.
+              Do you want to pause it and start this stocktake?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setActiveJobLabel(null);
+                setStartSwitchStocktakeId(null);
+              }}
+              disabled={startSwitchLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!startSwitchStocktakeId) return;
+                setStartSwitchLoading(true);
+                try {
+                  const res = await startStocktakeDetailed(startSwitchStocktakeId, { pauseExisting: true });
+                  if ((res as any)?.ok === false) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to start stocktake',
+                      description: (res as any)?.error_message || 'Failed to start stocktake',
+                    });
+                    return;
+                  }
+
+                  setStartSwitchOpen(false);
+                  setActiveJobLabel(null);
+                  const id = startSwitchStocktakeId;
+                  setStartSwitchStocktakeId(null);
+                  navigate(`/stocktakes/${id}/scan`);
+                } finally {
+                  setStartSwitchLoading(false);
+                }
+              }}
+              disabled={startSwitchLoading}
+            >
+              Pause & Start
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type BuiltinItemColumnKey,
@@ -54,6 +55,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useTasks } from '@/hooks/useTasks';
 import { useJobTimer } from '@/hooks/useJobTimer';
 import { JobTimerWidgetFromState } from '@/components/time/JobTimerWidget';
+import { ServiceTimeAdjustmentDialog } from '@/components/time/ServiceTimeAdjustmentDialog';
 import { format } from 'date-fns';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
@@ -73,6 +75,7 @@ import { queueRepairUnableToCompleteAlert } from '@/lib/alertQueue';
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { updateBillingEventFields } from '@/services/billing';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { timerStartJob } from '@/lib/time/timerClient';
 
 interface TaskDetail {
   id: string;
@@ -226,28 +229,13 @@ export default function TaskDetailPage() {
   const [startSwitchActiveLabel, setStartSwitchActiveLabel] = useState<string | null>(null);
   const [startSwitchLoading, setStartSwitchLoading] = useState(false);
 
-  const resolveActiveJobLabel = useCallback(async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-    if (jobType !== 'task') return `${jobType} job`;
-    try {
-      const { data } = await (supabase.from('tasks') as any)
-        .select('title, task_type')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('id', jobId)
-        .maybeSingle();
-      if (data?.title) return data.title;
-      if (data?.task_type) return `${data.task_type} task`;
-      return 'another task';
-    } catch {
-      return 'another task';
-    }
-  }, [profile?.tenant_id]);
-
   // After completing a job, prompt to resume a paused task (auto-paused by starting another job)
   const [resumePromptOpen, setResumePromptOpen] = useState(false);
   const [pausedResumeTasks, setPausedResumeTasks] = useState<Array<{ id: string; title: string; task_type: string }>>([]);
   const [selectedResumeTaskId, setSelectedResumeTaskId] = useState<string>('');
   const [resumeLoading, setResumeLoading] = useState(false);
+
+  const [adjustTimeOpen, setAdjustTimeOpen] = useState(false);
 
   const loadPausedTasksForResume = useCallback(async (excludeTaskId?: string) => {
     if (!profile?.tenant_id || !profile?.id) return [];
@@ -315,6 +303,7 @@ export default function TaskDetailPage() {
 
   // Only managers and admins can see billing
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager') || hasRole('admin_dev');
+  const canAdjustServiceTime = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
   // Only admins can add credits
   const canAddCredit = hasRole('admin') || hasRole('tenant_admin');
 
@@ -529,7 +518,9 @@ export default function TaskDetailPage() {
       }
 
       if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
-        setStartSwitchActiveLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setStartSwitchActiveLabel(
+          await resolveActiveJobLabel(profile?.tenant_id, result.active_job_type, result.active_job_id),
+        );
         setStartSwitchOpen(true);
         return;
       }
@@ -1325,41 +1316,66 @@ export default function TaskDetailPage() {
               if (!show) return null;
 
               return (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <MaterialIcon name="schedule" size="sm" />
-                      Service Time
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {estimatedMinutes != null && estimatedMinutes > 0 && (
-                        <Badge variant="secondary" className="text-xs">
-                          Est: {formatMinutesShort(estimatedMinutes)}
-                        </Badge>
-                      )}
-                      {actualLaborMinutes != null && actualLaborMinutes > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          Actual: {formatMinutesShort(actualLaborMinutes)}
-                        </Badge>
-                      )}
-                      {actualCycleMinutes != null &&
-                        actualLaborMinutes != null &&
-                        actualCycleMinutes > 0 &&
-                        actualCycleMinutes !== actualLaborMinutes && (
-                          <Badge variant="outline" className="text-xs">
-                            Cycle: {formatMinutesShort(actualCycleMinutes)}
+                <>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <MaterialIcon name="schedule" size="sm" />
+                          Service Time
+                        </CardTitle>
+                        {canAdjustServiceTime && task.status !== 'in_progress' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setAdjustTimeOpen(true)}
+                          >
+                            Adjust
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {estimatedMinutes != null && estimatedMinutes > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            Est: {formatMinutesShort(estimatedMinutes)}
                           </Badge>
                         )}
-                      {task.status === 'in_progress' && !taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
-                        <Badge variant="outline" className="text-xs">
-                          Paused
-                        </Badge>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                        {actualLaborMinutes != null && actualLaborMinutes > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            Actual: {formatMinutesShort(actualLaborMinutes)}
+                          </Badge>
+                        )}
+                        {actualCycleMinutes != null &&
+                          actualLaborMinutes != null &&
+                          actualCycleMinutes > 0 &&
+                          actualCycleMinutes !== actualLaborMinutes && (
+                            <Badge variant="outline" className="text-xs">
+                              Cycle: {formatMinutesShort(actualCycleMinutes)}
+                            </Badge>
+                          )}
+                        {task.status === 'in_progress' && !taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
+                          <Badge variant="outline" className="text-xs">
+                            Paused
+                          </Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <ServiceTimeAdjustmentDialog
+                    open={adjustTimeOpen}
+                    onOpenChange={setAdjustTimeOpen}
+                    jobType="task"
+                    jobId={id}
+                    currentMinutes={actualLaborMinutes ?? null}
+                    onSaved={() => {
+                      fetchTask();
+                    }}
+                  />
+                </>
               );
             })()}
 
@@ -2023,13 +2039,13 @@ export default function TaskDetailPage() {
                 if (!profile?.tenant_id || !selectedResumeTaskId) return;
                 setResumeLoading(true);
                 try {
-                  const { data, error } = await supabase.rpc('rpc_timer_start_job', {
-                    p_job_type: 'task',
-                    p_job_id: selectedResumeTaskId,
-                    p_pause_existing: false,
+                  const result = await timerStartJob({
+                    tenantId: profile.tenant_id,
+                    userId: profile.id,
+                    jobType: 'task',
+                    jobId: selectedResumeTaskId,
+                    pauseExisting: false,
                   });
-                  if (error) throw error;
-                  const result = (data || {}) as any;
                   if (!result.ok) {
                     toast({
                       variant: 'destructive',

@@ -16,6 +16,8 @@ import {
   type ServiceTimeSnapshotV1,
   type ServiceTimeActualSnapshotV1,
 } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 type TimerRpcResult = {
   ok: boolean;
@@ -787,22 +789,15 @@ export function useTasks(filters?: {
       }
     }
 
-    // Start timer interval first (so we don't mark a task in-progress without a timer)
-    const { data: timerStart, error: timerError } = await supabase.rpc('rpc_timer_start_job', {
-      p_job_type: 'task',
-      p_job_id: taskId,
-      p_pause_existing: options?.pauseExisting ?? false,
-    });
-
-    if (timerError) {
-      return {
-        ok: false,
-        error_code: 'RPC_ERROR',
-        error_message: timerError.message || 'Failed to start timer',
-      };
-    }
-
-    const startResult = (timerStart || {}) as TimerRpcResult;
+    // Start timer interval first (so we don't mark a task in-progress without a timer).
+    // Supports offline fallback (queues interval locally and syncs later).
+    const startResult = (await timerStartJob({
+      tenantId: profile.tenant_id,
+      userId: profile.id,
+      jobType: 'task',
+      jobId: taskId,
+      pauseExisting: options?.pauseExisting ?? false,
+    })) as unknown as TimerRpcResult;
     if (!startResult.ok) return startResult;
 
     try {
@@ -823,12 +818,20 @@ export function useTasks(filters?: {
         .eq('id', taskId);
 
       if (updateError) {
+        // If we started the timer offline, allow the workflow to continue even though we
+        // can't persist task status changes yet. Status will update once back online.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          return startResult;
+        }
+
         // Best-effort rollback: end the interval we just started
         try {
-          await supabase.rpc('rpc_timer_end_job', {
-            p_job_type: 'task',
-            p_job_id: taskId,
-            p_reason: 'rollback',
+          await timerEndJob({
+            tenantId: profile.tenant_id,
+            userId: profile.id,
+            jobType: 'task',
+            jobId: taskId,
+            reason: 'rollback',
           });
         } catch {
           // ignore
@@ -913,7 +916,6 @@ export function useTasks(filters?: {
     });
     return false;
   };
-
   // -------------------------------------------------------------------------
   // Estimated Service Time snapshot (for historical reporting)
   // -------------------------------------------------------------------------
@@ -1114,20 +1116,15 @@ export function useTasks(filters?: {
   }): Promise<ServiceTimeActualSnapshotV1 | null> => {
     if (!profile?.tenant_id || !profile?.id) return null;
 
-    const minutesBetweenIso = (startIso: string, endIso: string) => {
-      const start = new Date(startIso).getTime();
-      const end = new Date(endIso).getTime();
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-      return (end - start) / 60000;
-    };
-
     try {
       // End any active interval for THIS user + task (idempotent)
       try {
-        await supabase.rpc('rpc_timer_end_job', {
-          p_job_type: 'task',
-          p_job_id: params.taskId,
-          p_reason: 'complete',
+        await timerEndJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'task',
+          jobId: params.taskId,
+          reason: 'complete',
         });
       } catch (endErr) {
         // Best-effort — still compute from what we have
@@ -1227,15 +1224,6 @@ export function useTasks(filters?: {
 
       // Handle Will Call completion - requires pickup name
       if (taskData.task_type === SPECIAL_TASK_TYPES.WILL_CALL) {
-        if (!pickupName) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'Pickup name is required for Will Call completion',
-          });
-          return false;
-        }
-
         // Update task with pickup info
         const willCallUpdates: any = {
             status: 'completed',
@@ -2108,7 +2096,6 @@ export function useTasks(filters?: {
     createTask,
     updateTask,
     startTaskDetailed,
-    startTask,
     completeTask,
     completeTaskWithServices,
     getTaskServiceLineCount,

@@ -7,6 +7,7 @@ import type { LabelConfig } from '@/hooks/useTenantPreferences';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { StorageInspectionSection } from './StorageInspectionSection';
 // FlagSettingsSection moved to PricingSettingsTab
+import { TimeTrackingSection } from './TimeTrackingSection';
 import { DefaultNotesSection } from './DefaultNotesSection';
 import { ComingSoonSection } from './ComingSoonSection';
 import { ClaimSettingsSection } from './ClaimSettingsSection';
@@ -42,6 +43,7 @@ import {
 const DEFAULT_CARD_ORDER = [
   'space-tracking',
   'storage-inspection',
+  'time-tracking',
   'client-grouped-split',
   'item-display-settings',
   'display-settings',
@@ -80,6 +82,9 @@ export function PreferencesContent() {
     auto_apply_arrival_no_id_flag: true,
     auto_assembly_on_receiving: false,
     auto_repair_on_damage: false,
+    time_tracking_allow_concurrent_tasks: true,
+    time_tracking_allow_concurrent_shipments: true,
+    time_tracking_allow_concurrent_stocktakes: true,
     daily_storage_rate_per_cuft: 0.04,
     sales_tax_rate: 0,
     receiving_charge_minimum: 0,
@@ -100,6 +105,9 @@ export function PreferencesContent() {
         auto_apply_arrival_no_id_flag: preferences.auto_apply_arrival_no_id_flag ?? true,
         auto_assembly_on_receiving: preferences.auto_assembly_on_receiving || false,
         auto_repair_on_damage: preferences.auto_repair_on_damage || false,
+        time_tracking_allow_concurrent_tasks: preferences.time_tracking_allow_concurrent_tasks ?? true,
+        time_tracking_allow_concurrent_shipments: preferences.time_tracking_allow_concurrent_shipments ?? true,
+        time_tracking_allow_concurrent_stocktakes: preferences.time_tracking_allow_concurrent_stocktakes ?? true,
         daily_storage_rate_per_cuft: preferences.daily_storage_rate_per_cuft,
         sales_tax_rate: preferences.sales_tax_rate || 0,
         receiving_charge_minimum: preferences.receiving_charge_minimum || 0,
@@ -150,6 +158,9 @@ export function PreferencesContent() {
       auto_apply_arrival_no_id_flag: formData.auto_apply_arrival_no_id_flag,
       auto_assembly_on_receiving: formData.auto_assembly_on_receiving,
       auto_repair_on_damage: formData.auto_repair_on_damage,
+      time_tracking_allow_concurrent_tasks: formData.time_tracking_allow_concurrent_tasks,
+      time_tracking_allow_concurrent_shipments: formData.time_tracking_allow_concurrent_shipments,
+      time_tracking_allow_concurrent_stocktakes: formData.time_tracking_allow_concurrent_stocktakes,
       daily_storage_rate_per_cuft: formData.daily_storage_rate_per_cuft,
       sales_tax_rate: formData.sales_tax_rate,
       receiving_charge_minimum: formData.receiving_charge_minimum,
@@ -197,6 +208,18 @@ export function PreferencesContent() {
           onShouldAutoApplyArrivalNoIdFlagChange={(value) => setFormData(prev => ({ ...prev, auto_apply_arrival_no_id_flag: value }))}
           onShouldAutoAssemblyChange={(value) => setFormData(prev => ({ ...prev, auto_assembly_on_receiving: value }))}
           onShouldAutoRepairChange={(value) => setFormData(prev => ({ ...prev, auto_repair_on_damage: value }))}
+        />
+      </SortableCard>
+    ),
+    'time-tracking': (
+      <SortableCard id="time-tracking" key="time-tracking">
+        <TimeTrackingSection
+          allowConcurrentTasks={formData.time_tracking_allow_concurrent_tasks}
+          allowConcurrentShipments={formData.time_tracking_allow_concurrent_shipments}
+          allowConcurrentStocktakes={formData.time_tracking_allow_concurrent_stocktakes}
+          onAllowConcurrentTasksChange={(value) => setFormData(prev => ({ ...prev, time_tracking_allow_concurrent_tasks: value }))}
+          onAllowConcurrentShipmentsChange={(value) => setFormData(prev => ({ ...prev, time_tracking_allow_concurrent_shipments: value }))}
+          onAllowConcurrentStocktakesChange={(value) => setFormData(prev => ({ ...prev, time_tracking_allow_concurrent_stocktakes: value }))}
         />
       </SortableCard>
     ),

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useJobTimer, type JobType } from '@/hooks/useJobTimer';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTimeTrackingConcurrencyPrefs } from '@/hooks/useTimeTrackingConcurrencyPrefs';
+import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
@@ -62,6 +65,8 @@ export function JobTimerWidgetFromState(props: {
   className?: string;
 }) {
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const { prefs: concurrencyPrefs } = useTimeTrackingConcurrencyPrefs();
 
   const variant = props.variant ?? 'inline';
   const showControls = props.showControls ?? false;
@@ -72,11 +77,22 @@ export function JobTimerWidgetFromState(props: {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [activeJobTypeLabel, setActiveJobTypeLabel] = useState<string | null>(null);
 
+  const [concurrentOpen, setConcurrentOpen] = useState(false);
+  const [concurrentLoading, setConcurrentLoading] = useState(false);
+  const [concurrentUserNames, setConcurrentUserNames] = useState<string>('');
+  const [concurrentPendingPauseExisting, setConcurrentPendingPauseExisting] = useState<boolean>(false);
+  const [resumeConfirmedConcurrent, setResumeConfirmedConcurrent] = useState<boolean>(false);
+
   // If job changes, close confirm dialog
   useEffect(() => {
     setConfirmOpen(false);
     setConfirmLoading(false);
     setActiveJobTypeLabel(null);
+    setConcurrentOpen(false);
+    setConcurrentLoading(false);
+    setConcurrentUserNames('');
+    setConcurrentPendingPauseExisting(false);
+    setResumeConfirmedConcurrent(false);
   }, [props.jobType, props.jobId]);
 
   const timeLabel = useMemo(() => formatMinutesShort(props.timer.laborMinutes), [props.timer.laborMinutes]);
@@ -103,7 +119,14 @@ export function JobTimerWidgetFromState(props: {
     toast({ title: 'Paused', description: 'Timer paused. Resume when ready.' });
   };
 
-  const handleResume = async (pauseExisting: boolean) => {
+  const allowConcurrentForThisJob = useMemo(() => {
+    if (props.jobType === 'task') return concurrencyPrefs.allowConcurrentTasks;
+    if (props.jobType === 'shipment') return concurrencyPrefs.allowConcurrentShipments;
+    if (props.jobType === 'stocktake') return concurrencyPrefs.allowConcurrentStocktakes;
+    return true;
+  }, [props.jobType, concurrencyPrefs.allowConcurrentTasks, concurrencyPrefs.allowConcurrentShipments, concurrencyPrefs.allowConcurrentStocktakes]);
+
+  const handleResumeStart = async (pauseExisting: boolean) => {
     const res = await props.timer.startOrResume({ pauseExisting });
     if (!res.ok) {
       if (res.error_code === 'ACTIVE_TIMER_EXISTS' && !pauseExisting) {
@@ -115,6 +138,46 @@ export function JobTimerWidgetFromState(props: {
       return;
     }
     toast({ title: 'Resumed', description: pauseExisting ? 'Paused your other job and resumed this one.' : 'Timer resumed.' });
+  };
+
+  const requestResume = async (pauseExisting: boolean, confirmedConcurrent: boolean = false) => {
+    const myUserId = profile?.id;
+    const otherActiveUserIds = myUserId
+      ? props.timer.activeIntervals
+          .filter((i) => !i.ended_at && i.user_id !== myUserId)
+          .map((i) => i.user_id)
+      : [];
+
+    if (!confirmedConcurrent && otherActiveUserIds.length > 0 && !props.timer.isActiveForMe) {
+      if (!allowConcurrentForThisJob) {
+        toast({
+          variant: 'destructive',
+          title: 'Job already in progress',
+          description: 'Another user is already timing this job and concurrent timers are disabled in preferences.',
+        });
+        return;
+      }
+
+      setConcurrentLoading(true);
+      setConcurrentPendingPauseExisting(pauseExisting);
+      try {
+        const { data: users } = await (supabase.from('users') as any)
+          .select('id, first_name, last_name')
+          .in('id', otherActiveUserIds.slice(0, 5));
+        const names = (users || [])
+          .map((u: any) => [u.first_name, u.last_name].filter(Boolean).join(' ').trim())
+          .filter(Boolean);
+        setConcurrentUserNames(names.length > 0 ? names.join(', ') : 'another user');
+      } catch {
+        setConcurrentUserNames('another user');
+      } finally {
+        setConcurrentLoading(false);
+        setConcurrentOpen(true);
+      }
+      return;
+    }
+
+    await handleResumeStart(pauseExisting);
   };
 
   const content = (
@@ -134,13 +197,55 @@ export function JobTimerWidgetFromState(props: {
               Pause
             </Button>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => handleResume(false)} disabled={props.timer.loading}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setResumeConfirmedConcurrent(false);
+                void requestResume(false);
+              }}
+              disabled={props.timer.loading}
+            >
               <MaterialIcon name="play_arrow" size="sm" className="mr-1.5" />
-              Resume
+              {props.timer.isPausedForMe ? 'Resume' : 'Start'}
             </Button>
           )}
         </div>
       )}
+
+      <AlertDialog open={concurrentOpen} onOpenChange={setConcurrentOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Join a job already in progress?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This {getJobTypeLabel(String(props.jobType))} is already being timed by {concurrentUserNames || 'another user'}.
+              Do you want to start your timer too?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={concurrentLoading} onClick={() => setConcurrentUserNames('')}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={concurrentLoading}
+              onClick={async (e) => {
+                e.preventDefault();
+                setConcurrentLoading(true);
+                try {
+                  setResumeConfirmedConcurrent(true);
+                  await requestResume(concurrentPendingPauseExisting, true);
+                  setConcurrentOpen(false);
+                  setConcurrentUserNames('');
+                } finally {
+                  setConcurrentLoading(false);
+                }
+              }}
+            >
+              Start My Timer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
@@ -160,7 +265,7 @@ export function JobTimerWidgetFromState(props: {
                 e.preventDefault();
                 setConfirmLoading(true);
                 try {
-                  await handleResume(true);
+                  await requestResume(true, resumeConfirmedConcurrent);
                   setConfirmOpen(false);
                   setActiveJobTypeLabel(null);
                 } finally {
