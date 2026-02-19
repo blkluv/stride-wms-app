@@ -420,12 +420,10 @@ export default function TaskDetailPage() {
     if (!id || !profile?.id || !profile?.tenant_id) return;
     setActionLoading(true);
     try {
-      const { error } = await (supabase.from('tasks') as any)
-        .update({ status: 'in_progress', assigned_to: profile.id })
-        .eq('id', id);
-      if (error) throw error;
-      toast({ title: 'Task Started' });
-      fetchTask();
+      const ok = await startTaskHook(id);
+      if (ok) {
+        fetchTask();
+      }
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to start task' });
     } finally {

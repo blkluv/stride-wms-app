@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -71,6 +72,25 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     const sw = meta && typeof meta.split_workflow === 'object' ? meta.split_workflow : null;
     return sw as SplitWorkflowMeta | null;
   }, [task.metadata]);
+
+  const originJob = useMemo(() => {
+    const originType = splitMeta?.origin_entity_type;
+    const originId = splitMeta?.origin_entity_id;
+    if (!originType || !originId) return null;
+
+    const path =
+      originType === 'shipment' ? `/shipments/${originId}`
+      : originType === 'task' ? `/tasks/${originId}`
+      : null;
+    if (!path) return null;
+
+    return {
+      typeLabel: originType === 'shipment' ? 'Shipment' : 'Task',
+      id: originId,
+      number: splitMeta?.origin_entity_number || null,
+      path,
+    };
+  }, [splitMeta?.origin_entity_type, splitMeta?.origin_entity_id, splitMeta?.origin_entity_number]);
 
   const parentTaskItem = useMemo(() => {
     const parentId = splitMeta?.parent_item_id;
@@ -234,6 +254,23 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     if (!canApply || typeof leftoverQty !== 'number') return;
     setApplyLoading(true);
     try {
+      const resolvedKeepQty =
+        typeof keepQty === 'number' && Number.isFinite(keepQty)
+          ? keepQty
+          : typeof groupedQty === 'number' && Number.isFinite(groupedQty)
+            ? groupedQty - leftoverQty
+            : null;
+
+      // Explicit confirmation: applying the split updates the parent quantity.
+      const confirmOk = window.confirm(
+        `Confirm split:\n\n` +
+          `Parent label: ${parentItemCode || parentItemId}\n` +
+          `Parent quantity will be set to: ${resolvedKeepQty ?? '(calculated)'}\n` +
+          `New child labels to create: ${leftoverQty}\n\n` +
+          `Continue?`
+      );
+      if (!confirmOk) return;
+
       const { data, error } = await (supabase.rpc as any)('rpc_apply_grouped_item_split_off_leftover', {
         p_parent_item_id: parentItemId,
         p_leftover_qty: leftoverQty,
@@ -459,6 +496,20 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
               </div>
             </div>
           </div>
+
+          {originJob && (
+            <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="min-w-0">
+                <Label className="text-xs text-muted-foreground">Origin job</Label>
+                <div className="text-sm font-medium truncate">
+                  {originJob.typeLabel} {originJob.number || originJob.id}
+                </div>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link to={originJob.path}>Open</Link>
+              </Button>
+            </div>
+          )}
 
           {/* Step 1: Scan parent */}
           <div className="space-y-2">
