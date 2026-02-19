@@ -20,6 +20,13 @@ export default function WarehouseHeatMap() {
   const { hasRole } = usePermissions();
   const canBuild = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
 
+  const formatCuFt = (v: number | null) => {
+    if (v === null || v === undefined) return '—';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    return `${Math.round(n).toLocaleString()} cu ft`;
+  };
+
   const { warehouses } = useWarehouses();
   const warehouse = useMemo(
     () => warehouses.find((w) => w.id === warehouseId) || null,
@@ -232,7 +239,10 @@ export default function WarehouseHeatMap() {
                   </div>
                   {selectedZoneRow && (
                     <div className="text-xs text-muted-foreground">
-                      Zone utilization: {selectedZoneRow.utilization_pct ?? '—'}%
+                      Zone utilization:{' '}
+                      {selectedZoneRow.utilization_pct === null ? '—' : `${Number(selectedZoneRow.utilization_pct).toFixed(0)}%`}
+                      {' • '}
+                      {formatCuFt(selectedZoneRow.used_cu_ft)} used / {formatCuFt(selectedZoneRow.capacity_cu_ft)}
                     </div>
                   )}
                 </div>
@@ -258,8 +268,13 @@ export default function WarehouseHeatMap() {
                         className="flex items-center justify-between rounded border px-3 py-2"
                       >
                         <div className="font-mono text-sm">{loc.location_code}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {loc.utilization_pct === null ? '—' : `${loc.utilization_pct}%`}
+                        <div className="text-right">
+                          <div className="text-sm text-muted-foreground">
+                            {loc.utilization_pct === null ? '—' : `${Number(loc.utilization_pct).toFixed(0)}%`}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {formatCuFt(loc.free_cu_ft)} free / {formatCuFt(loc.capacity_cu_ft)}
+                          </div>
                         </div>
                       </div>
                     ))}
