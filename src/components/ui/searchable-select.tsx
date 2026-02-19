@@ -29,6 +29,8 @@ import {
 export interface SelectOption {
   value: string;
   label: string;
+  /** Optional secondary line (e.g., name/description) */
+  subtitle?: string;
   /** Optional group for categorization */
   group?: string;
 }
@@ -141,6 +143,7 @@ function SearchableSelectInner({
     return options.filter(
       (opt) =>
         opt.label.toLowerCase().includes(lower) ||
+        (opt.subtitle ? opt.subtitle.toLowerCase().includes(lower) : false) ||
         opt.value.toLowerCase().includes(lower)
     );
   }, [options, search]);
@@ -280,7 +283,14 @@ function SearchableSelectInner({
                             value === opt.value ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        <span className="truncate">{opt.label}</span>
+                        <div className="min-w-0">
+                          <div className="truncate">{opt.label}</div>
+                          {opt.subtitle && (
+                            <div className="truncate text-xs text-muted-foreground">
+                              {opt.subtitle}
+                            </div>
+                          )}
+                        </div>
                       </CommandItem>
                     ))}
                   </CommandGroup>
