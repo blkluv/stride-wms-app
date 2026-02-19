@@ -40,6 +40,14 @@ type NodeDraft = {
 
 const UNASSIGNED_ZONE_VALUE = '__unassigned__';
 
+type DragMode = 'move' | 'resize_se';
+type DragState = {
+  nodeId: string;
+  mode: DragMode;
+  startPointer: { x: number; y: number };
+  startNode: { x: number; y: number; width: number; height: number };
+};
+
 export default function WarehouseMapBuilder() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -123,6 +131,8 @@ export default function WarehouseMapBuilder() {
   );
 
   const [draft, setDraft] = useState<NodeDraft | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
 
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
@@ -208,6 +218,7 @@ export default function WarehouseMapBuilder() {
 
   const saveDraft = async ({ silent }: { silent?: boolean } = {}) => {
     if (!selectedNode || !draft) return;
+    if (!isDraftDirty) return;
     try {
       setAutoSaveError(null);
       setAutoSaving(true);
@@ -241,6 +252,7 @@ export default function WarehouseMapBuilder() {
     if (!selectedNode || !draft) return;
     if (!isDraftDirty) return;
     if (autoSaving) return;
+    if (drag) return;
 
     const t = window.setTimeout(() => {
       void saveDraft({ silent: true });
@@ -248,7 +260,7 @@ export default function WarehouseMapBuilder() {
 
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSaving, draft, isDraftDirty, selectedNode?.id]);
+  }, [autoSaving, draft, drag, isDraftDirty, selectedNode?.id]);
 
   const handleSelectNode = (nextNodeId: string | null) => {
     // Best-effort: flush pending edits before switching selections.
@@ -321,6 +333,101 @@ export default function WarehouseMapBuilder() {
   const mapWidth = mapDraft?.width ?? activeMap?.width ?? 2000;
   const mapHeight = mapDraft?.height ?? activeMap?.height ?? 1200;
   const gridSize = mapDraft?.grid_size ?? activeMap?.grid_size ?? 20;
+
+  const getSvgPoint = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  };
+
+  const beginDrag = (e: React.PointerEvent, node: { id: string; label: string | null; zone_id: string | null; x: number; y: number; width: number; height: number }, mode: DragMode) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    handleSelectNode(node.id);
+    setDraft({
+      label: node.label || '',
+      zone_id: node.zone_id,
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+    });
+
+    const startPointer = getSvgPoint(e.clientX, e.clientY);
+    setDrag({
+      nodeId: node.id,
+      mode,
+      startPointer,
+      startNode: { x: node.x, y: node.y, width: node.width, height: node.height },
+    });
+  };
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const snap = (v: number) => Math.round(v / gridSize) * gridSize;
+    const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+
+    const handleMove = (e: PointerEvent) => {
+      const p = getSvgPoint(e.clientX, e.clientY);
+      const dx = p.x - drag.startPointer.x;
+      const dy = p.y - drag.startPointer.y;
+
+      setDraft((d) => {
+        if (!d) return d;
+        if (selectedNodeId !== drag.nodeId) return d;
+
+        if (drag.mode === 'move') {
+          const nextX = snap(drag.startNode.x + dx);
+          const nextY = snap(drag.startNode.y + dy);
+          const maxX = Math.max(0, mapWidth - drag.startNode.width);
+          const maxY = Math.max(0, mapHeight - drag.startNode.height);
+          return {
+            ...d,
+            x: clamp(nextX, 0, maxX),
+            y: clamp(nextY, 0, maxY),
+          };
+        }
+
+        // resize_se
+        const nextW = snap(drag.startNode.width + dx);
+        const nextH = snap(drag.startNode.height + dy);
+        const maxW = Math.max(gridSize, mapWidth - drag.startNode.x);
+        const maxH = Math.max(gridSize, mapHeight - drag.startNode.y);
+        return {
+          ...d,
+          width: clamp(Math.max(nextW, gridSize), gridSize, maxW),
+          height: clamp(Math.max(nextH, gridSize), gridSize, maxH),
+        };
+      });
+    };
+
+    const handleUp = () => {
+      setDrag(null);
+      // Save immediately on drag end; autosave will also catch any remaining changes.
+      window.setTimeout(() => {
+        void saveDraft({ silent: true });
+      }, 0);
+    };
+
+    window.addEventListener('pointermove', handleMove, { passive: true });
+    window.addEventListener('pointerup', handleUp, { passive: true });
+    window.addEventListener('pointercancel', handleUp, { passive: true });
+
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag, gridSize, mapHeight, mapWidth, selectedNodeId]);
 
   return (
     <DashboardLayout>
@@ -531,6 +638,7 @@ export default function WarehouseMapBuilder() {
               <CardContent>
                 <div className="w-full overflow-auto rounded border bg-background">
                   <svg
+                    ref={svgRef}
                     viewBox={`0 0 ${mapWidth} ${mapHeight}`}
                     className="min-h-[420px] w-[1000px]"
                     onClick={() => handleSelectNode(null)}
@@ -549,26 +657,62 @@ export default function WarehouseMapBuilder() {
 
                     {nodes.map((n) => {
                       const isSelected = n.id === selectedNodeId;
-                      const zoneCode = n.zone_id ? zoneById.get(n.zone_id)?.zone_code : null;
-                      const label = (n.label || zoneCode || '').trim();
+                      const renderNode = isSelected && draft
+                        ? {
+                            ...n,
+                            x: draft.x,
+                            y: draft.y,
+                            width: draft.width,
+                            height: draft.height,
+                            zone_id: draft.zone_id,
+                            label: draft.label?.trim() ? draft.label.trim() : null,
+                          }
+                        : n;
+
+                      const zoneCode = renderNode.zone_id ? zoneById.get(renderNode.zone_id)?.zone_code : null;
+                      const label = (renderNode.label || zoneCode || '').trim();
+
+                      const nodeForDrag = {
+                        id: renderNode.id,
+                        label: renderNode.label,
+                        zone_id: renderNode.zone_id,
+                        x: renderNode.x,
+                        y: renderNode.y,
+                        width: renderNode.width,
+                        height: renderNode.height,
+                      };
 
                       return (
                         <g key={n.id} onClick={(e) => e.stopPropagation()}>
                           <rect
-                            x={n.x}
-                            y={n.y}
-                            width={n.width}
-                            height={n.height}
+                            x={renderNode.x}
+                            y={renderNode.y}
+                            width={renderNode.width}
+                            height={renderNode.height}
                             fill={isSelected ? 'rgba(59,130,246,0.12)' : 'rgba(15,23,42,0.03)'}
                             stroke={isSelected ? 'rgba(59,130,246,0.9)' : 'rgba(100,116,139,0.7)'}
                             strokeWidth={isSelected ? 2 : 1}
-                            className={cn('cursor-pointer')}
-                            onClick={() => handleSelectNode(n.id)}
+                            className={cn(isSelected ? 'cursor-move' : 'cursor-pointer')}
+                            onPointerDown={(e) => beginDrag(e, nodeForDrag, 'move')}
                           />
+                          {isSelected && (
+                            <rect
+                              x={renderNode.x + renderNode.width - 12}
+                              y={renderNode.y + renderNode.height - 12}
+                              width={12}
+                              height={12}
+                              rx={2}
+                              fill="rgba(59,130,246,0.9)"
+                              stroke="rgba(255,255,255,0.9)"
+                              strokeWidth={1}
+                              className="cursor-nwse-resize"
+                              onPointerDown={(e) => beginDrag(e, nodeForDrag, 'resize_se')}
+                            />
+                          )}
                           {label && (
                             <text
-                              x={n.x + 8}
-                              y={n.y + 18}
+                              x={renderNode.x + 8}
+                              y={renderNode.y + 18}
                               fontSize="14"
                               fill="rgba(15,23,42,0.75)"
                             >
