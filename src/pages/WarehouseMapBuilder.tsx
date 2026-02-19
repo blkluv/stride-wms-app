@@ -728,8 +728,9 @@ export default function WarehouseMapBuilder() {
   }, [drag, gridSize, mapHeight, mapWidth, selectedNodeId]);
 
   // Background interactions: Alt+drag pan, Shift+drag box-select.
+  const boxSelectActive = !!boxSelect;
   useEffect(() => {
-    if (!pan && !boxSelect) return;
+    if (!pan && !boxSelectActive) return;
 
     const handleMove = (e: PointerEvent) => {
       if (pan) {
@@ -749,7 +750,7 @@ export default function WarehouseMapBuilder() {
         }
       }
 
-      if (boxSelect) {
+      if (boxSelectActive) {
         setBoxSelect((prev) => {
           if (!prev) return prev;
           const p = getSvgPoint(e.clientX, e.clientY);
@@ -790,11 +791,11 @@ export default function WarehouseMapBuilder() {
     };
 
     const handleUp = () => {
-      if (boxSelect) {
-        finalizeBoxSelection(boxSelect);
-      }
       setPan(null);
-      setBoxSelect(null);
+      setBoxSelect((prev) => {
+        if (prev) finalizeBoxSelection(prev);
+        return null;
+      });
     };
 
     window.addEventListener('pointermove', handleMove, { passive: true });
@@ -806,7 +807,7 @@ export default function WarehouseMapBuilder() {
       window.removeEventListener('pointercancel', handleUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boxSelect, clampView, draft, getSvgPoint, nodes, pan, selectedNodeId]);
+  }, [boxSelectActive, draft, mapHeight, mapWidth, nodes, pan, selectedNodeId]);
 
   const defaultNodeSize = { width: 160, height: 100 };
 
