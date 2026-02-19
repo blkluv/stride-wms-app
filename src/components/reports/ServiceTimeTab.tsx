@@ -955,7 +955,7 @@ export function ServiceTimeTab() {
             )}
             {computed.delta != null && (
               <Badge variant="outline" className="tabular-nums">
-                Variance: {computed.delta >= 0 ? '+' : ''}{formatMinutesShort(Math.abs(computed.delta))}
+                Variance: {computed.delta >= 0 ? '+' : '-'}{formatMinutesShort(Math.abs(computed.delta))}
               </Badge>
             )}
           </div>
