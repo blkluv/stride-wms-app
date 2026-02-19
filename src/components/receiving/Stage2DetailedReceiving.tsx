@@ -49,6 +49,7 @@ import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculatio
 import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
 import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { timerEndJob } from '@/lib/time/timerClient';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
@@ -1059,10 +1060,12 @@ export function Stage2DetailedReceiving({
 
       // Stop Stage 2 timer interval (best-effort)
       try {
-        await supabase.rpc('rpc_timer_end_job', {
-          p_job_type: 'shipment',
-          p_job_id: shipmentId,
-          p_reason: 'complete',
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'shipment',
+          jobId: shipmentId,
+          reason: 'complete',
         });
       } catch (timerErr) {
         console.warn('[Stage2] Failed to end timer interval:', timerErr);

@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
 import type { TimerStartResult } from '@/hooks/useJobTimer';
 import { mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 // Type-safe supabase client cast for tables/functions not in generated types
 const db = supabase as any;
@@ -243,14 +244,13 @@ export function useStocktakes(filters?: StocktakeFilters) {
 
     try {
       // Start the timer first (so we count the full workflow from the user's click).
-      const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'stocktake',
-        p_job_id: id,
-        p_pause_existing: options?.pauseExisting ?? false,
+      const timerResult = await timerStartJob({
+        tenantId: profile.tenant_id,
+        userId: profile.id,
+        jobType: 'stocktake',
+        jobId: id,
+        pauseExisting: options?.pauseExisting ?? false,
       });
-      if (timerErr) throw timerErr;
-
-      const timerResult = (timerRes || {}) as TimerStartResult;
       if (timerResult?.ok === false) return timerResult;
 
       // Initialize expected items using RPC
@@ -282,10 +282,12 @@ export function useStocktakes(filters?: StocktakeFilters) {
     } catch (err: any) {
       // Best-effort rollback: don't leave a timer running if we failed to start the stocktake.
       try {
-        await supabase.rpc('rpc_timer_end_job', {
-          p_job_type: 'stocktake',
-          p_job_id: id,
-          p_reason: 'rollback',
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'stocktake',
+          jobId: id,
+          reason: 'rollback',
         });
       } catch {
         // ignore
@@ -330,10 +332,12 @@ export function useStocktakes(filters?: StocktakeFilters) {
 
     // Stop timer interval (best-effort)
     try {
-      await supabase.rpc('rpc_timer_end_job', {
-        p_job_type: 'stocktake',
-        p_job_id: id,
-        p_reason: 'complete',
+      await timerEndJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: 'stocktake',
+        jobId: id,
+        reason: 'complete',
       });
     } catch (timerErr) {
       console.warn('[useStocktakes] Failed to end stocktake timer:', timerErr);
@@ -402,10 +406,12 @@ export function useStocktakes(filters?: StocktakeFilters) {
 
     // Stop timer interval if it was running (best-effort)
     try {
-      await supabase.rpc('rpc_timer_end_job', {
-        p_job_type: 'stocktake',
-        p_job_id: id,
-        p_reason: 'cancel',
+      await timerEndJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: 'stocktake',
+        jobId: id,
+        reason: 'cancel',
       });
     } catch {
       // ignore

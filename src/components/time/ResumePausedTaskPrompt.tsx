@@ -31,6 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { timerStartJob } from '@/lib/time/timerClient';
 
 type PausedTask = { id: string; title: string; task_type: string };
 
@@ -131,18 +132,17 @@ export function ResumePausedTaskPrompt() {
   }, [openPromptIfNeeded]);
 
   const resumeSelected = useCallback(async () => {
-    if (!profile?.tenant_id || !selectedTaskId) return;
+    if (!profile?.tenant_id || !profile?.id || !selectedTaskId) return;
 
     setResumeLoading(true);
     try {
-      const { data, error } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'task',
-        p_job_id: selectedTaskId,
-        p_pause_existing: false,
+      const result = await timerStartJob({
+        tenantId: profile.tenant_id,
+        userId: profile.id,
+        jobType: 'task',
+        jobId: selectedTaskId,
+        pauseExisting: false,
       });
-      if (error) throw error;
-
-      const result = (data || {}) as any;
       if (!result.ok) {
         toast({
           variant: 'destructive',
@@ -169,7 +169,7 @@ export function ResumePausedTaskPrompt() {
     } finally {
       setResumeLoading(false);
     }
-  }, [profile?.tenant_id, selectedTaskId, pausedTasks, toast, navigate]);
+  }, [profile?.tenant_id, profile?.id, selectedTaskId, pausedTasks, toast, navigate]);
 
   return (
     <>

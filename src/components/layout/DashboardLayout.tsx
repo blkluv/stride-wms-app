@@ -24,6 +24,7 @@ import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { ResumePausedTaskPrompt } from '@/components/time/ResumePausedTaskPrompt';
+import { TimerOfflineSyncManager } from '@/components/time/TimerOfflineSyncManager';
 import {
   DndContext,
   closestCenter,
@@ -656,6 +657,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Global (internal) prompt: resume paused task after job switch */}
         <ResumePausedTaskPrompt />
+
+        {/* Offline timer queue + background sync */}
+        <TimerOfflineSyncManager />
       </div>
     </div>
   );

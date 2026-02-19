@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
+import { readOfflineActiveTimer, readOfflineTimerQueue } from '@/lib/time/offlineTimerQueue';
 
 // Allow "plug-in" future job types while preserving autocomplete for core ones.
 export type JobType = 'task' | 'shipment' | 'stocktake' | (string & {});
@@ -47,6 +49,45 @@ export function useJobTimer(jobType: JobType, jobId: string | undefined) {
     setLoading(true);
     setError(null);
     try {
+      // Offline: show whatever we have locally (queued + active offline interval).
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        const queued = readOfflineTimerQueue(profile.tenant_id, profile.id || '');
+        const active = profile.id ? readOfflineActiveTimer(profile.tenant_id, profile.id) : null;
+
+        const offlineRows: JobTimeIntervalRow[] = [];
+        for (const q of queued) {
+          if (q.job_type !== String(jobType) || q.job_id !== jobId) continue;
+          offlineRows.push(q as unknown as JobTimeIntervalRow);
+        }
+        if (active && active.job_type === String(jobType) && active.job_id === jobId) {
+          offlineRows.push({
+            id: active.id,
+            tenant_id: active.tenant_id,
+            job_type: jobType,
+            job_id: jobId,
+            user_id: active.user_id,
+            started_at: active.started_at,
+            ended_at: null,
+            ended_reason: null,
+            created_at: active.started_at,
+          });
+        }
+
+        if (offlineRows.length > 0) {
+          // Merge by id to avoid duplicates if we already have server rows in state.
+          setIntervals((prev) => {
+            const byId = new Map<string, JobTimeIntervalRow>();
+            for (const r of prev) byId.set(r.id, r);
+            for (const r of offlineRows) byId.set(r.id, r);
+            return Array.from(byId.values()).sort(
+              (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+            );
+          });
+        }
+
+        return;
+      }
+
       const { data, error: fetchError } = await (supabase
         .from('job_time_intervals') as any)
         .select('*')
@@ -116,43 +157,81 @@ export function useJobTimer(jobType: JobType, jobId: string | undefined) {
   const startOrResume = useCallback(async (options?: { pauseExisting?: boolean }): Promise<TimerStartResult> => {
     if (!jobId) return { ok: false, error_code: 'MISSING_JOB_ID', error_message: 'Missing job id' };
     try {
-      const { data, error: rpcError } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: jobType,
-        p_job_id: jobId,
-        p_pause_existing: options?.pauseExisting ?? false,
+      const result = await timerStartJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: String(jobType),
+        jobId,
+        pauseExisting: options?.pauseExisting ?? false,
       });
-      if (rpcError) throw rpcError;
 
-      const result = (data || {}) as TimerStartResult;
       if (result.ok) {
-        await fetchIntervals();
+        if ((result as any).offline) {
+          const nowIso = (result as any).offline_started_at || new Date().toISOString();
+          const intervalId = result.started_interval_id || `offline-${Date.now()}`;
+          setIntervals((prev) => {
+            const existing = prev.find((i) => i.id === intervalId);
+            if (existing) return prev;
+            return [
+              ...prev,
+              {
+                id: intervalId,
+                tenant_id: profile?.tenant_id || '',
+                job_type: jobType,
+                job_id: jobId,
+                user_id: profile?.id || '',
+                started_at: nowIso,
+                ended_at: null,
+                ended_reason: null,
+                created_at: nowIso,
+              } as JobTimeIntervalRow,
+            ];
+          });
+        } else {
+          await fetchIntervals();
+        }
       }
       return result;
     } catch (err: any) {
       console.error('[useJobTimer] startOrResume error:', err);
       return { ok: false, error_code: 'RPC_ERROR', error_message: err?.message || 'Failed to start timer' };
     }
-  }, [jobId, jobType, fetchIntervals]);
+  }, [jobId, jobType, fetchIntervals, profile?.tenant_id, profile?.id]);
 
   const end = useCallback(async (reason: 'pause' | 'complete' | 'auto_pause' | string = 'pause') => {
     if (!jobId) return { ok: false, error_code: 'MISSING_JOB_ID', error_message: 'Missing job id' } as TimerStartResult;
     try {
-      const { data, error: rpcError } = await supabase.rpc('rpc_timer_end_job', {
-        p_job_type: jobType,
-        p_job_id: jobId,
-        p_reason: reason,
+      const result = await timerEndJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: String(jobType),
+        jobId,
+        reason,
       });
-      if (rpcError) throw rpcError;
-      const result = (data || {}) as TimerStartResult;
+
       if (result.ok) {
-        await fetchIntervals();
+        if ((result as any).offline) {
+          const nowIso = new Date().toISOString();
+          setIntervals((prev) =>
+            prev.map((i) => {
+              if (i.ended_at) return i;
+              if (i.user_id !== profile?.id) return i;
+              if (i.job_id !== jobId) return i;
+              if (String(i.job_type) !== String(jobType)) return i;
+              return { ...i, ended_at: nowIso, ended_reason: reason };
+            })
+          );
+        } else {
+          await fetchIntervals();
+        }
       }
-      return result;
+
+      return result as any;
     } catch (err: any) {
       console.error('[useJobTimer] end error:', err);
       return { ok: false, error_code: 'RPC_ERROR', error_message: err?.message || 'Failed to end timer' };
     }
-  }, [jobId, jobType, fetchIntervals]);
+  }, [jobId, jobType, fetchIntervals, profile?.tenant_id, profile?.id]);
 
   const pause = useCallback(async () => end('pause'), [end]);
   const complete = useCallback(async () => end('complete'), [end]);

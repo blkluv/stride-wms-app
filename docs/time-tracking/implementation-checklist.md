@@ -41,9 +41,9 @@ Legend:
 
 - [x] **Labor time:** sum of active interval time across users on the job (Q18/Q24) (Phase 1: effectively single-user)
 - [x] **Cycle time:** wall-clock minus paused time (Q17) (Phase 1 implementation: equals labor minutes because pauses create gaps between intervals)
-- [ ] **Multi-user “collaborate mode” UX** (Q19/Q25/Q26/Q27 + Q37/Q38)
-  - [ ] If another user already started the job, prompt to continue / take over (UI)
-  - [ ] Manager/admin toggle to allow/disable collaborate mode per job type
+- [x] **Multi-user “collaborate mode” UX** (Q19/Q25/Q26/Q27 + Q37/Q38)
+  - [x] If another user already started the job, prompt to continue (UI)
+  - [x] Manager/admin toggle to allow/disable collaborate mode per job type (tenant preferences)
 
 ---
 
@@ -96,7 +96,7 @@ Legend:
 
 ## Offline mode
 
-- [ ] Offline mode supported for timer events + completion (Q54/Q55/Q56)
-  - [ ] If offline, allow user to finish job; queue changes locally and sync when online
-  - [ ] Notify user that changes will sync later
+- [x] Offline mode supported for timer events + completion (Q54/Q55/Q56)
+  - [x] If offline, allow user to start/stop timers; queue intervals locally and sync when online
+  - [x] Notify user that changes will sync later (toast + background sync manager)
 

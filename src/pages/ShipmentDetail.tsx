@@ -75,6 +75,7 @@ import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import { ServiceTimeAdjustmentDialog } from '@/components/time/ServiceTimeAdjustmentDialog';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 // ============================================
 // TYPES
@@ -593,13 +594,17 @@ export default function ShipmentDetail() {
         item_count: activeOutboundItems.length,
       });
       // End pull timer interval (best-effort)
-      supabase.rpc('rpc_timer_end_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipment.id,
-        p_reason: 'pull_complete',
-      }).catch(() => undefined);
+      if (profile?.tenant_id && profile?.id) {
+        timerEndJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'shipment',
+          jobId: shipment.id,
+          reason: 'pull_complete',
+        }).catch(() => undefined);
+      }
     }
-  }, [activeOutboundItems.length, allPulled, logShipmentAudit, pullSessionActive, shipment, toast]);
+  }, [activeOutboundItems.length, allPulled, logShipmentAudit, pullSessionActive, shipment, toast, profile?.tenant_id, profile?.id]);
 
   useEffect(() => {
     if (!shipment || shipment.shipment_type !== 'outbound') return;
@@ -614,16 +619,20 @@ export default function ShipmentDetail() {
         item_count: activeOutboundItems.length,
       });
       // End release timer interval (best-effort)
-      supabase.rpc('rpc_timer_end_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipment.id,
-        p_reason: 'release_complete',
-      }).catch(() => undefined);
+      if (profile?.tenant_id && profile?.id) {
+        timerEndJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'shipment',
+          jobId: shipment.id,
+          reason: 'release_complete',
+        }).catch(() => undefined);
+      }
       if (shipment.status !== 'released') {
         updateShipmentStatus('released');
       }
     }
-  }, [activeOutboundItems.length, allReleased, logShipmentAudit, releaseSessionActive, shipment, toast, updateShipmentStatus]);
+  }, [activeOutboundItems.length, allReleased, logShipmentAudit, releaseSessionActive, shipment, toast, updateShipmentStatus, profile?.tenant_id, profile?.id]);
 
   useEffect(() => {
     if (!shipment || shipment.shipment_type !== 'outbound') return;
@@ -1132,14 +1141,13 @@ export default function ShipmentDetail() {
     if (!shipment || !profile?.tenant_id) return false;
 
     try {
-      const { data, error } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipment.id,
-        p_pause_existing: pauseExisting,
+      const res = await timerStartJob({
+        tenantId: profile.tenant_id,
+        userId: profile.id,
+        jobType: 'shipment',
+        jobId: shipment.id,
+        pauseExisting,
       });
-      if (error) throw error;
-
-      const res = (data || {}) as any;
       if (res?.ok === false) {
         if (res.error_code === 'ACTIVE_TIMER_EXISTS' && !pauseExisting) {
           setOutboundTimerPendingMode(mode);
@@ -1373,10 +1381,12 @@ export default function ShipmentDetail() {
         if (profile?.tenant_id) {
           // End any active interval for this shipment first (idempotent)
           try {
-            await supabase.rpc('rpc_timer_end_job', {
-              p_job_type: 'shipment',
-              p_job_id: shipment.id,
-              p_reason: 'complete',
+            await timerEndJob({
+              tenantId: profile.tenant_id,
+              userId: profile.id,
+              jobType: 'shipment',
+              jobId: shipment.id,
+              reason: 'complete',
             });
           } catch {
             // Best-effort

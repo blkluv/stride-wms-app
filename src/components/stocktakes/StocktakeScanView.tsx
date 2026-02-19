@@ -549,7 +549,7 @@ export default function StocktakeScanView() {
               jobType="stocktake"
               jobId={id}
               variant="inline"
-              showControls={false}
+              showControls
             />
             <Button
               variant={viewMode === 'scan' ? 'default' : 'outline'}

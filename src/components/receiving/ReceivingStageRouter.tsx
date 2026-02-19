@@ -33,6 +33,7 @@ import { queueReceivingDiscrepancyAlert, queueShipmentReceivedAlert } from '@/li
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
 import { ShipmentNotesSection } from '@/components/shipments/ShipmentNotesSection';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 interface ShipmentData {
   id: string;
@@ -226,14 +227,13 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
       let timerStarted = false;
 
       // Start Stage 2 timer interval first (prevents "inbound_status=receiving" with no timer)
-      const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipmentId,
-        p_pause_existing: false,
+      const timerResult = await timerStartJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: 'shipment',
+        jobId: shipmentId,
+        pauseExisting: false,
       });
-      if (timerErr) throw timerErr;
-
-      const timerResult = (timerRes || {}) as any;
       if (timerResult?.ok === false) {
         if (timerResult.error_code === 'ACTIVE_TIMER_EXISTS') {
           // Best-effort label
@@ -277,10 +277,12 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
         // Best-effort rollback: end the interval we just started
         if (timerStarted) {
           try {
-            await supabase.rpc('rpc_timer_end_job', {
-              p_job_type: 'shipment',
-              p_job_id: shipmentId,
-              p_reason: 'rollback',
+            await timerEndJob({
+              tenantId: profile?.tenant_id,
+              userId: profile?.id,
+              jobType: 'shipment',
+              jobId: shipmentId,
+              reason: 'rollback',
             });
           } catch {
             // ignore
@@ -1023,13 +1025,13 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               try {
                 let timerStarted = false;
 
-                const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
-                  p_job_type: 'shipment',
-                  p_job_id: shipmentId,
-                  p_pause_existing: true,
+                const timerResult = await timerStartJob({
+                  tenantId: profile?.tenant_id,
+                  userId: profile?.id,
+                  jobType: 'shipment',
+                  jobId: shipmentId,
+                  pauseExisting: true,
                 });
-                if (timerErr) throw timerErr;
-                const timerResult = (timerRes || {}) as any;
                 if (timerResult?.ok === false) {
                   toast({
                     variant: 'destructive',
@@ -1049,10 +1051,12 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   // Best-effort rollback: end the interval we just started
                   if (timerStarted) {
                     try {
-                      await supabase.rpc('rpc_timer_end_job', {
-                        p_job_type: 'shipment',
-                        p_job_id: shipmentId,
-                        p_reason: 'rollback',
+                      await timerEndJob({
+                        tenantId: profile?.tenant_id,
+                        userId: profile?.id,
+                        jobType: 'shipment',
+                        jobId: shipmentId,
+                        reason: 'rollback',
                       });
                     } catch {
                       // ignore
