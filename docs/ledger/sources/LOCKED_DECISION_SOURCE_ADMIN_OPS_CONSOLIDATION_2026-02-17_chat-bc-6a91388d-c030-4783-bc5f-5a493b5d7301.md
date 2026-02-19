@@ -131,3 +131,94 @@ User decision (Email Ops tenant list UX):
 - The table must include a Status column that supports filtering so the operator can quickly view all tenants in a given status (e.g., “pending”, etc.).
 - The table must include a search autocomplete dropdown/select to quickly find a tenant by typing (for large tenant counts).
 
+### QA-2026-02-17-ADMINOPS-024
+User request (status meanings + builder selection):
+- User requests the builder determine which Email Ops statuses matter and what they mean, because the user does not know which statuses are relevant to track.
+
+### QA-2026-02-17-ADMINOPS-025
+User decision (table columns):
+- In the Email Ops tenant table, separate “Status” from “Sender Type” by using two columns (instead of encoding both concepts into a single Status string).
+
+### QA-2026-02-17-ADMINOPS-026
+User decision (Sender Type filter values):
+- Email Ops tenant table “Sender Type” filter values should be:
+  - Platform sender
+  - Custom sender (verified)
+  - Custom sender (pending)
+
+### QA-2026-02-17-ADMINOPS-027
+User decision (Status filter values):
+- Email Ops tenant table Status filter values will be:
+  - Ready
+  - Pending (waiting on tenant DNS)
+  - Action needed (set Reply-To inbox)
+  - Warning (deliverability risk)
+  - Error (misconfigured)
+
+### QA-2026-02-17-ADMINOPS-028
+User decision (status display model):
+- Email Ops tenant table should show multiple issue indicators (e.g., “Pending DNS” and “Missing Reply-To”) when applicable.
+- Also compute and display a single “overall status” as the worst/most severe of the applicable issues for sorting/filtering.
+
+### QA-2026-02-17-ADMINOPS-029
+User decision (issue badge scope):
+- Email Ops tenant table should show issue badges for any issues that would prevent a tenant from successfully setting up email.
+
+### QA-2026-02-17-ADMINOPS-030
+User decision (warnings as badges):
+- Show non-blocking warnings (e.g., deliverability risk like DKIM/SPF incomplete) as badges too.
+- Warnings must be visually distinct (yellow) and must not count as “blocked”.
+
+### QA-2026-02-17-ADMINOPS-031
+User decision (warning badge list v1):
+- Warning badges (deliverability risks) will include:
+  - DKIM not verified
+  - SPF not verified
+- User question: whether those are the only deliverability risks (builder to advise; follow-up decision if expanding the warning list).
+
+### QA-2026-02-17-ADMINOPS-032
+User decision (add DMARC warning):
+- Add DMARC as a deliverability warning badge in Email Ops (recommended), even if it requires adding a new check/field.
+
+### QA-2026-02-17-ADMINOPS-033
+User decision (DMARC warning criteria + badge labels):
+- DMARC warning should trigger for both:
+  - DMARC missing (no `_dmarc.<domain>` record found)
+  - DMARC monitoring-only (record exists but `p=none`)
+- DMARC warning should show clearer badge text as two possible badges:
+  - “DMARC missing” (higher importance)
+  - “DMARC monitoring only (p=none)” (lower importance)
+
+### QA-2026-02-17-ADMINOPS-034
+User decision (when to show warnings + tenant UI toggle):
+- Only show DKIM/SPF/DMARC warnings if the tenant has opted to use their own email/domain (not the app-provided/platform sender).
+- Add a simple checkbox/toggle in tenant email settings (e.g., “Use my own company email/domain”):
+  - When checked: show the custom domain setup fields (DNS instructions + verification).
+  - When unchecked: hide custom domain fields and show only platform sender info (their platform-created From address) plus the Reply-To/inbound address fields.
+
+### QA-2026-02-17-ADMINOPS-035
+User decision (toggle label):
+- Use toggle label option 1: “Send emails from my company domain”.
+
+### QA-2026-02-17-ADMINOPS-036
+User requirement/clarification (switching back to platform sender):
+- If a tenant starts the custom domain setup and then unchecks the toggle (switches back to platform sender), the app should automatically use the platform sender mode.
+- Once they set their Reply-To/inbound address, replies should route to that address (no additional setup steps required for the tenant beyond saving the field).
+
+### QA-2026-02-17-ADMINOPS-037
+User decision (clearing custom setup on toggle off):
+- If the tenant unchecks the toggle (switches back to platform sender), clear the custom-domain setup fields they had entered (rather than keeping them hidden).
+
+### QA-2026-02-17-ADMINOPS-038
+User decision (confirmation prompt on toggle off):
+- When the tenant toggles off “Send emails from my company domain”, show a confirmation prompt explaining that custom-domain setup fields will be cleared.
+
+### QA-2026-02-17-ADMINOPS-039
+User decision (cleanup Resend domain registration on cancel):
+- If a tenant starts custom domain setup and we registered the domain with Resend, then the tenant switches back to platform sender, we should remove/cleanup the domain registration in Resend as well (not just stop using it).
+
+### QA-2026-02-17-ADMINOPS-040
+User decision (cleanup failures do not block):
+- If Resend cleanup/delete fails (API/network error), the tenant must still be able to switch back to platform sender immediately.
+- Cleanup is best-effort; failures should be logged and retried later (or surfaced in Email Ops).
+
