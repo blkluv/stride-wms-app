@@ -58,6 +58,7 @@ export default function WarehouseMapBuilder() {
     maps,
     loading: mapsLoading,
     createMap,
+    updateMap,
     setDefaultMap,
     getDefaultMap,
   } = useWarehouseMaps(warehouseId);
@@ -70,6 +71,26 @@ export default function WarehouseMapBuilder() {
     }
     return getDefaultMap();
   }, [getDefaultMap, maps, selectedMapIdParam]);
+
+  const [mapDraft, setMapDraft] = useState<{ width: number; height: number; grid_size: number } | null>(null);
+  const [mapSaving, setMapSaving] = useState(false);
+  const [mapSaveError, setMapSaveError] = useState<string | null>(null);
+  const [mapLastSavedAt, setMapLastSavedAt] = useState<number | null>(null);
+  const mapSaveErrorToastRef = useRef(false);
+
+  useEffect(() => {
+    if (!activeMap) {
+      setMapDraft(null);
+      return;
+    }
+    setMapDraft({
+      width: activeMap.width ?? 2000,
+      height: activeMap.height ?? 1200,
+      grid_size: activeMap.grid_size ?? 20,
+    });
+    setMapSaveError(null);
+    mapSaveErrorToastRef.current = false;
+  }, [activeMap?.id]);
 
   // Self-heal: if maps exist but none is marked default, pick the most recently updated.
   useEffect(() => {
@@ -248,9 +269,58 @@ export default function WarehouseMapBuilder() {
     }
   };
 
-  const mapWidth = activeMap?.width ?? 2000;
-  const mapHeight = activeMap?.height ?? 1200;
-  const gridSize = activeMap?.grid_size ?? 20;
+  const isMapDraftDirty = useMemo(() => {
+    if (!activeMap || !mapDraft) return false;
+    const width = activeMap.width ?? 2000;
+    const height = activeMap.height ?? 1200;
+    const grid = activeMap.grid_size ?? 20;
+    return mapDraft.width !== width || mapDraft.height !== height || mapDraft.grid_size !== grid;
+  }, [activeMap, mapDraft]);
+
+  const saveMapDraft = async ({ silent }: { silent?: boolean } = {}) => {
+    if (!activeMap || !mapDraft) return;
+    try {
+      setMapSaveError(null);
+      setMapSaving(true);
+      await updateMap(activeMap.id, {
+        width: mapDraft.width,
+        height: mapDraft.height,
+        grid_size: mapDraft.grid_size,
+      });
+      setMapLastSavedAt(Date.now());
+      mapSaveErrorToastRef.current = false;
+      if (!silent) {
+        toast({ title: 'Saved', description: 'Map settings updated.' });
+      }
+    } catch (err) {
+      console.error(err);
+      setMapSaveError('Autosave failed');
+      if (!silent || !mapSaveErrorToastRef.current) {
+        mapSaveErrorToastRef.current = true;
+        toast({ variant: 'destructive', title: 'Save failed', description: 'Failed to update map settings.' });
+      }
+    } finally {
+      setMapSaving(false);
+    }
+  };
+
+  // Autosave map settings after 500ms idle.
+  useEffect(() => {
+    if (!activeMap || !mapDraft) return;
+    if (!isMapDraftDirty) return;
+    if (mapSaving) return;
+
+    const t = window.setTimeout(() => {
+      void saveMapDraft({ silent: true });
+    }, 500);
+
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMap?.id, isMapDraftDirty, mapDraft, mapSaving]);
+
+  const mapWidth = mapDraft?.width ?? activeMap?.width ?? 2000;
+  const mapHeight = mapDraft?.height ?? activeMap?.height ?? 1200;
+  const gridSize = mapDraft?.grid_size ?? activeMap?.grid_size ?? 20;
 
   return (
     <DashboardLayout>
@@ -295,8 +365,41 @@ export default function WarehouseMapBuilder() {
           <CardHeader className="flex flex-row items-start justify-between gap-3">
             <div>
               <CardTitle>Maps</CardTitle>
-              <CardDescription>
-                {mapsLoading ? 'Loading…' : `${maps.length} map${maps.length === 1 ? '' : 's'}`}
+              <CardDescription className="flex items-center gap-2">
+                <span>
+                  {mapsLoading ? 'Loading…' : `${maps.length} map${maps.length === 1 ? '' : 's'}`}
+                </span>
+                {activeMap && (
+                  <span
+                    className={cn(
+                      'text-xs flex items-center gap-1.5',
+                      mapSaveError ? 'text-destructive' : 'text-muted-foreground'
+                    )}
+                    title={mapSaveError || undefined}
+                  >
+                    {mapSaving ? (
+                      <>
+                        <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : mapSaveError ? (
+                      <>
+                        <MaterialIcon name="error" size="sm" />
+                        Autosave failed
+                      </>
+                    ) : isMapDraftDirty ? (
+                      <>
+                        <MaterialIcon name="edit" size="sm" />
+                        Unsaved
+                      </>
+                    ) : mapLastSavedAt ? (
+                      <>
+                        <MaterialIcon name="check_circle" size="sm" />
+                        Saved
+                      </>
+                    ) : null}
+                  </span>
+                )}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -330,6 +433,62 @@ export default function WarehouseMapBuilder() {
               )}
             </div>
           </CardHeader>
+          {activeMap && mapDraft && (
+            <CardContent className="pt-0">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Width</Label>
+                  <Input
+                    type="number"
+                    min={200}
+                    value={mapDraft.width}
+                    onChange={(e) =>
+                      setMapDraft((d) =>
+                        d ? { ...d, width: Math.max(Number(e.target.value) || 0, 200) } : d
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Height</Label>
+                  <Input
+                    type="number"
+                    min={200}
+                    value={mapDraft.height}
+                    onChange={(e) =>
+                      setMapDraft((d) =>
+                        d ? { ...d, height: Math.max(Number(e.target.value) || 0, 200) } : d
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Grid</Label>
+                  <Input
+                    type="number"
+                    min={5}
+                    value={mapDraft.grid_size}
+                    onChange={(e) =>
+                      setMapDraft((d) =>
+                        d ? { ...d, grid_size: Math.max(Number(e.target.value) || 0, 5) } : d
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!isMapDraftDirty || mapSaving}
+                  onClick={() => void saveMapDraft()}
+                >
+                  Save now
+                </Button>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* Empty state */}
