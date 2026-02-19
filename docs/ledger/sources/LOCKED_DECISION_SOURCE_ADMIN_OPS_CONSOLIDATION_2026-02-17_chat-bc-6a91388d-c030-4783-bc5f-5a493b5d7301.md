@@ -231,3 +231,8 @@ User decision (cleanup job operation):
 - The Resend cleanup job should run fully automatically (nightly) without requiring an admin-only manual “run now” button.
 - Email Ops may include logs/status for cleanup attempts.
 
+### QA-2026-02-17-ADMINOPS-043
+User decision (Cleanup Logs panel):
+- Add a Cleanup Logs panel in the admin_dev console page (`/admin/saas-ops`) under Email Ops.
+- Show the Cleanup Logs panel by default (simple view of recent cleanup events).
+
