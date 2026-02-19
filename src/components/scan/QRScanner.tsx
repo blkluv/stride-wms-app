@@ -1,10 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { hapticMedium } from "@/lib/haptics";
+import { hapticSelection } from "@/lib/haptics";
+
+/** Barcode formats to support across both native and fallback scanners */
+const SUPPORTED_FORMATS: Html5QrcodeSupportedFormats[] = [
+  Html5QrcodeSupportedFormats.QR_CODE,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.DATA_MATRIX,
+  Html5QrcodeSupportedFormats.PDF_417,
+];
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -138,7 +152,8 @@ export function QRScanner({ onScan, onError, scanning = true, className }: QRSca
     if (decodedText !== lastScannedRef.current || now - lastScanTimeRef.current > 1500) {
       lastScannedRef.current = decodedText;
       lastScanTimeRef.current = now;
-      hapticMedium(); // Tactile feedback on successful scan
+      // Very short tick so we don't double-buzz (pages often do their own success/error haptics)
+      hapticSelection();
       onScan(decodedText);
     }
   }, [onScan]);
@@ -187,13 +202,16 @@ export function QRScanner({ onScan, onError, scanning = true, className }: QRSca
     await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
-      const html5Qr = new Html5Qrcode(scannerContainerId.current);
+      const html5Qr = new Html5Qrcode(scannerContainerId.current, {
+        formatsToSupport: SUPPORTED_FORMATS,
+        verbose: false,
+      });
       html5QrRef.current = html5Qr;
 
       await html5Qr.start(
         { facingMode: "environment" },
         {
-          fps: 10,
+          fps: 15,
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1,
         },
@@ -273,11 +291,30 @@ export function QRScanner({ onScan, onError, scanning = true, className }: QRSca
       await video.play();
 
       try {
-        detectorRef.current = new BarcodeDetector({ formats: ["qr_code"] });
+        // Support QR codes and common 1D barcode formats used on warehouse labels
+        detectorRef.current = new BarcodeDetector({
+          formats: [
+            "qr_code",
+            "code_128",
+            "code_39",
+            "code_93",
+            "ean_13",
+            "ean_8",
+            "upc_a",
+            "upc_e",
+            "data_matrix",
+            "pdf417",
+          ],
+        });
       } catch (err) {
-        detectorRef.current = null;
-        const { name, message, raw } = formatError(err);
-        console.error("[QRScanner] Failed to init BarcodeDetector", { name, message, raw });
+        // Some browsers may not support all formats; retry with just QR
+        try {
+          detectorRef.current = new BarcodeDetector({ formats: ["qr_code"] });
+        } catch (fallbackErr) {
+          detectorRef.current = null;
+          const { name, message, raw } = formatError(fallbackErr);
+          console.error("[QRScanner] Failed to init BarcodeDetector", { name, message, raw });
+        }
       }
 
       if (!detectorRef.current) {

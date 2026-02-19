@@ -4,13 +4,14 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import type { 
-  DocumentContext, 
+import { logActivity, type ActivityEntityType } from '@/lib/activity/logActivity';
+import type {
+  DocumentContext,
   DocumentContextType,
-  ScanOutput, 
-  OcrResult, 
+  ScanOutput,
+  OcrResult,
   UploadProgress,
-  Document 
+  Document,
 } from './types';
 
 export interface UploadOptions {
@@ -19,12 +20,21 @@ export interface UploadOptions {
   notes?: string;
   isSensitive?: boolean;
   enableOcr?: boolean;
+  /** Overrides stored mime_type + storage contentType (defaults to application/pdf) */
+  mimeType?: string;
 }
 
 export interface UploadResult {
   documentId: string;
   storageKey: string;
   publicUrl?: string;
+}
+
+function toActivityEntityType(contextType: DocumentContextType): ActivityEntityType | null {
+  if (contextType === 'item') return 'item';
+  if (contextType === 'shipment') return 'shipment';
+  if (contextType === 'task') return 'task';
+  return null;
 }
 
 /**
@@ -55,6 +65,8 @@ function parseContext(context: DocumentContext): {
   switch (context.type) {
     case 'shipment':
       return { type: 'shipment', id: context.shipmentId };
+    case 'quote':
+      return { type: 'quote', id: context.quoteId };
     case 'employee':
       return { type: 'employee', id: context.employeeId };
     case 'delivery':
@@ -120,29 +132,31 @@ export async function uploadDocument(
   const fileName = options.fileName || `scan_${Date.now()}.pdf`;
   const storageKey = generateStoragePath(tenantId, contextType, contextId, fileName);
   
-  // Get the PDF blob
-  let pdfBlob: Blob;
+  const mimeType = options.mimeType || 'application/pdf';
+
+  // Get the file blob (PDF for scans, but may be other types for uploads)
+  let fileBlob: Blob;
   if (scanOutput.pdfBlob) {
-    pdfBlob = scanOutput.pdfBlob;
+    fileBlob = scanOutput.pdfBlob;
   } else if (scanOutput.pdfUri) {
     // Fetch blob from URI
     const response = await fetch(scanOutput.pdfUri);
-    pdfBlob = await response.blob();
+    fileBlob = await response.blob();
   } else {
-    throw new Error('No PDF data available');
+    throw new Error('No file data available');
   }
   
   // Upload to storage
   onProgress?.({ 
     stage: 'uploading', 
     percentage: 25,
-    totalBytes: pdfBlob.size 
+    totalBytes: fileBlob.size 
   });
   
   const { error: uploadError } = await supabase.storage
     .from('documents-private')
-    .upload(storageKey, pdfBlob, {
-      contentType: 'application/pdf',
+    .upload(storageKey, fileBlob, {
+      contentType: mimeType,
       upsert: false,
     });
   
@@ -160,6 +174,9 @@ export async function uploadDocument(
     switch (context.type) {
       case 'shipment':
         label = context.vendor ? `Shipment - ${context.vendor}` : 'Shipment Document';
+        break;
+      case 'quote':
+        label = context.quoteNumber ? `Quote ${context.quoteNumber}` : 'Quote Document';
         break;
       case 'employee':
         label = context.employeeName ? `${context.employeeName} Document` : 'Employee Document';
@@ -185,9 +202,9 @@ export async function uploadDocument(
     context_id: contextId,
     file_name: fileName,
     storage_key: storageKey,
-    file_size: pdfBlob.size,
+    file_size: fileBlob.size,
     page_count: scanOutput.pageCount,
-    mime_type: 'application/pdf',
+    mime_type: mimeType,
     ocr_text: ocrResult?.fullText || null,
     ocr_pages: ocrResult?.pages ? JSON.parse(JSON.stringify(ocrResult.pages)) : null,
     ocr_status: ocrResult ? 'completed' : 'skipped',
@@ -229,6 +246,57 @@ export async function uploadDocument(
   }
   
   onProgress?.({ stage: 'complete', percentage: 100 });
+
+  // Activity log (best-effort). This is intentionally non-blocking and should
+  // never break uploads if activity tables / RLS aren't configured.
+  try {
+    const docId = createData.document.id as string;
+    if (contextType === 'item' && contextId) {
+      void logActivity({
+        entityType: 'item',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'item_document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    } else if (contextType === 'shipment' && contextId) {
+      void logActivity({
+        entityType: 'shipment',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    } else if (contextType === 'task' && contextId) {
+      void logActivity({
+        entityType: 'task',
+        tenantId,
+        entityId: contextId,
+        actorUserId: user.id,
+        eventType: 'document_added',
+        eventLabel: `Document uploaded: ${label || fileName}`,
+        details: {
+          document_id: docId,
+          mime_type: mimeType,
+          document: { storage_key: storageKey, file_name: fileName, label: label || null },
+        },
+      });
+    }
+  } catch {
+    // ignore
+  }
   
   return {
     documentId: createData.document.id,
@@ -270,6 +338,28 @@ export async function getDocumentSignedUrl(
  * Delete a document (soft delete)
  */
 export async function deleteDocument(documentId: string): Promise<void> {
+  // Fetch document metadata for activity logging
+  let doc: {
+    id: string;
+    tenant_id: string;
+    context_type: string;
+    context_id: string | null;
+    file_name: string;
+    label: string | null;
+    storage_key: string;
+  } | null = null;
+
+  try {
+    const { data } = await supabase
+      .from('documents')
+      .select('id, tenant_id, context_type, context_id, file_name, label, storage_key')
+      .eq('id', documentId)
+      .single();
+    doc = (data as any) || null;
+  } catch {
+    // Continue; deletion still proceeds
+  }
+
   const { error } = await supabase
     .from('documents')
     .update({ deleted_at: new Date().toISOString() })
@@ -277,6 +367,35 @@ export async function deleteDocument(documentId: string): Promise<void> {
   
   if (error) {
     throw new Error(`Failed to delete document: ${error.message}`);
+  }
+
+  // Activity logging for supported entity types
+  try {
+    if (!doc?.tenant_id || !doc.context_id) return;
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id;
+    if (!userId) return;
+
+    const contextType = doc.context_type as DocumentContextType;
+    const entityType = toActivityEntityType(contextType);
+    if (!entityType) return;
+
+    void logActivity({
+      entityType,
+      tenantId: doc.tenant_id,
+      entityId: doc.context_id,
+      actorUserId: userId,
+      eventType: 'document_removed',
+      eventLabel: `Document removed: ${doc.file_name}`,
+      details: {
+        document_id: doc.id,
+        file_name: doc.file_name,
+        label: doc.label,
+        storage_key: doc.storage_key,
+      },
+    });
+  } catch {
+    // Ignore activity logging errors
   }
 }
 

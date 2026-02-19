@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Database } from '@/integrations/supabase/types';
 import { PromptLevel } from '@/types/guidedPrompts';
+import { syncStripeSubscriptionSeatsBestEffort } from '@/lib/saas/syncStripeSeats';
 
 type UserRow = Database['public']['Tables']['users']['Row'];
 type RoleRow = Database['public']['Tables']['roles']['Row'];
@@ -124,6 +125,11 @@ export function useUsers() {
       .eq('id', userId);
 
     if (error) throw error;
+
+    // If access state changes (status), re-sync seats best-effort.
+    if (typeof data.status === 'string') {
+      void syncStripeSubscriptionSeatsBestEffort("use_users_update_user_status");
+    }
   };
 
   const updatePromptLevel = async (userId: string, promptLevel: PromptLevel) => {
@@ -178,6 +184,8 @@ export function useUsers() {
       .eq('id', userId);
 
     if (error) throw error;
+
+    void syncStripeSubscriptionSeatsBestEffort("use_users_revoke_access");
   };
 
   const deleteUser = async (userId: string) => {
@@ -188,6 +196,8 @@ export function useUsers() {
       .eq('id', userId);
 
     if (error) throw error;
+
+    void syncStripeSubscriptionSeatsBestEffort("use_users_delete_user");
   };
 
   const assignRole = async (userId: string, roleId: string) => {
@@ -202,6 +212,8 @@ export function useUsers() {
       });
 
     if (error) throw error;
+
+    void syncStripeSubscriptionSeatsBestEffort("use_users_assign_role");
   };
 
   const removeRole = async (userId: string, roleId: string) => {
@@ -212,6 +224,8 @@ export function useUsers() {
       .eq('role_id', roleId);
 
     if (error) throw error;
+
+    void syncStripeSubscriptionSeatsBestEffort("use_users_remove_role");
   };
 
   return {

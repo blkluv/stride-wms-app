@@ -554,6 +554,9 @@ export function toRateLookupResult(r: EffectiveRateResult): {
   serviceName: string;
   serviceCode: string;
   billingUnit: string;
+  // New: return raw unit + service time for estimates
+  unit?: string;
+  serviceTimeMinutes?: number;
   alertRule: string;
   hasError: boolean;
   errorMessage?: string;
@@ -563,6 +566,8 @@ export function toRateLookupResult(r: EffectiveRateResult): {
     serviceName: r.charge_name || r.charge_code,
     serviceCode: r.charge_code,
     billingUnit: mapUnitToLegacy(r.unit),
+    unit: r.unit,
+    serviceTimeMinutes: r.service_time_minutes ?? 0,
     alertRule: r.alert_rule,
     hasError: r.has_error,
     errorMessage: r.error_message || undefined,

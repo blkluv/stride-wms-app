@@ -22,6 +22,10 @@ import { useDocuments } from '@/hooks/useDocuments';
 import { useToast } from '@/hooks/use-toast';
 import type { DocumentContextType, Document } from '@/lib/scanner/types';
 import { format } from 'date-fns';
+import { DocumentThumbnail } from './DocumentThumbnail';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { logActivity } from '@/lib/activity/logActivity';
 
 interface DocumentListProps {
   contextType: DocumentContextType;
@@ -32,6 +36,8 @@ interface DocumentListProps {
   onViewDocument?: (document: Document) => void;
   /** Change this value to trigger a refetch of documents */
   refetchKey?: number;
+  /** If false, hide delete actions (e.g., client users). */
+  canDelete?: boolean;
 }
 
 export function DocumentList({
@@ -42,12 +48,14 @@ export function DocumentList({
   maxItems,
   onViewDocument,
   refetchKey,
+  canDelete = true,
 }: DocumentListProps) {
-  const { documents, loading, error, getSignedUrl, deleteDocument, refetch } = useDocuments({
+  const { documents, loading, error, deleteDocument, refetch } = useDocuments({
     contextType,
     contextId,
   });
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   // Refetch when refetchKey changes
   useEffect(() => {
@@ -57,9 +65,7 @@ export function DocumentList({
   }, [refetchKey, refetch]);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [deletingDoc, setDeletingDoc] = useState<Document | null>(null);
-  const [loadingUrl, setLoadingUrl] = useState<string | null>(null);
 
   const filteredDocs = documents.filter(doc => {
     if (!searchQuery) return true;
@@ -73,64 +79,41 @@ export function DocumentList({
 
   const displayDocs = maxItems ? filteredDocs.slice(0, maxItems) : filteredDocs;
 
-  const handleView = async (doc: Document) => {
-    if (onViewDocument) {
-      onViewDocument(doc);
-      return;
-    }
-
-    // Open a blank window immediately (in the trusted click context)
-    // This prevents popup blockers from blocking the window
-    const newWindow = window.open('about:blank', '_blank');
-
-    setLoadingUrl(doc.id);
-    try {
-      const url = await getSignedUrl(doc.storage_key);
-      if (newWindow) {
-        newWindow.location.href = url;
-      } else {
-        // Fallback if popup was blocked - navigate in same tab
-        window.location.href = url;
-      }
-    } catch (err) {
-      // Close the blank window if there was an error
-      if (newWindow) {
-        newWindow.close();
-      }
-      toast({
-        title: 'Error',
-        description: 'Failed to open document',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoadingUrl(null);
-    }
-  };
-
-  const handleDownload = async (doc: Document) => {
-    setLoadingUrl(doc.id);
-    try {
-      const url = await getSignedUrl(doc.storage_key);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = doc.file_name;
-      link.click();
-    } catch (err) {
-      toast({
-        title: 'Error',
-        description: 'Failed to download document',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoadingUrl(null);
-    }
-  };
-
   const handleDelete = async () => {
     if (!deletingDoc) return;
     
     try {
       await deleteDocument(deletingDoc.id);
+
+      // Activity log (best-effort) for supported entity types
+      if (profile?.tenant_id && profile?.id && contextId) {
+        const entityType =
+          contextType === 'item' ? 'item'
+          : contextType === 'shipment' ? 'shipment'
+          : contextType === 'task' ? 'task'
+          : null;
+
+        if (entityType) {
+          void logActivity({
+            entityType,
+            tenantId: profile.tenant_id,
+            entityId: contextId,
+            actorUserId: profile.id,
+            eventType: entityType === 'item' ? 'item_document_removed' : 'document_removed',
+            eventLabel: `Document removed: ${deletingDoc.label || deletingDoc.file_name}`,
+            details: {
+              document_id: deletingDoc.id,
+              mime_type: deletingDoc.mime_type,
+              document: {
+                storage_key: deletingDoc.storage_key,
+                file_name: deletingDoc.file_name,
+                label: deletingDoc.label || null,
+              },
+            },
+          });
+        }
+      }
+
       toast({
         title: 'Document deleted',
         description: 'The document has been removed.',
@@ -203,65 +186,20 @@ export function DocumentList({
         </div>
       )}
 
-      <div className={compact ? 'space-y-2' : 'space-y-3'}>
+      <div className={cn(
+        'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2',
+        compact ? 'opacity-95' : undefined
+      )}>
         {displayDocs.map((doc) => (
-          <div
+          <DocumentThumbnail
             key={doc.id}
-            className={`flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors ${
-              compact ? 'py-2' : ''
-            }`}
-          >
-            <div className="flex-shrink-0">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <MaterialIcon name="description" size="md" className="text-primary" />
-              </div>
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-medium truncate">{doc.label || doc.file_name}</p>
-                {doc.is_sensitive && (
-                  <Badge variant="destructive" className="text-xs">Sensitive</Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{format(new Date(doc.created_at), 'MMM d, yyyy')}</span>
-                {doc.page_count > 1 && <span>• {doc.page_count} pages</span>}
-                {getOcrStatusBadge(doc.ocr_status)}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleView(doc)}
-                disabled={loadingUrl === doc.id}
-              >
-                {loadingUrl === doc.id ? (
-                  <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
-                ) : (
-                  <MaterialIcon name="visibility" size="sm" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDownload(doc)}
-                disabled={loadingUrl === doc.id}
-              >
-                <MaterialIcon name="download" size="sm" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setDeletingDoc(doc)}
-                className="text-destructive hover:text-destructive"
-              >
-                <MaterialIcon name="delete" size="sm" />
-              </Button>
-            </div>
-          </div>
+            documentId={doc.id}
+            storageKey={doc.storage_key}
+            fileName={doc.file_name}
+            label={doc.label}
+            mimeType={doc.mime_type}
+            onRemove={canDelete ? () => setDeletingDoc(doc) : undefined}
+          />
         ))}
       </div>
 

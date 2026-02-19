@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useFieldSuggestions } from "@/hooks/useFieldSuggestions";
 import { useAccountSidemarks } from "@/hooks/useAccountSidemarks";
+import { useAccountRoomSuggestions } from "@/hooks/useAccountRoomSuggestions";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { SearchableSelect, SelectOption } from "@/components/ui/searchable-selec
 import { ExpectedItemCard, ExpectedItemData, ExpectedItemErrors } from "@/components/shipments/ExpectedItemCard";
 import { AutocompleteInput } from "@/components/ui/autocomplete-input";
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 // ============================================
 // TYPES
@@ -33,6 +35,8 @@ interface ClassOption {
   id: string;
   code: string;
   name: string;
+  min_cubic_feet: number | null;
+  max_cubic_feet: number | null;
 }
 
 interface FormErrors {
@@ -53,6 +57,14 @@ export default function ShipmentCreate() {
 
   // Determine shipment type from route
   const isReturn = location.pathname.includes("/return/");
+  const inboundKind = useMemo(() => {
+    if (isReturn) return null;
+    if (location.pathname.startsWith("/incoming/manifest")) return "manifest" as const;
+    if (location.pathname.startsWith("/incoming/expected")) return "expected" as const;
+    return "expected" as const;
+  }, [isReturn, location.pathname]);
+  const isManifest = inboundKind === "manifest";
+  const isIncomingCreate = !isReturn && location.pathname.startsWith("/incoming/");
 
   // Form state
   const [loading, setLoading] = useState(false);
@@ -73,9 +85,13 @@ export default function ShipmentCreate() {
   const [poNumber, setPoNumber] = useState("");
   const [expectedArrivalDate, setExpectedArrivalDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [notesTouched, setNotesTouched] = useState(false);
+  const [accountDefaultShipmentNotes, setAccountDefaultShipmentNotes] = useState<string | null>(null);
+  const [accountHighlightShipmentNotes, setAccountHighlightShipmentNotes] = useState(false);
 
-  // Fetch account sidemarks for autocomplete suggestions
+  // Fetch account sidemarks and room suggestions for autocomplete
   const { sidemarks: accountSidemarks, addSidemark: addAccountSidemark } = useAccountSidemarks(accountId || undefined);
+  const { rooms: accountRooms, addOrUpdateRoom: recordRoom } = useAccountRoomSuggestions(accountId || undefined);
 
   // Expected items
   const [expectedItems, setExpectedItems] = useState<ExpectedItemData[]>([
@@ -115,6 +131,12 @@ export default function ShipmentCreate() {
     [accountSidemarks],
   );
 
+  // Room autocomplete suggestions from account_room_suggestions
+  const roomSuggestions = useMemo(
+    () => accountRooms.map((r) => ({ value: r.room, label: r.room })),
+    [accountRooms],
+  );
+
   // ------------------------------------------
   // Fetch reference data
   // ------------------------------------------
@@ -140,7 +162,7 @@ export default function ShipmentCreate() {
 
         // Fetch classes for item size selection
         const classesRes = await (supabase.from("classes") as any)
-          .select("id, code, name")
+          .select("id, code, name, min_cubic_feet, max_cubic_feet")
           .eq("tenant_id", profile.tenant_id)
           .eq("is_active", true)
           .order("sort_order", { ascending: true });
@@ -179,6 +201,49 @@ export default function ShipmentCreate() {
 
     fetchData();
   }, [profile?.tenant_id]);
+
+  // Pull default shipment notes from Account Settings (accounts.default_shipment_notes)
+  useEffect(() => {
+    if (!profile?.tenant_id || !accountId) {
+      setAccountDefaultShipmentNotes(null);
+      setAccountHighlightShipmentNotes(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await (supabase.from("accounts") as any)
+        .select("default_shipment_notes, highlight_shipment_notes")
+        .eq("tenant_id", profile.tenant_id)
+        .eq("id", accountId)
+        .single();
+
+      if (cancelled) return;
+      if (error) {
+        console.warn("[ShipmentCreate] Failed to load account default shipment notes:", error.message);
+        setAccountDefaultShipmentNotes(null);
+        setAccountHighlightShipmentNotes(false);
+        return;
+      }
+
+      setAccountDefaultShipmentNotes((data?.default_shipment_notes as string | null) ?? null);
+      setAccountHighlightShipmentNotes(!!data?.highlight_shipment_notes);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.tenant_id, accountId]);
+
+  // Prefill notes if blank and user hasn't typed anything yet
+  useEffect(() => {
+    if (!accountId) return;
+    if (notesTouched) return;
+    if (notes.trim()) return;
+    if (!accountDefaultShipmentNotes?.trim()) return;
+    setNotes(accountDefaultShipmentNotes);
+  }, [accountId, notesTouched, notes, accountDefaultShipmentNotes]);
 
   // ------------------------------------------
   // Item management
@@ -253,10 +318,7 @@ export default function ShipmentCreate() {
         errs.description = "Description is required";
         hasItemErrors = true;
       }
-      if (!item.classId) {
-        errs.classCode = "Class is required";
-        hasItemErrors = true;
-      }
+      // Class is optional - no validation needed
       if (item.quantity < 1) {
         errs.quantity = "Quantity must be at least 1";
         hasItemErrors = true;
@@ -317,6 +379,10 @@ export default function ShipmentCreate() {
         warehouse_id: warehouseId,
         sidemark: sidemark.trim() || null,
         shipment_type: isReturn ? "return" : "inbound",
+        // Align inbound shipments created here with the receiving/inbound planning layer.
+        // This ensures the DB prefix trigger can generate EXP-##### / MAN-##### numbers.
+        inbound_kind: isReturn ? null : inboundKind,
+        inbound_status: isReturn ? null : "draft",
         status: "expected" as const,
         carrier: carrier || null,
         tracking_number: trackingNumber || null,
@@ -338,6 +404,9 @@ export default function ShipmentCreate() {
       const validItems = expectedItems.filter((item) => item.description.trim());
 
       for (const expectedItem of validItems) {
+        const cls = expectedItem.classId ? classes.find((c) => c.id === expectedItem.classId) : undefined;
+        const classCubicFeet = cls ? getClassCubicFeetSingleValue(cls) : null;
+
         // Create actual item record with pending_receipt status
         // The item_code will be auto-generated by the database trigger
         const itemPayload = {
@@ -348,7 +417,10 @@ export default function ShipmentCreate() {
           vendor: expectedItem.vendor || null,
           quantity: expectedItem.quantity,
           class_id: expectedItem.classId || null,
-          sidemark: sidemark.trim() || null,
+          size: classCubicFeet,
+          size_unit: classCubicFeet !== null ? "cu_ft" : null,
+          sidemark: expectedItem.sidemark?.trim() || sidemark.trim() || null,
+          room: expectedItem.room?.trim() || null,
           receiving_shipment_id: shipment.id,
           status: "pending_receipt",
         };
@@ -388,10 +460,15 @@ export default function ShipmentCreate() {
       expectedItems.forEach((item) => {
         if (item.vendor) recordVendor(item.vendor);
         if (item.description) recordDescription(item.description);
+        if (item.room) recordRoom(item.room);
       });
 
       toast({ title: "Success", description: "Shipment created successfully" });
-      navigate(`/shipments/${shipment.id}`);
+      if (isIncomingCreate && inboundKind) {
+        navigate(inboundKind === "manifest" ? `/incoming/manifest/${shipment.id}` : `/incoming/expected/${shipment.id}`);
+      } else {
+        navigate(`/shipments/${shipment.id}`);
+      }
     } catch (err: any) {
       console.error("[ShipmentCreate] submit error:", err);
       const isRlsError =
@@ -424,7 +501,7 @@ export default function ShipmentCreate() {
 
   return (
     <DashboardLayout>
-      <div className="container mx-auto max-w-2xl px-4 pb-safe">
+      <div className="container mx-auto max-w-4xl px-4 pb-safe">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6 pt-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
@@ -432,7 +509,7 @@ export default function ShipmentCreate() {
           </Button>
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold truncate">
-              {isReturn ? "Create Return Shipment" : "Create Inbound Shipment"}
+              {isReturn ? "Create Return Shipment" : isManifest ? "Create Manifest" : "Create Expected Shipment"}
             </h1>
             <p className="text-sm text-muted-foreground">Enter shipment details and expected items</p>
           </div>
@@ -535,12 +612,21 @@ export default function ShipmentCreate() {
               </div>
 
               {/* Notes */}
+              {accountHighlightShipmentNotes && accountDefaultShipmentNotes?.trim() && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <div className="font-medium mb-1">Default Shipment Notes</div>
+                  <p className="whitespace-pre-wrap">{accountDefaultShipmentNotes}</p>
+                </div>
+              )}
               <FormField
                 label="Notes"
                 name="notes"
                 type="textarea"
                 value={notes}
-                onChange={setNotes}
+                onChange={(value) => {
+                  setNotesTouched(true);
+                  setNotes(value);
+                }}
                 placeholder="Additional notes about this shipment..."
                 minRows={2}
                 maxRows={4}
@@ -565,7 +651,10 @@ export default function ShipmentCreate() {
                   index={index}
                   vendorSuggestions={vendorValues}
                   descriptionSuggestions={descriptionSuggestionOptions}
+                  sidemarkSuggestions={sidemarkSuggestions}
+                  roomSuggestions={roomSuggestions}
                   classes={classes}
+                  classOptional
                   errors={errors.items?.[item.id]}
                   canDelete={expectedItems.length > 1}
                   onUpdate={updateItem}

@@ -8,11 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 /**
  * Mobile-first expected item card for shipment creation
- * - Stacked layout on mobile
- * - Uses FormField for all inputs
- * - Uses AutocompleteInput for vendor (free typing + suggestions)
- * - Includes class selection for billing calculation
- * - Supports field suggestions for vendor/sidemark
+ * Field order: Qty + Vendor → Description → Class + Sidemark + Room
  */
 
 export interface ClassOption {
@@ -28,6 +24,8 @@ export interface ExpectedItemData {
   quantity: number;
   classId?: string;
   classCode?: string;
+  sidemark?: string;
+  room?: string;
 }
 
 export interface ExpectedItemErrors {
@@ -41,6 +39,8 @@ export interface ExpectedItemCardProps {
   index: number;
   vendorSuggestions: string[];
   descriptionSuggestions?: { value: string; label: string }[];
+  sidemarkSuggestions?: { value: string; label: string }[];
+  roomSuggestions?: { value: string; label: string }[];
   classes?: ClassOption[];
   classOptional?: boolean;
   errors?: ExpectedItemErrors;
@@ -56,6 +56,8 @@ export function ExpectedItemCard({
   index,
   vendorSuggestions,
   descriptionSuggestions = [],
+  sidemarkSuggestions = [],
+  roomSuggestions = [],
   classes = [],
   classOptional = false,
   errors,
@@ -65,7 +67,6 @@ export function ExpectedItemCard({
   onDuplicate,
   onVendorUsed,
 }: ExpectedItemCardProps) {
-  // Convert suggestions to format for AutocompleteInput
   const vendorSuggestionOptions = React.useMemo(
     () => vendorSuggestions.map((v) => ({ value: v, label: v })),
     [vendorSuggestions]
@@ -76,15 +77,11 @@ export function ExpectedItemCard({
     [classes]
   );
 
-  // Handle class change - update both classCode and classId
   const handleClassChange = (code: string) => {
     const matchedClass = classes.find(c => c.code === code);
     onUpdate(item.id, "classCode", code);
     onUpdate(item.id, "classId", matchedClass?.id || "");
   };
-
-  // NOTE: We intentionally do NOT collect per-item sidemark during shipment
-  // creation. Shipment-level sidemark/project will be applied during receiving.
 
   return (
     <Card className="relative">
@@ -123,10 +120,8 @@ export function ExpectedItemCard({
           </div>
         </div>
 
-        {/* Field order: Qty, Class, Vendor, Description */}
-
-        {/* Row 1: Quantity, Class, and Vendor */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Row 1: Quantity and Vendor */}
+        <div className="grid grid-cols-2 gap-3">
           <FormField
             label="Qty"
             name={`item-${item.id}-quantity`}
@@ -138,19 +133,6 @@ export function ExpectedItemCard({
             required
             error={errors?.quantity}
           />
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Class{!classOptional && ' *'}</label>
-            <AutocompleteInput
-              suggestions={classSuggestionOptions}
-              value={item.classCode || ""}
-              onChange={handleClassChange}
-              placeholder="Size"
-              className={cn("min-h-[44px] text-base", errors?.classCode && "border-destructive")}
-            />
-            {errors?.classCode && (
-              <span className="text-xs text-destructive">{errors.classCode}</span>
-            )}
-          </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Vendor</label>
             <AutocompleteInput
@@ -166,7 +148,7 @@ export function ExpectedItemCard({
           </div>
         </div>
 
-        {/* Description - autocomplete search */}
+        {/* Description - full width */}
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Description *</label>
           <AutocompleteInput
@@ -179,6 +161,43 @@ export function ExpectedItemCard({
           {errors?.description && (
             <span className="text-xs text-destructive">{errors.description}</span>
           )}
+        </div>
+
+        {/* Row 2: Class, Sidemark, Room */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Class{!classOptional && ' *'}</label>
+            <AutocompleteInput
+              suggestions={classSuggestionOptions}
+              value={item.classCode || ""}
+              onChange={handleClassChange}
+              placeholder="Size"
+              className={cn("min-h-[44px] text-base", errors?.classCode && "border-destructive")}
+            />
+            {errors?.classCode && (
+              <span className="text-xs text-destructive">{errors.classCode}</span>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Sidemark</label>
+            <AutocompleteInput
+              suggestions={sidemarkSuggestions}
+              value={item.sidemark || ""}
+              onChange={(v) => onUpdate(item.id, "sidemark", v)}
+              placeholder="Sidemark"
+              className="min-h-[44px] text-base"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Room</label>
+            <AutocompleteInput
+              suggestions={roomSuggestions}
+              value={item.room || ""}
+              onChange={(v) => onUpdate(item.id, "room", v)}
+              placeholder="Room"
+              className="min-h-[44px] text-base"
+            />
+          </div>
         </div>
       </CardContent>
     </Card>

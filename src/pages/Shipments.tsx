@@ -13,6 +13,16 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,6 +47,8 @@ interface RecentShipment {
   id: string;
   shipment_number: string;
   status: string;
+  inbound_kind?: string | null;
+  inbound_status?: string | null;
   account_name?: string;
   carrier?: string;
   created_at: string;
@@ -69,6 +81,11 @@ export default function Shipments() {
   const [incomingSubTab, setIncomingSubTab] = useState<IncomingSubTab>(undefined);
   const [creatingIntake, setCreatingIntake] = useState(false);
 
+  // Start Dock Intake: pause existing job confirmation
+  const [dockIntakeConfirmOpen, setDockIntakeConfirmOpen] = useState(false);
+  const [dockIntakeConfirmLoading, setDockIntakeConfirmLoading] = useState(false);
+  const [dockIntakeActiveJobLabel, setDockIntakeActiveJobLabel] = useState<string | null>(null);
+
   useEffect(() => {
     if (profile?.tenant_id) {
       fetchShipmentData();
@@ -81,6 +98,8 @@ export default function Shipments() {
 
   const fetchShipmentData = async () => {
     try {
+      const todayDate = format(new Date(), 'yyyy-MM-dd');
+
       // UTC day window
       const startOfToday = new Date();
       startOfToday.setUTCHours(0, 0, 0, 0);
@@ -96,9 +115,8 @@ export default function Shipments() {
           .from('shipments')
           .select('id', { count: 'exact', head: true })
           .eq('shipment_type', 'inbound')
-          .eq('inbound_kind', 'expected')
-          .lte('eta_start', todayISO)
-          .gte('eta_end', todayISO)
+          .in('inbound_kind', ['expected', 'manifest'])
+          .eq('expected_arrival_date', todayDate)
           .is('deleted_at', null),
         // Intakes In Progress count
         supabase
@@ -112,6 +130,8 @@ export default function Shipments() {
         supabase
           .from('shipments')
           .select('id', { count: 'exact', head: true })
+          .eq('shipment_type', 'inbound')
+          .eq('inbound_kind', 'dock_intake')
           .in('status', ['received'])
           .gte('received_at', todayISO)
           .lt('received_at', tomorrowISO)
@@ -128,18 +148,17 @@ export default function Shipments() {
         // Expected Today items
         supabase
           .from('shipments')
-          .select('id, shipment_number, status, created_at, carrier, shipment_exception_type, accounts(account_name)')
+          .select('id, shipment_number, status, inbound_kind, inbound_status, created_at, carrier, shipment_exception_type, accounts(account_name)')
           .eq('shipment_type', 'inbound')
-          .eq('inbound_kind', 'expected')
-          .lte('eta_start', todayISO)
-          .gte('eta_end', todayISO)
+          .in('inbound_kind', ['expected', 'manifest'])
+          .eq('expected_arrival_date', todayDate)
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(10),
         // Intakes In Progress items
         supabase
           .from('shipments')
-          .select('id, shipment_number, status, created_at, carrier, shipment_exception_type, accounts(account_name)')
+          .select('id, shipment_number, status, inbound_kind, inbound_status, created_at, carrier, shipment_exception_type, accounts(account_name)')
           .eq('shipment_type', 'inbound')
           .eq('inbound_kind', 'dock_intake')
           .in('inbound_status', ['draft', 'stage1_complete', 'receiving'])
@@ -149,8 +168,10 @@ export default function Shipments() {
         // Received Today items
         supabase
           .from('shipments')
-          .select('id, shipment_number, status, created_at, received_at, carrier, shipment_exception_type, accounts(account_name)')
-          .in('status', ['received'])
+          .select('id, shipment_number, status, inbound_kind, inbound_status, created_at, received_at, carrier, shipment_exception_type, accounts(account_name)')
+          .eq('shipment_type', 'inbound')
+          .eq('inbound_kind', 'dock_intake')
+          .eq('status', 'received')
           .gte('received_at', todayISO)
           .lt('received_at', tomorrowISO)
           .is('deleted_at', null)
@@ -181,6 +202,8 @@ export default function Shipments() {
           id: s.id,
           shipment_number: s.shipment_number,
           status: s.status,
+          inbound_kind: s.inbound_kind || null,
+          inbound_status: s.inbound_status || null,
           account_name: s.accounts?.account_name,
           carrier: s.carrier,
           created_at: s.created_at,
@@ -219,7 +242,7 @@ export default function Shipments() {
     }
   };
 
-  const handleStartDockIntake = useCallback(async () => {
+  const createDockIntake = useCallback(async (pauseExisting: boolean) => {
     if (!profile?.tenant_id || creatingIntake) return;
     setCreatingIntake(true);
     try {
@@ -239,6 +262,19 @@ export default function Shipments() {
 
       if (error) throw error;
 
+      // Start timer for this intake
+      const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
+        p_job_type: 'shipment',
+        p_job_id: data.id,
+        p_pause_existing: pauseExisting,
+      });
+
+      if (timerErr) {
+        console.warn('[Shipments] dock intake timer start failed:', timerErr.message);
+      } else if (timerRes && (timerRes as any).ok === false) {
+        console.warn('[Shipments] dock intake timer start failed:', (timerRes as any).error_message);
+      }
+
       navigate(`/incoming/dock-intake/${data.id}`);
     } catch (err: any) {
       toast({
@@ -249,20 +285,70 @@ export default function Shipments() {
     } finally {
       setCreatingIntake(false);
     }
-  }, [profile, creatingIntake, navigate, toast]);
+  }, [profile?.tenant_id, profile?.id, creatingIntake, navigate, toast]);
+
+  const handleStartDockIntake = useCallback(async () => {
+    if (!profile?.tenant_id || creatingIntake) return;
+
+    // Preflight: if the user already has an active timer, prompt to pause it
+    try {
+      const { data: activeIntervals } = await (supabase
+        .from('job_time_intervals') as any)
+        .select('job_type, job_id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('user_id', profile.id)
+        .is('ended_at', null)
+        .limit(1);
+
+      const active = activeIntervals?.[0];
+      if (active) {
+        const activeType = active.job_type as string | null;
+        const activeId = active.job_id as string | null;
+
+        let label = 'another job';
+        try {
+          if (activeType === 'task' && activeId) {
+            const { data: t } = await (supabase.from('tasks') as any)
+              .select('title, task_type')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('id', activeId)
+              .maybeSingle();
+            label = t?.title || (t?.task_type ? `${t.task_type} task` : 'another task');
+          } else if (activeType === 'shipment' && activeId) {
+            const { data: s } = await (supabase.from('shipments') as any)
+              .select('shipment_number')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('id', activeId)
+              .maybeSingle();
+            label = s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
+          } else if (activeType) {
+            label = `${activeType} job`;
+          }
+        } catch {
+          // Best-effort
+        }
+
+        setDockIntakeActiveJobLabel(label);
+        setDockIntakeConfirmOpen(true);
+        return;
+      }
+    } catch {
+      // If preflight fails, proceed — RPC will still protect uniqueness.
+    }
+
+    await createDockIntake(false);
+  }, [profile?.tenant_id, profile?.id, creatingIntake, createDockIntake, toast]);
 
   const handleCardTap = (key: ExpandedCard) => {
     switch (key) {
       case 'expectedToday':
-        setIncomingSubTab('expected');
-        setActiveTab('incoming');
+        navigate('/incoming/manager?tab=expected');
         break;
       case 'intakesInProgress':
-        setIncomingSubTab('intakes');
-        setActiveTab('incoming');
+        navigate('/incoming/manager?tab=intakes');
         break;
       case 'receivedToday':
-        navigate('/shipments/received');
+        navigate('/incoming/manager?tab=intakes');
         break;
       case 'shippedToday':
         navigate('/shipments/released');
@@ -270,13 +356,38 @@ export default function Shipments() {
     }
   };
 
-  const renderShipmentRow = (item: RecentShipment) => (
+  const renderShipmentRow = (cardKey: ExpandedCard, item: RecentShipment) => {
+    const handleRowClick = () => {
+      // Card-specific navigation (see Q&A log decisions).
+      if (cardKey === 'expectedToday') {
+        if (item.inbound_kind === 'manifest') {
+          navigate(`/incoming/manifest/${item.id}`);
+          return;
+        }
+        // Default to expected inbound detail
+        navigate(`/incoming/expected/${item.id}`);
+        return;
+      }
+      if (cardKey === 'receivedToday') {
+        navigate(`/incoming/dock-intake/${item.id}`);
+        return;
+      }
+      // Intakes in progress + shipped today go to shipment details.
+      navigate(`/shipments/${item.id}`);
+    };
+
+    const statusForBadge =
+      cardKey === 'intakesInProgress'
+        ? 'in_progress'
+        : item.status;
+
+    return (
     <div
       key={item.id}
       className="flex items-center justify-between p-2 rounded-md hover:bg-muted cursor-pointer group"
       onClick={(e) => {
         e.stopPropagation();
-        navigate(`/shipments/${item.id}`);
+        handleRowClick();
       }}
       role="button"
     >
@@ -286,7 +397,7 @@ export default function Shipments() {
             shipmentNumber={item.shipment_number}
             exceptionType={item.shipment_exception_type}
           />
-          <StatusIndicator status={item.status} size="sm" />
+          <StatusIndicator status={statusForBadge} size="sm" />
         </div>
         <div className="text-xs text-muted-foreground truncate">
           {item.account_name || 'No account'} {item.carrier ? `/ ${item.carrier}` : ''}
@@ -294,7 +405,8 @@ export default function Shipments() {
       </div>
       <MaterialIcon name="chevron_right" size="sm" className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2" />
     </div>
-  );
+    );
+  };
 
   const hubCards = [
     {
@@ -350,12 +462,12 @@ export default function Shipments() {
             accentText="Console"
             description="Manage incoming and outbound shipments"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {(activeTab === 'hub' || activeTab === 'incoming') && (
               <Button
                 onClick={handleStartDockIntake}
                 disabled={creatingIntake}
-                className="gap-2"
+                className="gap-2 w-full sm:w-auto justify-center"
               >
                 {creatingIntake ? (
                   <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
@@ -369,7 +481,7 @@ export default function Shipments() {
             {activeTab === 'outbound' && (
               <Button
                 onClick={() => navigate('/shipments/outbound/new')}
-                className="gap-2"
+                className="gap-2 w-full sm:w-auto justify-center"
               >
                 <MaterialIcon name="add" size="sm" />
                 Create Outbound Shipment
@@ -447,7 +559,7 @@ export default function Shipments() {
                         <div className="mt-4 border-t pt-3">
                           <ScrollArea className="max-h-64">
                             <div className="space-y-1">
-                              {items.slice(0, 10).map((item) => renderShipmentRow(item))}
+                              {items.slice(0, 10).map((item) => renderShipmentRow(card.key, item))}
                             </div>
                           </ScrollArea>
                           {card.count > 10 && (
@@ -490,6 +602,45 @@ export default function Shipments() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Pause existing job confirmation (Start Dock Intake) */}
+      <AlertDialog open={dockIntakeConfirmOpen} onOpenChange={setDockIntakeConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{dockIntakeActiveJobLabel ? ` (${dockIntakeActiveJobLabel})` : ''}.
+              Do you want to pause it and start a dock intake?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setDockIntakeActiveJobLabel(null);
+              }}
+              disabled={dockIntakeConfirmLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                setDockIntakeConfirmLoading(true);
+                try {
+                  await createDockIntake(true);
+                  setDockIntakeConfirmOpen(false);
+                  setDockIntakeActiveJobLabel(null);
+                } finally {
+                  setDockIntakeConfirmLoading(false);
+                }
+              }}
+              disabled={dockIntakeConfirmLoading}
+            >
+              Pause & Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

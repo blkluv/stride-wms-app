@@ -11,13 +11,27 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
-export type ActivityEntityType = 'item' | 'shipment' | 'task' | 'account';
+export type ActivityEntityType =
+  | 'item'
+  | 'shipment'
+  | 'task'
+  | 'account'
+  | 'claim'
+  | 'repair_quote'
+  | 'quote'
+  | 'invoice'
+  | 'stocktake';
 
 const TABLE_MAP: Record<ActivityEntityType, { table: string; idColumn: string }> = {
-  item:     { table: 'item_activity',     idColumn: 'item_id' },
-  shipment: { table: 'shipment_activity', idColumn: 'shipment_id' },
-  task:     { table: 'task_activity',     idColumn: 'task_id' },
-  account:  { table: 'account_activity',  idColumn: 'account_id' },
+  item:         { table: 'item_activity',         idColumn: 'item_id' },
+  shipment:     { table: 'shipment_activity',     idColumn: 'shipment_id' },
+  task:         { table: 'task_activity',         idColumn: 'task_id' },
+  account:      { table: 'account_activity',      idColumn: 'account_id' },
+  claim:        { table: 'claim_activity',        idColumn: 'claim_id' },
+  repair_quote: { table: 'repair_quote_activity', idColumn: 'repair_quote_id' },
+  quote:        { table: 'quote_activity',        idColumn: 'quote_id' },
+  invoice:      { table: 'invoice_activity',      idColumn: 'invoice_id' },
+  stocktake:    { table: 'stocktake_activity',    idColumn: 'stocktake_id' },
 };
 
 // Cache actor names for the session to reduce DB lookups

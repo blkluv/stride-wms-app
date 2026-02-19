@@ -44,7 +44,7 @@ export function DraftQueueList({ onSelect }: DraftQueueListProps) {
           signed_pieces,
           inbound_status,
           created_at,
-          accounts(name)
+          accounts(account_name)
         `)
         .eq('tenant_id', profile.tenant_id)
         .eq('inbound_kind', 'dock_intake')
@@ -55,7 +55,7 @@ export function DraftQueueList({ onSelect }: DraftQueueListProps) {
 
       const mapped = (data || []).map((d: any) => ({
         ...d,
-        account_name: d.accounts?.name || null,
+        account_name: d.accounts?.account_name || null,
       }));
 
       setDrafts(mapped);

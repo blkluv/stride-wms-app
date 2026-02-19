@@ -21,6 +21,15 @@ type CreateDocumentBody = {
   label?: string | null;
   notes?: string | null;
   is_sensitive?: boolean | null;
+  /**
+   * Optional: soft-delete (archive) an existing document after inserting this one.
+   * Used for "overwrite latest" behaviors like auto-generated receiving PDFs.
+   *
+   * SECURITY: replacement is constrained to the same context + tenant and requires
+   * either (a) the storage_key matches the shipment.metadata.receiving_pdf_key, or
+   * (b) the caller is admin/manager/tenant_admin.
+   */
+  replace_storage_key?: string | null;
 };
 
 serve(async (req: Request): Promise<Response> => {
@@ -74,6 +83,63 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // Optional: resolve the user's role for authorization checks below.
+    // (Not required for the most common "replace current receiving_pdf_key" flow.)
+    let userRole: string | null = null;
+    try {
+      const { data: roleData, error: roleError } = await supabase.rpc("get_user_role", { _user_id: user.id });
+      if (!roleError && typeof roleData === "string") {
+        userRole = roleData;
+      }
+    } catch {
+      // Ignore: older DBs may not have get_user_role yet.
+    }
+
+    // Optional: validate archive/replace inputs BEFORE insert so we don't create orphan records
+    // if we later return an error response.
+    const replaceKey = typeof body.replace_storage_key === "string" ? body.replace_storage_key.trim() : "";
+    if (replaceKey) {
+      // Replacement is only supported for shipment-scoped documents with a context_id.
+      if (body.context_type !== "shipment" || !body.context_id) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "replace_storage_key is only supported for shipment context" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Confirm the shipment belongs to the caller's tenant and (for non-admins) that the key matches metadata.
+      const { data: shipment, error: shipmentError } = await supabase
+        .from("shipments")
+        .select("id, tenant_id, metadata")
+        .eq("id", body.context_id)
+        .single();
+
+      if (shipmentError || !shipment) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Invalid shipment context for replacement" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (shipment.tenant_id !== profile.tenant_id) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Shipment tenant mismatch" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const meta = (shipment.metadata || {}) as Record<string, unknown>;
+      const currentReceivingKey = typeof meta.receiving_pdf_key === "string" ? meta.receiving_pdf_key : null;
+      const isPrivileged = userRole === "admin" || userRole === "tenant_admin" || userRole === "manager";
+
+      if (!isPrivileged && currentReceivingKey !== replaceKey) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Not authorized to replace this document" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     // Insert document record using service role (bypasses RLS)
     // We DO NOT trust tenant_id/created_by coming from the client.
     const { data: doc, error: insertError } = await supabase
@@ -104,6 +170,41 @@ serve(async (req: Request): Promise<Response> => {
         JSON.stringify({ ok: false, error: insertError?.message || "Failed to create document" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // Optional archive/replace step (post-insert so we never hide the prior doc if insert fails)
+    if (replaceKey) {
+      // Soft delete ONLY the specified storage_key within the same shipment context.
+      // Keep the storage object intact for audit access via Activity links.
+      try {
+        const nowIso = new Date().toISOString();
+        await supabase
+          .from("documents")
+          .update({ deleted_at: nowIso })
+          .eq("tenant_id", profile.tenant_id)
+          .eq("context_type", body.context_type)
+          .eq("context_id", body.context_id)
+          .eq("storage_key", replaceKey)
+          .neq("id", doc.id)
+          .is("deleted_at", null);
+
+        // Also archive any other previous "Receiving Document - ..." rows for this shipment context.
+        // This cleans up legacy duplicates created before overwrite support existed.
+        if (typeof body.label === "string" && body.label.startsWith("Receiving Document -")) {
+          await supabase
+            .from("documents")
+            .update({ deleted_at: nowIso })
+            .eq("tenant_id", profile.tenant_id)
+            .eq("context_type", body.context_type)
+            .eq("context_id", body.context_id)
+            .eq("label", body.label)
+            .neq("id", doc.id)
+            .is("deleted_at", null);
+        }
+      } catch (archiveErr) {
+        // Archive failure should not block document creation.
+        console.error("create-document archive failed", archiveErr);
+      }
     }
 
     return new Response(

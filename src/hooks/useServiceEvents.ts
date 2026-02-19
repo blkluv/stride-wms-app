@@ -390,7 +390,14 @@ export function useServiceEvents() {
               actorUserId: profile.id,
               eventType: 'item_scan_charge_applied',
               eventLabel: `Scan service applied: ${rateInfo.serviceName}`,
-              details: { service_code: serviceCode, service_name: rateInfo.serviceName, amount: rateInfo.rate, item_code: item.item_code },
+              details: {
+                billing_event_id: result.billingEventId || null,
+                service_code: serviceCode,
+                service_name: rateInfo.serviceName,
+                amount: rateInfo.rate,
+                item_code: item.item_code,
+                calculation_metadata: metadata,
+              },
             });
 
             // Queue alert if service has email_office alert rule

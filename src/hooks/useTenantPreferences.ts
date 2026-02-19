@@ -24,6 +24,7 @@ export const DEFAULT_LABEL_CONFIG: LabelConfig = {
     { key: 'sidemark', label: 'Sidemark', enabled: true, fontSize: 18, bold: true },
     { key: 'room', label: 'Room', enabled: true, fontSize: 14, bold: false },
     { key: 'itemCode', label: 'Item Code', enabled: true, fontSize: 28, bold: true },
+    { key: 'sku', label: 'SKU', enabled: false, fontSize: 14, bold: false },
     { key: 'vendor', label: 'Vendor', enabled: true, fontSize: 14, bold: false },
     { key: 'description', label: 'Description', enabled: true, fontSize: 14, bold: false },
     { key: 'warehouseName', label: 'Warehouse', enabled: false, fontSize: 12, bold: false },
@@ -33,6 +34,56 @@ export const DEFAULT_LABEL_CONFIG: LabelConfig = {
   showQR: true,
   showBorder: true,
 };
+
+function mergeLabelConfigWithDefaults(config: unknown): LabelConfig {
+  const raw = (config || {}) as Partial<LabelConfig>;
+  const rawFields = Array.isArray(raw.fields) ? (raw.fields as unknown[]) : [];
+
+  // Keep saved order/settings where possible; append any new default fields.
+  const byKey = new Map<string, Partial<LabelFieldConfig>>();
+  for (const f of rawFields) {
+    if (!f || typeof f !== 'object') continue;
+    const key = (f as any).key;
+    if (typeof key !== 'string' || !key) continue;
+    byKey.set(key, f as Partial<LabelFieldConfig>);
+  }
+
+  const seen = new Set<string>();
+  const mergedFields: LabelFieldConfig[] = [];
+
+  // 1) preserve saved order
+  for (const f of rawFields) {
+    const key = (f as any)?.key;
+    if (typeof key !== 'string' || !key || seen.has(key)) continue;
+    const def = DEFAULT_LABEL_CONFIG.fields.find((d) => d.key === key);
+    const base = def || { key, label: key, enabled: false, fontSize: 12, bold: false };
+    const saved = byKey.get(key) || {};
+    mergedFields.push({
+      ...base,
+      ...saved,
+      key,
+      label: typeof saved.label === 'string' && saved.label.trim() ? saved.label : base.label,
+      enabled: typeof saved.enabled === 'boolean' ? saved.enabled : base.enabled,
+      fontSize: typeof saved.fontSize === 'number' ? saved.fontSize : base.fontSize,
+      bold: typeof saved.bold === 'boolean' ? saved.bold : base.bold,
+    });
+    seen.add(key);
+  }
+
+  // 2) append any new default fields not present
+  for (const def of DEFAULT_LABEL_CONFIG.fields) {
+    if (seen.has(def.key)) continue;
+    mergedFields.push(def);
+    seen.add(def.key);
+  }
+
+  return {
+    fields: mergedFields,
+    qrSize: typeof raw.qrSize === 'number' ? raw.qrSize : DEFAULT_LABEL_CONFIG.qrSize,
+    showQR: typeof raw.showQR === 'boolean' ? raw.showQR : DEFAULT_LABEL_CONFIG.showQR,
+    showBorder: typeof raw.showBorder === 'boolean' ? raw.showBorder : DEFAULT_LABEL_CONFIG.showBorder,
+  };
+}
 
 export interface TenantPreferences {
   id: string;
@@ -126,7 +177,10 @@ export function useTenantPreferences() {
       if (error) throw error;
 
       if (data) {
-        setPreferences(data as unknown as TenantPreferences);
+        setPreferences({
+          ...(data as unknown as TenantPreferences),
+          label_config: mergeLabelConfigWithDefaults((data as any).label_config),
+        });
       } else {
         // Auto-create default preferences if none exist
         const { data: newPrefs, error: insertError } = await supabase

@@ -64,6 +64,9 @@ import {
   calculateShipmentBillingPreview,
   BillingPreview,
 } from '@/lib/billing/billingCalculation';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { estimateServiceMinutes } from '@/lib/time/serviceTimeEstimate';
+import { getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { logActivity, logBillingActivity } from '@/lib/activity/logActivity';
 import { voidCharge, voidBillingEventWithMetadataMerge } from '@/services/billing';
 
@@ -105,6 +108,7 @@ interface ServiceLinePreviewItem {
   unitRate: number;
   totalAmount: number;
   hasError: boolean;
+  estimatedMinutes?: number;
 }
 
 interface BillingCalculatorProps {
@@ -160,6 +164,7 @@ export function BillingCalculator({
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<BillingPreview | null>(null);
   const [existingEvents, setExistingEvents] = useState<ExistingBillingEvent[]>([]);
+  const [serviceLineEstimates, setServiceLineEstimates] = useState<number[]>([]);
 
   // Void confirmation state
   const [voidingEventId, setVoidingEventId] = useState<string | null>(null);
@@ -740,8 +745,80 @@ export function BillingCalculator({
   const serviceLinePreviewTotal = serviceLinePreview?.reduce((sum, item) => sum + item.totalAmount, 0) ?? 0;
   const hasServiceLinePreview = serviceLinePreview !== undefined;
 
+  // Compute estimated minutes for serviceLinePreview (best-effort; only when prop is used)
+  useEffect(() => {
+    let cancelled = false;
+
+    const compute = async () => {
+      if (!profile?.tenant_id) return;
+      if (!hasServiceLinePreview || !serviceLinePreview || serviceLinePreview.length === 0) {
+        setServiceLineEstimates([]);
+        return;
+      }
+
+      // If caller provided estimates, use those directly.
+      const hasAnyProvided = serviceLinePreview.some(i => typeof i.estimatedMinutes === 'number');
+      if (hasAnyProvided) {
+        setServiceLineEstimates(serviceLinePreview.map(i => Math.round(i.estimatedMinutes || 0)));
+        return;
+      }
+
+      try {
+        const results: number[] = [];
+        for (const item of serviceLinePreview) {
+          if (!item || !item.chargeCode) {
+            results.push(0);
+            continue;
+          }
+
+          // Estimate should not be blocked by account-level billing disable settings,
+          // so we look up pricing WITHOUT accountId.
+          let unit = 'each';
+          let serviceTimeMinutes = 0;
+          try {
+            const r = await getEffectiveRate({
+              tenantId: profile.tenant_id,
+              chargeCode: item.chargeCode,
+            });
+            unit = r.unit || 'each';
+            serviceTimeMinutes = r.service_time_minutes || 0;
+          } catch {
+            // Missing pricing config => no estimate
+            unit = 'each';
+            serviceTimeMinutes = 0;
+          }
+
+          results.push(
+            estimateServiceMinutes({
+              serviceTimeMinutes,
+              unit,
+              quantity: item.quantity,
+            }),
+          );
+        }
+
+        if (!cancelled) setServiceLineEstimates(results);
+      } catch (err) {
+        console.warn('[BillingCalculator] Failed to compute service line estimates:', err);
+        if (!cancelled) setServiceLineEstimates(serviceLinePreview.map(() => 0));
+      }
+    };
+
+    compute();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.tenant_id, hasServiceLinePreview, serviceLinePreview]);
+
+  const serviceLinePreviewEstimatedMinutes = serviceLineEstimates.reduce((sum, m) => sum + (m || 0), 0);
+
   // Use serviceLinePreview total if provided, otherwise use calculated preview total
   const previewTotal = hasServiceLinePreview ? serviceLinePreviewTotal : (preview?.subtotal || 0);
+
+  // Estimated time (preview only)
+  const previewEstimatedMinutes = hasServiceLinePreview
+    ? serviceLinePreviewEstimatedMinutes
+    : (preview?.lineItems?.reduce((sum, li) => sum + (li.estimatedMinutes || 0), 0) ?? 0);
 
   // For shipments that are already received, don't show preview (events already exist)
   // For tasks, check if task_completion event exists
@@ -792,6 +869,11 @@ export function BillingCalculator({
             {waiveCharges && (
               <Badge variant="destructive" className="text-[10px] ml-2">
                 Charges Waived
+              </Badge>
+            )}
+            {!!previewEstimatedMinutes && (
+              <Badge variant="secondary" className="text-[10px] ml-2">
+                Est. {formatMinutesShort(previewEstimatedMinutes)}
               </Badge>
             )}
           </CardTitle>
@@ -872,6 +954,14 @@ export function BillingCalculator({
                     <span className="truncate">{item.chargeName}</span>
                     <Badge variant="outline" className="text-xs shrink-0">{item.chargeCode}</Badge>
                     <span className="text-muted-foreground shrink-0">&times;{item.quantity}</span>
+                    {(() => {
+                      const est = serviceLineEstimates[idx] ?? Math.round(item.estimatedMinutes || 0);
+                      return est > 0 ? (
+                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                          Est. {formatMinutesShort(est)}
+                        </Badge>
+                      ) : null;
+                    })()}
                     {item.hasError && (
                       <MaterialIcon name="warning" size="sm" className="text-amber-500 shrink-0" />
                     )}
@@ -923,13 +1013,14 @@ export function BillingCalculator({
               </p>
               {/* Group by class for cleaner display */}
               {(() => {
-                const byClass = new Map<string | null, { qty: number; rate: number; total: number; hasError: boolean }>();
+                const byClass = new Map<string | null, { qty: number; rate: number; total: number; hasError: boolean; estMinutes: number }>();
                 preview.lineItems.forEach(item => {
                   const key = item.classCode;
-                  const existing = byClass.get(key) || { qty: 0, rate: item.unitRate, total: 0, hasError: false };
+                  const existing = byClass.get(key) || { qty: 0, rate: item.unitRate, total: 0, hasError: false, estMinutes: 0 };
                   existing.qty += item.quantity;
                   existing.total += item.totalAmount;
                   if (item.hasRateError) existing.hasError = true;
+                  existing.estMinutes += item.estimatedMinutes || 0;
                   byClass.set(key, existing);
                 });
 
@@ -941,6 +1032,11 @@ export function BillingCalculator({
                         <Badge variant="outline" className="text-xs">{classCode}</Badge>
                       )}
                       <span className="text-muted-foreground">&times;{data.qty}</span>
+                      {data.estMinutes > 0 && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Est. {formatMinutesShort(data.estMinutes)}
+                        </Badge>
+                      )}
                       {data.hasError && (
                         <MaterialIcon name="warning" size="sm" className="text-amber-500" />
                       )}

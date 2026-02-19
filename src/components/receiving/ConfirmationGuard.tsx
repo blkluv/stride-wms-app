@@ -6,8 +6,8 @@ import { Separator } from '@/components/ui/separator';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useShipmentPhotos } from '@/hooks/useShipmentPhotos';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import type { Json } from '@/integrations/supabase/types';
 
 interface ConfirmationGuardProps {
   shipmentId: string;
@@ -18,6 +18,7 @@ interface ConfirmationGuardProps {
     driver_name: string | null;
     signature_data: string | null;
     signature_name: string | null;
+    receiving_photos?: Json | null;
     dock_intake_breakdown: Record<string, unknown> | null;
     notes: string | null;
     account_id: string | null;
@@ -40,7 +41,9 @@ export function ConfirmationGuard({
   const { toast } = useToast();
   const [confirming, setConfirming] = useState(false);
   const [goingBack, setGoingBack] = useState(false);
-  const { photos, paperworkCount, conditionCount } = useShipmentPhotos(shipmentId);
+  const receivingPhotoCount = Array.isArray(shipment.receiving_photos)
+    ? shipment.receiving_photos.length
+    : 0;
 
   const breakdown = shipment.dock_intake_breakdown as {
     cartons?: number;
@@ -167,15 +170,9 @@ export function ConfirmationGuard({
 
           <Separator />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm text-muted-foreground">Paperwork Photos</p>
-              <p className="font-medium">{paperworkCount}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Condition Photos</p>
-              <p className="font-medium">{conditionCount}</p>
-            </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Photos</p>
+            <p className="font-medium">{receivingPhotoCount}</p>
           </div>
 
           {shipment.signature_data && (

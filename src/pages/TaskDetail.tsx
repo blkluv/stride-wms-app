@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -28,8 +28,20 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
+import {
+  type BuiltinItemColumnKey,
+  type ItemColumnKey,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
+import { formatItemSize } from '@/lib/items/formatItemSize';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
+import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
+import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -40,6 +52,8 @@ import { useTechnicians } from '@/hooks/useTechnicians';
 import { useRepairQuoteWorkflow } from '@/hooks/useRepairQuotes';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useTasks } from '@/hooks/useTasks';
+import { useJobTimer } from '@/hooks/useJobTimer';
+import { JobTimerWidgetFromState } from '@/components/time/JobTimerWidget';
 import { format } from 'date-fns';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
@@ -53,9 +67,11 @@ import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
 import { validateTaskCompletion, TaskCompletionValidationResult } from '@/lib/billing/taskCompletionValidation';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { logActivity } from '@/lib/activity/logActivity';
 import { queueRepairUnableToCompleteAlert } from '@/lib/alertQueue';
 import { resolveRepairTaskTypeId, fetchRepairTaskTypeDetails } from '@/lib/tasks/resolveRepairTaskType';
 import { updateBillingEventFields } from '@/services/billing';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 
 interface TaskDetail {
   id: string;
@@ -70,6 +86,9 @@ interface TaskDetail {
   assigned_to: string | null;
   warehouse_id: string | null;
   account_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_minutes: number | null;
   completed_at: string | null;
   completed_by: string | null;
   unable_to_complete_note: string | null;
@@ -99,6 +118,9 @@ interface TaskItemRow {
   item?: {
     id: string;
     item_code: string;
+    sku: string | null;
+    size: number | null;
+    size_unit: string | null;
     description: string | null;
     vendor: string | null;
     inspection_status: string | null;
@@ -106,6 +128,9 @@ interface TaskItemRow {
     location?: { code: string } | null;
     account?: { account_name: string } | null;
     sidemark: string | null;
+    room?: string | null;
+    primary_photo_url?: string | null;
+    metadata?: Record<string, unknown> | null;
   } | null;
 }
 
@@ -121,6 +146,36 @@ export default function TaskDetailPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { toast } = useToast();
+
+  // Tenant-managed item list views (systemwide)
+  const {
+    settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
+    defaultViewId: defaultItemViewId,
+    loading: itemDisplayLoading,
+    saving: itemDisplaySaving,
+    saveSettings: saveItemDisplaySettings,
+  } = useItemDisplaySettingsForUser();
+  const [activeItemViewId, setActiveItemViewId] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeItemViewId && defaultItemViewId) {
+      setActiveItemViewId(defaultItemViewId);
+    }
+  }, [defaultItemViewId, activeItemViewId]);
+
+  const activeItemView = useMemo(() => {
+    return (
+      getViewById(itemDisplaySettings, activeItemViewId) ||
+      getViewById(itemDisplaySettings, defaultItemViewId) ||
+      itemDisplaySettings.views[0]
+    );
+  }, [itemDisplaySettings, activeItemViewId, defaultItemViewId]);
+
+  const itemVisibleColumns = useMemo(
+    () => (activeItemView ? getVisibleColumnsForView(activeItemView) : []),
+    [activeItemView]
+  );
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [taskItems, setTaskItems] = useState<TaskItemRow[]>([]);
@@ -163,7 +218,101 @@ export default function TaskDetailPage() {
   const { activeTechnicians } = useTechnicians();
   const { createWorkflowQuote, sendToTechnician } = useRepairQuoteWorkflow();
   const { hasRole } = usePermissions();
-  const { completeTask, completeTaskWithServices, startTask: startTaskHook } = useTasks();
+  const { completeTaskWithServices, startTaskDetailed } = useTasks();
+
+  const taskTimer = useJobTimer('task', id);
+
+  // Start-task switch confirmation (pause existing job)
+  const [startSwitchOpen, setStartSwitchOpen] = useState(false);
+  const [startSwitchActiveLabel, setStartSwitchActiveLabel] = useState<string | null>(null);
+  const [startSwitchLoading, setStartSwitchLoading] = useState(false);
+
+  const resolveActiveJobLabel = useCallback(async (jobType: string | null | undefined, jobId: string | null | undefined) => {
+    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
+    if (jobType !== 'task') return `${jobType} job`;
+    try {
+      const { data } = await (supabase.from('tasks') as any)
+        .select('title, task_type')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', jobId)
+        .maybeSingle();
+      if (data?.title) return data.title;
+      if (data?.task_type) return `${data.task_type} task`;
+      return 'another task';
+    } catch {
+      return 'another task';
+    }
+  }, [profile?.tenant_id]);
+
+  // After completing a job, prompt to resume a paused task (auto-paused by starting another job)
+  const [resumePromptOpen, setResumePromptOpen] = useState(false);
+  const [pausedResumeTasks, setPausedResumeTasks] = useState<Array<{ id: string; title: string; task_type: string }>>([]);
+  const [selectedResumeTaskId, setSelectedResumeTaskId] = useState<string>('');
+  const [resumeLoading, setResumeLoading] = useState(false);
+
+  const loadPausedTasksForResume = useCallback(async (excludeTaskId?: string) => {
+    if (!profile?.tenant_id || !profile?.id) return [];
+
+    // If user already has an active timer, don't prompt
+    const { data: activeAny } = await (supabase
+      .from('job_time_intervals') as any)
+      .select('id')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('user_id', profile.id)
+      .is('ended_at', null)
+      .limit(1);
+    if (activeAny && activeAny.length > 0) return [];
+
+    const { data: pausedIntervals } = await (supabase
+      .from('job_time_intervals') as any)
+      .select('job_id, ended_at')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('user_id', profile.id)
+      .eq('job_type', 'task')
+      .eq('ended_reason', 'auto_pause')
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(10);
+
+    const orderedIds: string[] = [];
+    const seen = new Set<string>();
+    for (const row of pausedIntervals || []) {
+      const tid = row.job_id as string | undefined;
+      if (!tid || seen.has(tid)) continue;
+      if (excludeTaskId && tid === excludeTaskId) continue;
+      seen.add(tid);
+      orderedIds.push(tid);
+    }
+
+    if (orderedIds.length === 0) return [];
+
+    const { data: taskRows } = await (supabase
+      .from('tasks') as any)
+      .select('id, title, task_type, status, assigned_to')
+      .eq('tenant_id', profile.tenant_id)
+      .in('id', orderedIds);
+
+    const byId = new Map<string, any>((taskRows || []).map((t: any) => [t.id, t]));
+
+    return orderedIds
+      .map(id => byId.get(id))
+      .filter(Boolean)
+      .filter((t: any) => t.status === 'in_progress' && t.assigned_to === profile.id)
+      .slice(0, 5)
+      .map((t: any) => ({
+        id: t.id,
+        title: t.title || `${t.task_type} task`,
+        task_type: t.task_type,
+      })) as Array<{ id: string; title: string; task_type: string }>;
+  }, [profile?.tenant_id, profile?.id]);
+
+  const maybePromptResumePausedTask = useCallback(async (excludeTaskId?: string) => {
+    const paused = await loadPausedTasksForResume(excludeTaskId);
+    if (paused.length === 0) return;
+    setPausedResumeTasks(paused);
+    setSelectedResumeTaskId(paused[0]?.id || '');
+    setResumePromptOpen(true);
+  }, [loadPausedTasksForResume]);
 
   // Only managers and admins can see billing
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager') || hasRole('admin_dev');
@@ -238,7 +387,7 @@ export default function TaskDetailPage() {
       const { data: items, error: itemsError } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, description, vendor, sidemark, inspection_status,
+          id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
           current_location_id,
           location:locations!items_current_location_id_fkey(code),
           account:accounts!items_account_id_fkey(account_name)
@@ -372,12 +521,25 @@ export default function TaskDetailPage() {
     if (!id || !profile?.id || !profile?.tenant_id) return;
     setActionLoading(true);
     try {
-      const { error } = await (supabase.from('tasks') as any)
-        .update({ status: 'in_progress', assigned_to: profile.id })
-        .eq('id', id);
-      if (error) throw error;
-      toast({ title: 'Task Started' });
-      fetchTask();
+      const result = await startTaskDetailed(id, { pauseExisting: false });
+      if (result.ok) {
+        toast({ title: 'Task Started', description: 'Task is now in progress.' });
+        fetchTask();
+        taskTimer.refetch();
+        return;
+      }
+
+      if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
+        setStartSwitchActiveLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setStartSwitchOpen(true);
+        return;
+      }
+
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: result.error_message || 'Failed to start task',
+      });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to start task' });
     } finally {
@@ -456,8 +618,8 @@ export default function TaskDetailPage() {
       try {
         const success = await completeTaskWithServices(id, []);
         if (success) {
-          fetchTask();
-          fetchTaskItems();
+          await Promise.all([fetchTask(), fetchTaskItems()]);
+          await maybePromptResumePausedTask(id);
         }
       } finally {
         setActionLoading(false);
@@ -481,6 +643,29 @@ export default function TaskDetailPage() {
         })
         .eq('id', id);
       if (error) throw error;
+
+      // Activity logs (task + linked items)
+      void logActivity({
+        entityType: 'task',
+        tenantId: profile.tenant_id,
+        entityId: id,
+        actorUserId: profile.id,
+        eventType: 'task_unable',
+        eventLabel: 'Task marked unable to complete',
+        details: { note },
+      });
+
+      for (const ti of taskItems) {
+        if (!ti.item_id) continue;
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: ti.item_id,
+          actorUserId: profile.id,
+          eventType: 'task_unable',
+          eventLabel: `Task marked unable to complete: ${task?.task_type || 'Task'}`,
+          details: { task_id: id, task_type: task?.task_type || null, note },
+        });
+      }
 
       // For Repair tasks: send unrepairable item alert (damage/quarantine remain)
       if (task?.task_type === 'Repair') {
@@ -639,6 +824,7 @@ export default function TaskDetailPage() {
           toast({
             title: 'Repair Task Created',
             description: `Auto-repair task created for ${itemData.item_code}`,
+            navigateTo: `/tasks/${repairTask.id}`,
           });
         }
       }
@@ -982,12 +1168,28 @@ export default function TaskDetailPage() {
                 <div className="flex items-center gap-3">
                   <div className="h-3 w-3 bg-primary rounded-full animate-pulse" />
                   <span className="font-medium">{task.task_type} in progress</span>
+                  <JobTimerWidgetFromState
+                    timer={taskTimer}
+                    jobType="task"
+                    jobId={id}
+                    variant="inline"
+                    showControls={false}
+                  />
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setUnableDialogOpen(true)} disabled={actionLoading}>
                     <MaterialIcon name="cancel" size="sm" className="mr-2" />
                     Cancel
                   </Button>
+                  <JobTimerWidgetFromState
+                    timer={taskTimer}
+                    jobType="task"
+                    jobId={id}
+                    variant="inline"
+                    showControls
+                    showTime={false}
+                    showStatus={false}
+                  />
                   <Button size="sm" onClick={handleCompleteTask} disabled={actionLoading}>
                     <MaterialIcon name="check" size="sm" className="mr-2" />
                     Finish {task.task_type}
@@ -1075,6 +1277,69 @@ export default function TaskDetailPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left Column - Details */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
+            {/* Service Time Summary (Estimated vs Actual) */}
+            {(() => {
+              const st = (task.metadata as any)?.service_time as any | undefined;
+              const estimatedMinutes = typeof st?.estimated_minutes === 'number' ? st.estimated_minutes : null;
+              const actualLaborMinutesFromMeta = typeof st?.actual_labor_minutes === 'number' ? st.actual_labor_minutes : null;
+              const actualCycleMinutesFromMeta = typeof st?.actual_cycle_minutes === 'number' ? st.actual_cycle_minutes : null;
+
+              const actualLaborMinutes =
+                task.status === 'in_progress'
+                  ? taskTimer.laborMinutes
+                  : (actualLaborMinutesFromMeta ?? task.duration_minutes ?? null);
+
+              const actualCycleMinutes =
+                task.status === 'in_progress'
+                  ? taskTimer.cycleMinutes
+                  : (actualCycleMinutesFromMeta ?? null);
+
+              const show =
+                (estimatedMinutes != null && estimatedMinutes > 0) ||
+                (actualLaborMinutes != null && actualLaborMinutes > 0) ||
+                task.status === 'in_progress';
+
+              if (!show) return null;
+
+              return (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MaterialIcon name="schedule" size="sm" />
+                      Service Time
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {estimatedMinutes != null && estimatedMinutes > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          Est: {formatMinutesShort(estimatedMinutes)}
+                        </Badge>
+                      )}
+                      {actualLaborMinutes != null && actualLaborMinutes > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          Actual: {formatMinutesShort(actualLaborMinutes)}
+                        </Badge>
+                      )}
+                      {actualCycleMinutes != null &&
+                        actualLaborMinutes != null &&
+                        actualCycleMinutes > 0 &&
+                        actualCycleMinutes !== actualLaborMinutes && (
+                          <Badge variant="outline" className="text-xs">
+                            Cycle: {formatMinutesShort(actualCycleMinutes)}
+                          </Badge>
+                        )}
+                      {task.status === 'in_progress' && !taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
+                        <Badge variant="outline" className="text-xs">
+                          Paused
+                        </Badge>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {/* Task Description */}
             {task.description && (
               <Card>
@@ -1125,31 +1390,57 @@ export default function TaskDetailPage() {
             {taskItems.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MaterialIcon name="assignment" size="sm" />
-                    Items ({taskItems.length})
-                  </CardTitle>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MaterialIcon name="assignment" size="sm" />
+                      Items ({taskItems.length})
+                    </CardTitle>
+                    <div className="w-full sm:w-56 flex items-center gap-2">
+                      <Select
+                        value={activeItemViewId || defaultItemViewId || 'default'}
+                        onValueChange={setActiveItemViewId}
+                        disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                      >
+                        <SelectTrigger className="h-10 flex-1">
+                          <SelectValue placeholder="View" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {itemDisplaySettings.views.map((v) => (
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.name}
+                              {v.is_default ? ' (default)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Item Code</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Vendor</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Location</TableHead>
-                        {task.task_type === 'Inspection' ? (
+                        {itemVisibleColumns.map((col) => (
+                          <TableHead key={col}>{getColumnLabel(itemDisplaySettings, col)}</TableHead>
+                        ))}
+                        {task.task_type === 'Inspection' && (
                           <>
                             <TableHead className="text-center">Pass</TableHead>
                             <TableHead className="text-center">Fail</TableHead>
                           </>
-                        ) : (
-                          <>
-                            <TableHead>Account</TableHead>
-                            <TableHead>Sidemark</TableHead>
-                          </>
                         )}
+                        <TableHead className="w-8">
+                          <div className="flex justify-end">
+                            <ItemColumnsPopover
+                              settings={itemDisplaySettings}
+                              baseSettings={tenantItemDisplaySettings}
+                              viewId={activeItemViewId || defaultItemViewId || 'default'}
+                              disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
+                              onSave={saveItemDisplaySettings}
+                              compact
+                            />
+                          </div>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1159,20 +1450,72 @@ export default function TaskDetailPage() {
                           className={task.task_type !== 'Inspection' ? "cursor-pointer hover:bg-muted/50" : "hover:bg-muted/50"}
                           onClick={() => task.task_type !== 'Inspection' && ti.item?.id && navigate(`/inventory/${ti.item.id}`)}
                         >
-                          <TableCell
-                            className="font-medium text-primary cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              ti.item?.id && navigate(`/inventory/${ti.item.id}`);
-                            }}
-                          >
-                            {ti.item?.item_code || ti.item_id.slice(0, 8)}
-                          </TableCell>
-                          <TableCell>{ti.quantity || 1}</TableCell>
-                          <TableCell>{ti.item?.vendor || '-'}</TableCell>
-                          <TableCell className="max-w-[200px] truncate">{ti.item?.description || '-'}</TableCell>
-                          <TableCell>{(ti.item as any)?.location?.code || '-'}</TableCell>
-                          {task.task_type === 'Inspection' ? (
+                          {itemVisibleColumns.map((col) => {
+                            const cfKey = parseCustomFieldColumnKey(col);
+                            const item = ti.item;
+
+                            if (cfKey) {
+                              const meta = item?.metadata;
+                              const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+                              const raw = custom && typeof custom === 'object' ? (custom as any)[cfKey] : null;
+                              const display = raw === null || raw === undefined || raw === '' ? '-' : String(raw);
+                              return <TableCell key={col} className="max-w-[180px] truncate">{display}</TableCell>;
+                            }
+
+                            switch (col as BuiltinItemColumnKey) {
+                              case 'photo': {
+                                const node = item?.primary_photo_url ? (
+                                  <img
+                                    src={item.primary_photo_url}
+                                    alt={item.item_code}
+                                    className="h-8 w-8 rounded object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-sm">📦</div>
+                                );
+                                return (
+                                  <TableCell key={col} onClick={(e) => e.stopPropagation()}>
+                                    {item?.id ? <ItemPreviewCard itemId={item.id}>{node}</ItemPreviewCard> : node}
+                                  </TableCell>
+                                );
+                              }
+                              case 'item_code':
+                                return (
+                                  <TableCell
+                                    key={col}
+                                    className="font-medium text-primary cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      item?.id && navigate(`/inventory/${item.id}`);
+                                    }}
+                                  >
+                                    {item?.item_code || ti.item_id.slice(0, 8)}
+                                  </TableCell>
+                                );
+                              case 'sku':
+                                return <TableCell key={col}>{item?.sku || '-'}</TableCell>;
+                              case 'quantity':
+                                return <TableCell key={col}>{ti.quantity || 1}</TableCell>;
+                              case 'size':
+                                return <TableCell key={col} className="text-right tabular-nums">{formatItemSize(item?.size, item?.size_unit)}</TableCell>;
+                              case 'vendor':
+                                return <TableCell key={col}>{item?.vendor || '-'}</TableCell>;
+                              case 'description':
+                                return <TableCell key={col} className="max-w-[200px] truncate">{item?.description || '-'}</TableCell>;
+                              case 'location':
+                                return <TableCell key={col}>{(item as any)?.location?.code || '-'}</TableCell>;
+                              case 'client_account':
+                                return <TableCell key={col}>{(item as any)?.account?.account_name || '-'}</TableCell>;
+                              case 'sidemark':
+                                return <TableCell key={col}>{item?.sidemark || '-'}</TableCell>;
+                              case 'room':
+                                return <TableCell key={col}>{item?.room || '-'}</TableCell>;
+                              default:
+                                return <TableCell key={col}>-</TableCell>;
+                            }
+                          })}
+
+                          {task.task_type === 'Inspection' && (
                             <>
                               <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                                 {ti.item?.inspection_status === 'pass' ? (
@@ -1205,12 +1548,8 @@ export default function TaskDetailPage() {
                                 )}
                               </TableCell>
                             </>
-                          ) : (
-                            <>
-                              <TableCell>{(ti.item as any)?.account?.account_name || '-'}</TableCell>
-                              <TableCell>{ti.item?.sidemark || '-'}</TableCell>
-                            </>
                           )}
+                          <TableCell />
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1567,6 +1906,139 @@ export default function TaskDetailPage() {
         onOpenChange={setCompletionBlockedOpen}
         validationResult={completionValidationResult}
       />
+
+      {/* Pause existing job confirmation */}
+      <AlertDialog open={startSwitchOpen} onOpenChange={setStartSwitchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{startSwitchActiveLabel ? ` (${startSwitchActiveLabel})` : ''}.
+              Do you want to pause it and start this task?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setStartSwitchActiveLabel(null)}
+              disabled={startSwitchLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!id) return;
+                setStartSwitchLoading(true);
+                try {
+                  const result = await startTaskDetailed(id, { pauseExisting: true });
+                  if (!result.ok) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to start task',
+                      description: result.error_message || 'Failed to start task',
+                    });
+                    return;
+                  }
+                  toast({ title: 'Task Started', description: 'Paused your previous job and started this task.' });
+                  setStartSwitchOpen(false);
+                  setStartSwitchActiveLabel(null);
+                  fetchTask();
+                  taskTimer.refetch();
+                } finally {
+                  setStartSwitchLoading(false);
+                }
+              }}
+              disabled={startSwitchLoading}
+            >
+              Pause & Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Resume paused task prompt */}
+      <Dialog open={resumePromptOpen} onOpenChange={setResumePromptOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MaterialIcon name="play_circle" size="md" />
+              Resume paused task?
+            </DialogTitle>
+            <DialogDescription>
+              You still have a task paused from switching jobs. Resume it now?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Paused task</Label>
+              <Select value={selectedResumeTaskId} onValueChange={setSelectedResumeTaskId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a task to resume" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pausedResumeTasks.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setResumePromptOpen(false)}
+              disabled={resumeLoading}
+            >
+              Not now
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!profile?.tenant_id || !selectedResumeTaskId) return;
+                setResumeLoading(true);
+                try {
+                  const { data, error } = await supabase.rpc('rpc_timer_start_job', {
+                    p_job_type: 'task',
+                    p_job_id: selectedResumeTaskId,
+                    p_pause_existing: false,
+                  });
+                  if (error) throw error;
+                  const result = (data || {}) as any;
+                  if (!result.ok) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Unable to resume',
+                      description: result.error_message || 'Failed to resume task',
+                    });
+                    return;
+                  }
+                  const resumed = pausedResumeTasks.find(t => t.id === selectedResumeTaskId);
+                  toast({
+                    title: 'Resumed',
+                    description: resumed ? `Resumed "${resumed.title}".` : 'Task timer resumed.',
+                  });
+                  setResumePromptOpen(false);
+                  navigate(`/tasks/${selectedResumeTaskId}`);
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Unable to resume',
+                    description: err?.message || 'Failed to resume task',
+                  });
+                } finally {
+                  setResumeLoading(false);
+                }
+              }}
+              disabled={resumeLoading || !selectedResumeTaskId}
+            >
+              Resume
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* SOP Validation Blockers Modal */}
       <Dialog open={validationOpen} onOpenChange={setValidationOpen}>

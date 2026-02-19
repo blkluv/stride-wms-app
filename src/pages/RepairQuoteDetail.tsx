@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -1262,6 +1263,16 @@ export default function RepairQuoteDetail() {
             </Card>
           </div>
         </div>
+      </div>
+
+      {/* Activity Feed */}
+      <div className="mt-6">
+        <EntityActivityFeed
+          entityType="repair_quote"
+          entityId={quote.id}
+          title="Activity"
+          description="Timeline of all changes to this repair quote"
+        />
       </div>
 
       {/* Add Items Dialog */}

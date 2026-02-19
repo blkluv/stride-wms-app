@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
 import { useAccountRoomSuggestions } from '@/hooks/useAccountRoomSuggestions';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, ScrollableTabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -36,15 +36,14 @@ import { ItemFlagsSection } from '@/components/items/ItemFlagsSection';
 import { ItemBillingEventsSection } from '@/components/items/ItemBillingEventsSection';
 import { ItemNotesSection } from '@/components/items/ItemNotesSection';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
 import { RepairQuoteSection } from '@/components/items/RepairQuoteSection';
 import { ItemPhotoGallery } from '@/components/items/ItemPhotoGallery';
-import { ItemHistoryTab } from '@/components/items/ItemHistoryTab';
 import { ItemActivityFeed } from '@/components/items/ItemActivityFeed';
 import { ItemEditDialog } from '@/components/items/ItemEditDialog';
 import { useItemPhotos } from '@/hooks/useItemPhotos';
 import { useItemNotes } from '@/hooks/useItemNotes';
 import { useDocuments } from '@/hooks/useDocuments';
-import { ItemAdvancedTab } from '@/components/items/ItemAdvancedTab';
 import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { AddBillingChargeDialog } from '@/components/items/AddBillingChargeDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
@@ -58,6 +57,14 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { QuickReleaseDialog } from '@/components/inventory/QuickReleaseDialog';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 interface ReceivingShipment {
   id: string;
@@ -71,6 +78,7 @@ interface ItemDetail {
   id: string;
   item_code: string;
   description: string | null;
+  sku: string | null;
   status: string;
   quantity: number;
   client_account: string | null;
@@ -97,6 +105,7 @@ interface ItemDetail {
   coverage_type: string | null;
   declared_value: number | null;
   weight_lbs: number | null;
+  metadata: Record<string, unknown> | null;
   // Receiving shipment
   receiving_shipment_id: string | null;
   receiving_shipment?: ReceivingShipment | null;
@@ -135,15 +144,6 @@ interface ItemTask {
   priority: string;
   due_date: string | null;
   created_at: string;
-}
-
-interface ShipmentLink {
-  id: string;
-  shipment_number: string;
-  shipment_type: string;
-  status: string;
-  created_at: string;
-  received_at?: string | null;
 }
 
 // Resolves non-UUID item_code params to UUID and redirects
@@ -220,13 +220,12 @@ export default function ItemDetail() {
 
   // Tab state - initialize from URL param if provided
   const initialTab = searchParams.get('tab') || 'details';
-  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'history', 'advanced', 'repair'];
+  const validTabs = ['details', 'photos', 'documents', 'notes', 'coverage', 'activity', 'repair'];
   const [activeTab, setActiveTab] = useState(validTabs.includes(initialTab) ? initialTab : 'details');
 
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [tasks, setTasks] = useState<ItemTask[]>([]);
-  const [shipments, setShipments] = useState<ShipmentLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountSettings, setAccountSettings] = useState<{
     default_item_notes: string | null;
@@ -247,6 +246,7 @@ export default function ItemDetail() {
 
   // Inline edit state for autocomplete fields
   const [editVendor, setEditVendor] = useState('');
+  const [editSku, setEditSku] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editSidemark, setEditSidemark] = useState('');
   const [editRoom, setEditRoom] = useState('');
@@ -270,9 +270,111 @@ export default function ItemDetail() {
 
   // Field suggestions for autocomplete
   const { suggestions: vendorSuggestions, addOrUpdateSuggestion: addVendorSuggestion } = useFieldSuggestions('vendor');
+  const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
   const { suggestions: descriptionSuggestions, addOrUpdateSuggestion: addDescSuggestion } = useFieldSuggestions('description');
   const { sidemarks } = useAccountSidemarks(item?.account_id);
   const { rooms } = useAccountRoomSuggestions(item?.account_id);
+
+  // Tenant-managed custom item fields + views
+  const { settings: itemDisplaySettings } = useItemDisplaySettings();
+  const customFieldsForDetail = itemDisplaySettings.custom_fields.filter((f) => f.enabled && f.show_on_detail);
+  const [customFieldDraft, setCustomFieldDraft] = useState<Record<string, unknown>>({});
+
+  // Sync draft values from item.metadata.custom_fields
+  useEffect(() => {
+    if (!item) return;
+    const meta = item.metadata;
+    const custom = meta && typeof meta === 'object' ? (meta as any).custom_fields : null;
+    const base: Record<string, unknown> = (custom && typeof custom === 'object') ? { ...(custom as any) } : {};
+    setCustomFieldDraft(base);
+  }, [item?.id, item?.metadata]);
+
+  const saveCustomField = async (fieldKey: string, rawValue: unknown) => {
+    if (!item) return false;
+
+    const existingMeta = item.metadata && typeof item.metadata === 'object' ? (item.metadata as Record<string, unknown>) : {};
+    const existingCustom =
+      (existingMeta as any).custom_fields && typeof (existingMeta as any).custom_fields === 'object'
+        ? { ...(existingMeta as any).custom_fields }
+        : {};
+
+    const prevValue = (existingCustom as any)[fieldKey] ?? null;
+
+    const def = itemDisplaySettings.custom_fields.find((f) => f.key === fieldKey);
+
+    // Normalize: empty strings clear the value; coerce numbers/checkboxes
+    let nextValue: unknown = rawValue;
+    if (def?.type === 'checkbox') {
+      if (typeof nextValue === 'string') {
+        const normalized = nextValue.trim().toLowerCase();
+        nextValue = ['true', 'yes', 'y', '1', 'checked'].includes(normalized);
+      } else {
+        nextValue = !!nextValue;
+      }
+    } else if (def?.type === 'number') {
+      if (typeof nextValue === 'string') {
+        const trimmed = nextValue.trim();
+        if (!trimmed) nextValue = null;
+        else {
+          const n = Number(trimmed);
+          nextValue = Number.isFinite(n) ? n : null;
+        }
+      } else if (typeof nextValue === 'number') {
+        nextValue = Number.isFinite(nextValue) ? nextValue : null;
+      } else if (nextValue === null || nextValue === undefined) {
+        nextValue = null;
+      } else {
+        nextValue = null;
+      }
+    } else {
+      if (typeof nextValue === 'string') {
+        const trimmed = nextValue.trim();
+        nextValue = trimmed ? trimmed : null;
+      }
+    }
+
+    // No-op short-circuit to avoid extra writes.
+    if (nextValue === prevValue) return true;
+
+    if (nextValue === null || nextValue === undefined) {
+      delete (existingCustom as any)[fieldKey];
+    } else {
+      (existingCustom as any)[fieldKey] = nextValue;
+    }
+
+    const nextMeta: Record<string, unknown> = { ...(existingMeta as any) };
+    if (Object.keys(existingCustom).length > 0) {
+      (nextMeta as any).custom_fields = existingCustom;
+    } else {
+      delete (nextMeta as any).custom_fields;
+    }
+
+    try {
+      const { error } = await (supabase.from('items') as any)
+        .update({ metadata: nextMeta })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      if (profile?.tenant_id && nextValue !== prevValue) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: item.id,
+          actorUserId: profile.id,
+          eventType: 'item_custom_field_updated',
+          eventLabel: `${def?.label || fieldKey} updated`,
+          details: { field_key: fieldKey, label: def?.label, from: prevValue, to: nextValue ?? null },
+        });
+      }
+
+      setItem({ ...item, metadata: nextMeta });
+      return true;
+    } catch (err: any) {
+      console.error('Error updating custom field:', err);
+      toast({ title: 'Error', description: err?.message || 'Failed to update custom field', variant: 'destructive' });
+      return false;
+    }
+  };
 
   // Fetch active indicator flags for this item
   const fetchIndicatorFlags = async () => {
@@ -306,7 +408,6 @@ export default function ItemDetail() {
     fetchItem();
     fetchMovements();
     fetchTasks();
-    fetchShipments();
     fetchIndicatorFlags();
   }, [id]);
 
@@ -314,11 +415,12 @@ export default function ItemDetail() {
   useEffect(() => {
     if (item) {
       setEditVendor(item.vendor || '');
+      setEditSku(item.sku || '');
       setEditDescription(item.description || '');
       setEditSidemark(item.sidemark || '');
       setEditRoom(item.room || '');
     }
-  }, [item?.vendor, item?.description, item?.sidemark, item?.room]);
+  }, [item?.vendor, item?.sku, item?.description, item?.sidemark, item?.room]);
 
   // Fetch account settings when item is loaded
   useEffect(() => {
@@ -380,6 +482,8 @@ export default function ItemDetail() {
 
       setItem({
         ...data,
+        sku: data.sku ?? null,
+        metadata: data.metadata ?? null,
         location: data.locations,
         warehouse: data.warehouses,
         item_type: data.item_types,
@@ -450,37 +554,6 @@ export default function ItemDetail() {
       setTasks(data || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
-    }
-  };
-
-  const fetchShipments = async () => {
-    try {
-      // Get shipments through shipment_items
-      const { data: shipmentItems } = await (supabase.from('shipment_items') as any)
-        .select(`
-          shipment_id,
-          shipments:shipment_id(id, shipment_number, shipment_type, status, created_at)
-        `)
-        .eq('item_id', id);
-
-      if (!shipmentItems) {
-        setShipments([]);
-        return;
-      }
-
-      const uniqueShipments = shipmentItems
-        .map((si: any) => si.shipments)
-        .filter((s: any) => s)
-        .reduce((acc: ShipmentLink[], s: any) => {
-          if (!acc.find(existing => existing.id === s.id)) {
-            acc.push(s);
-          }
-          return acc;
-        }, []);
-
-      setShipments(uniqueShipments);
-    } catch (error) {
-      console.error('Error fetching shipments:', error);
     }
   };
 
@@ -622,6 +695,34 @@ export default function ItemDetail() {
     }
   };
 
+  const handleSkuSave = async (newValue: string): Promise<boolean> => {
+    if (!item) return false;
+    try {
+      const { error } = await (supabase.from('items') as any)
+        .update({ sku: newValue || null })
+        .eq('id', item.id);
+
+      if (error) throw error;
+      if (profile?.tenant_id && (newValue || null) !== (item.sku || null)) {
+        logItemActivity({
+          tenantId: profile.tenant_id,
+          itemId: item.id,
+          actorUserId: profile.id,
+          eventType: 'item_field_updated',
+          eventLabel: `SKU updated`,
+          details: { field: 'sku', from: item.sku, to: newValue || null },
+        });
+      }
+      setItem({ ...item, sku: newValue || null });
+      if (newValue) addSkuSuggestion(newValue);
+      return true;
+    } catch (error) {
+      console.error('Error updating sku:', error);
+      toast({ title: 'Error', description: 'Failed to update SKU', variant: 'destructive' });
+      return false;
+    }
+  };
+
   const handleDescriptionSave = async (newValue: string): Promise<boolean> => {
     if (!item) return false;
     try {
@@ -684,26 +785,28 @@ export default function ItemDetail() {
               <MaterialIcon name="arrow_back" size="md" />
             </Button>
             <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-3xl font-bold tracking-tight">{item.item_code}</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{item.item_code}</h1>
                 {getStatusBadge(item.status)}
-                {/* Repair Status - bold colored text */}
+              </div>
+
+              {/* Secondary status chips (keep tidy: horizontal scroll instead of wrapping into a tall block) */}
+              <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+                {/* Repair Status */}
                 {item.repair_status === 'completed' && (
-                  <span className="font-bold text-green-600 dark:text-green-400">REPAIRED</span>
+                  <Badge variant="success">Repaired</Badge>
                 )}
                 {item.repair_status === 'in_progress' && (
-                  <span className="font-bold text-orange-500 dark:text-orange-400">REPAIR IN PROGRESS</span>
+                  <Badge variant="warning">Repair In Progress</Badge>
                 )}
-                {item.needs_repair && !item.repair_status && (
-                  <span className="font-bold text-red-600 dark:text-red-400">NEEDS REPAIR</span>
-                )}
-                {item.repair_status === 'pending' && (
-                  <span className="font-bold text-red-600 dark:text-red-400">NEEDS REPAIR</span>
-                )}
+                {(item.needs_repair && !item.repair_status) || item.repair_status === 'pending' ? (
+                  <Badge variant="destructive">Needs Repair</Badge>
+                ) : null}
+
                 {/* Coverage Badge */}
                 {item.coverage_type && item.coverage_type !== 'standard' && item.coverage_type !== 'pending' && (
-                  <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                    <MaterialIcon name="verified_user" size="sm" className="mr-1" />
+                  <Badge variant="info">
+                    <MaterialIcon name="verified_user" size="sm" />
                     {item.coverage_type === 'full_replacement_no_deductible' || item.coverage_type === 'full_no_deductible'
                       ? 'Full Coverage'
                       : item.coverage_type === 'full_replacement_deductible' || item.coverage_type === 'full_deductible'
@@ -712,168 +815,208 @@ export default function ItemDetail() {
                   </Badge>
                 )}
                 {item.coverage_type === 'pending' && (
-                  <Badge variant="outline" className="bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800">
-                    <MaterialIcon name="schedule" size="sm" className="mr-1" />
+                  <Badge variant="warning">
+                    <MaterialIcon name="schedule" size="sm" />
                     Coverage Pending
                   </Badge>
                 )}
+
                 {/* Active Indicator Flags — one label per indicator, dynamic service name */}
                 {activeIndicatorFlags.map((flag) => (
-                  <Badge
-                    key={flag.code}
-                    variant="outline"
-                    className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-semibold"
-                  >
-                    {'\u26A0\uFE0F'} {flag.name}
+                  <Badge key={flag.code} variant="warning" className="shrink-0">
+                    <MaterialIcon name="warning" size="sm" />
+                    {flag.name}
                   </Badge>
                 ))}
               </div>
+
               <p className="text-muted-foreground">
                 {item.description || 'No description'}
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            {/* Task Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <span className="mr-2">📝</span>
-                  Tasks
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
-                  🔍 Inspection
-                  {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTaskMenu('Assembly')}>
-                  🔧 Assembly
-                  {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTaskMenu('Repair')}>
-                  🔨 Repair
-                  {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/shipments/outbound/new', { state: { itemIds: [item.id], accountId: item.account_id } })}>
-                  🚚 Create Outbound
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openTaskMenu('Disposal')}>
-                  🗑️ Disposal
-                  {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => {
-                  setSelectedTaskType('');
-                  setTaskDialogOpen(true);
-                }}>
-                  ➕ Other Task Type
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Release Button - Only show for active items */}
-            {!isClientUser && item.status === 'active' && (
-              <Button variant="default" onClick={() => setReleaseDialogOpen(true)}>
-                <span className="mr-2">📤</span>
-                Release
-              </Button>
-            )}
-
-            {/* Actions Menu */}
-            {!isClientUser && (
-              <DropdownMenu>
+          <div className="w-full sm:w-auto">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-2 w-full sm:flex sm:items-center sm:justify-end sm:w-auto",
+                (!isClientUser && item.status === 'active') ? "" : "grid-cols-1",
+              )}
+            >
+              {/* Consolidated Actions Menu (Tasks + Item actions) */}
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    ⋯
+                  <Button variant="outline" className="w-full sm:w-auto justify-start">
+                    <span className="mr-2">🧰</span>
+                    Actions
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
-                    🖨️ Print 4x6 Label
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={8}
+                  // Glass + constrained height so long menus remain usable on mobile
+                  className="w-[min(20rem,calc(100vw-1.5rem))] bg-popover/90 backdrop-blur-xl"
+                  onPointerDownOutside={(e) => {
+                    // On mobile/tablet, keep the menu open so the user can scroll/peek at the page
+                    // behind it while deciding what to select.
+                    if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches) {
+                      e.preventDefault();
+                    }
+                  }}
+                >
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Create Task</div>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Inspection')}>
+                    🔍 Inspection
+                    {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Inspection' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
-                    💰 Add Charge
+                  <DropdownMenuItem onClick={() => openTaskMenu('Assembly')}>
+                    🔧 Assembly
+                    {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Assembly' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
                   </DropdownMenuItem>
-                  {canAddCredit && (
-                    <DropdownMenuItem onClick={() => setAddCreditDialogOpen(true)}>
-                      💸 Add Credit
-                    </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Repair')}>
+                    🔨 Repair
+                    {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Repair' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openTaskMenu('Disposal')}>
+                    🗑️ Disposal
+                    {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    setSelectedTaskType('');
+                    setTaskDialogOpen(true);
+                  }}>
+                    ➕ Other Task Type
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Shipments</div>
+                  <DropdownMenuItem onClick={() => navigate('/shipments/outbound/new', { state: { itemIds: [item.id], accountId: item.account_id } })}>
+                    🚚 Create Outbound
+                  </DropdownMenuItem>
+
+                  {/* Staff-only item actions */}
+                  {!isClientUser && (
+                    <>
+                      {item.status === 'active' && (
+                        <DropdownMenuItem onClick={() => setReleaseDialogOpen(true)}>
+                          📤 Release
+                        </DropdownMenuItem>
+                      )}
+
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Item</div>
+                      <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
+                        🖨️ Print 4x6 Label
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
+                        💰 Add Charge
+                      </DropdownMenuItem>
+                      {canAddCredit && (
+                        <DropdownMenuItem onClick={() => setAddCreditDialogOpen(true)}>
+                          💸 Add Credit
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
+                        <MaterialIcon name="swap_horiz" size="sm" className="mr-2" />
+                        Reassign Account
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setClaimDialogOpen(true)}>
+                        ⚠️ File Claim
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
+                        ✏️ Edit Item
+                      </DropdownMenuItem>
+                    </>
                   )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
-                    <MaterialIcon name="swap_horiz" size="sm" className="mr-2" />
-                    Reassign Account
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setClaimDialogOpen(true)}>
-                    ⚠️ File Claim
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>
-                    ✏️ Edit Item
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
+
+              {/* Release Button - Only show for active items */}
+              {!isClientUser && item.status === 'active' && (
+                <Button
+                  variant="default"
+                  onClick={() => setReleaseDialogOpen(true)}
+                  className="w-full sm:w-auto justify-center"
+                >
+                  <span className="mr-2">📤</span>
+                  Release
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Status Badges Row - Removed per UI update */}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList>
-            <TabsTrigger value="details">📋 Details</TabsTrigger>
-            <TabsTrigger value="photos" className="relative">
-              📷 Photos
-              {photoCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
-                  {photoCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="relative">
-              📄 Docs
-              {docsCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
-                  {docsCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="notes" className="relative">
-              💬 Notes
-              {notesCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
-                  {notesCount}
-                </span>
-              )}
-            </TabsTrigger>
-            {!isClientUser && (
-              <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>
-            )}
-            {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
-            {!isClientUser && <TabsTrigger value="history">📜 History</TabsTrigger>}
-            {!isClientUser && (
-              <TabsTrigger value="advanced">⚙️ Advanced</TabsTrigger>
-            )}
-            {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
-          </TabsList>
+          {/* Mobile: use a single section dropdown instead of an overflowing tab row */}
+          <div className="sm:hidden">
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="details">📋 Details</SelectItem>
+                <SelectItem value="photos">📷 Photos{photoCount > 0 ? ` (${photoCount})` : ''}</SelectItem>
+                <SelectItem value="documents">📄 Docs{docsCount > 0 ? ` (${docsCount})` : ''}</SelectItem>
+                <SelectItem value="notes">💬 Notes{notesCount > 0 ? ` (${notesCount})` : ''}</SelectItem>
+                {!isClientUser && <SelectItem value="coverage">🛡️ Coverage</SelectItem>}
+                {!isClientUser && <SelectItem value="activity">📊 Activity</SelectItem>}
+                {item.needs_repair && <SelectItem value="repair">🔧 Repair</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Desktop/tablet: scrollable tab bar (prevents overflow) */}
+          <div className="hidden sm:block">
+            <ScrollableTabsList activeValue={activeTab}>
+              <TabsTrigger value="details">📋 Details</TabsTrigger>
+              <TabsTrigger value="photos" className="relative">
+                📷 Photos
+                {photoCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
+                    {photoCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="relative">
+                📄 Docs
+                {docsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
+                    {docsCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="notes" className="relative">
+                💬 Notes
+                {notesCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-red-500 text-white rounded-full">
+                    {notesCount}
+                  </span>
+                )}
+              </TabsTrigger>
+              {!isClientUser && <TabsTrigger value="coverage">🛡️ Coverage</TabsTrigger>}
+              {!isClientUser && <TabsTrigger value="activity">📊 Activity</TabsTrigger>}
+              {item.needs_repair && <TabsTrigger value="repair">🔧 Repair</TabsTrigger>}
+            </ScrollableTabsList>
+          </div>
 
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Account Default Notes - Full width above details, only show if highlight enabled AND notes not blank */}
@@ -941,6 +1084,26 @@ export default function ItemDetail() {
                         />
                       )}
                     </div>
+                    {/* SKU */}
+                    <div>
+                      <span className="text-muted-foreground">SKU</span>
+                      {isClientUser ? (
+                        <p className="font-medium">{item.sku || '-'}</p>
+                      ) : (
+                        <AutocompleteInput
+                          value={editSku}
+                          onChange={setEditSku}
+                          onBlur={() => {
+                            if (editSku !== (item.sku || '')) {
+                              handleSkuSave(editSku);
+                            }
+                          }}
+                          suggestions={skuSuggestions.map(s => ({ value: s.value }))}
+                          placeholder="Add SKU"
+                          className="h-7 mt-1 text-sm border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-input"
+                        />
+                      )}
+                    </div>
                     {/* Description - inline editable with autocomplete */}
                     <div>
                       <span className="text-muted-foreground">Description</span>
@@ -961,10 +1124,76 @@ export default function ItemDetail() {
                         />
                       )}
                     </div>
+                    {/* Custom fields */}
+                    {customFieldsForDetail.length > 0 && (
+                      <div className="col-span-2 pt-2">
+                        <Separator className="my-2" />
+                        <div className="text-xs font-medium text-muted-foreground mb-2">Custom Fields</div>
+                        <div className="grid grid-cols-2 gap-4">
+                          {customFieldsForDetail.map((f) => {
+                            const raw = (customFieldDraft as any)[f.key];
+                            const stringVal = raw === null || raw === undefined ? '' : String(raw);
+                            const dateVal = stringVal && stringVal.includes('T') ? stringVal.slice(0, 10) : stringVal;
+                            const checked = raw === true || raw === 'true' || raw === 1 || raw === '1';
+
+                            return (
+                              <div key={f.id} className="space-y-1">
+                                <span className="text-muted-foreground">{f.label}</span>
+                                {isClientUser ? (
+                                  <p className="font-medium">{stringVal || '-'}</p>
+                                ) : f.type === 'select' ? (
+                                  <Select
+                                    value={stringVal || '__none__'}
+                                    onValueChange={(val) => {
+                                      const next = val === '__none__' ? '' : val;
+                                      setCustomFieldDraft((prev) => ({ ...prev, [f.key]: next }));
+                                      void saveCustomField(f.key, next);
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8">
+                                      <SelectValue placeholder="Select…" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">-</SelectItem>
+                                      {(f.options || []).map((opt) => (
+                                        <SelectItem key={opt} value={opt}>
+                                          {opt}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : f.type === 'checkbox' ? (
+                                  <div className="h-8 flex items-center">
+                                    <Switch
+                                      checked={checked}
+                                      onCheckedChange={(val) => {
+                                        setCustomFieldDraft((prev) => ({ ...prev, [f.key]: val }));
+                                        void saveCustomField(f.key, val);
+                                      }}
+                                    />
+                                  </div>
+                                ) : (
+                                  <Input
+                                    value={f.type === 'date' ? dateVal : stringVal}
+                                    type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                                    onChange={(e) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                                    onBlur={(e) => {
+                                      void saveCustomField(f.key, e.target.value);
+                                    }}
+                                    placeholder="-"
+                                    className="h-7 mt-1 text-sm"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {/* Account */}
                     <div>
                       <span className="text-muted-foreground">Account</span>
-                      <p className="font-medium">{item.account?.account_name || '-'}</p>
+                      <p className="text-base font-semibold leading-tight">{item.account?.account_name || '-'}</p>
                     </div>
                     {/* Sidemark - inline editable with autocomplete */}
                     <div>
@@ -1189,24 +1418,14 @@ export default function ItemDetail() {
           <TabsContent value="documents" className="mt-6">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <span>📄</span>
-                      Documents
-                    </CardTitle>
-                    <CardDescription>
-                      Scanned documents and files for this item
-                    </CardDescription>
-                  </div>
-                  {!isClientUser && (
-                    <ScanDocumentButton
-                      context={{ type: 'item', itemId: item.id, description: item.description || undefined }}
-                      onSuccess={() => {
-                        toast({ title: 'Document saved' });
-                      }}
-                    />
-                  )}
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <span>📄</span>
+                    Documents
+                  </CardTitle>
+                  <CardDescription>
+                    Scanned documents and files for this item
+                  </CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1214,7 +1433,19 @@ export default function ItemDetail() {
                   contextType="item"
                   contextId={item.id}
                   showSearch
+                  canDelete={!isClientUser}
                 />
+                {/* Action button - centered at bottom */}
+                {!isClientUser && (
+                  <div className="flex justify-center mt-6 pt-4 border-t">
+                    <ScanDocumentButton
+                      context={{ type: 'item', itemId: item.id, description: item.description || undefined }}
+                      onSuccess={() => {
+                        toast({ title: 'Document saved' });
+                      }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1241,18 +1472,6 @@ export default function ItemDetail() {
           {!isClientUser && (
             <TabsContent value="activity" className="mt-6">
               <ItemActivityFeed itemId={item.id} />
-            </TabsContent>
-          )}
-
-          {!isClientUser && (
-            <TabsContent value="history" className="mt-6">
-              <ItemHistoryTab itemId={item.id} />
-            </TabsContent>
-          )}
-
-          {!isClientUser && (
-            <TabsContent value="advanced" className="mt-6">
-              <ItemAdvancedTab itemId={item.id} />
             </TabsContent>
           )}
 
@@ -1288,6 +1507,7 @@ export default function ItemDetail() {
         items={item ? [{
           id: item.id,
           itemCode: item.item_code,
+          sku: item.sku || '',
           description: item.description || '',
           vendor: item.vendor || '',
           account: item.account?.account_name || '',
@@ -1353,7 +1573,6 @@ export default function ItemDetail() {
         itemCode={item?.item_code || ''}
         onSuccess={() => {
           setLinkShipmentDialogOpen(false);
-          fetchShipments();
         }}
       />
 

@@ -179,7 +179,7 @@ export function AddServiceForm({ onClose, onSaved, editingChargeType, navigateTo
           return {
             classCode: cls.code,
             rate: existingRule ? String(existingRule.rate) : '',
-            serviceTimeMinutes: existingRule?.service_time_minutes ? String(existingRule.service_time_minutes) : '',
+            serviceTimeMinutes: existingRule?.service_time_minutes != null ? String(existingRule.service_time_minutes) : '',
           };
         }),
         flatRate: !hasClassRules && !detectedNoCharge && editingChargeType.pricing_rules[0]
@@ -189,7 +189,7 @@ export function AddServiceForm({ onClose, onSaved, editingChargeType, navigateTo
         minimumCharge: editingChargeType.pricing_rules[0]?.minimum_charge
           ? String(editingChargeType.pricing_rules[0].minimum_charge)
           : '',
-        serviceTime: !hasClassRules && editingChargeType.pricing_rules[0]?.service_time_minutes
+        serviceTime: !hasClassRules && editingChargeType.pricing_rules[0]?.service_time_minutes != null
           ? String(editingChargeType.pricing_rules[0].service_time_minutes)
           : '',
         isActive: editingChargeType.is_active,

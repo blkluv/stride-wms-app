@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { logActivity } from '@/lib/activity/logActivity';
+import { queueReceivingExceptionAlert } from '@/lib/alertQueue';
 
 export type ShipmentExceptionCode =
   | 'PIECES_MISMATCH'
@@ -11,12 +13,14 @@ export type ShipmentExceptionCode =
   | 'SHIPPER_MISMATCH'
   | 'TRACKING_MISMATCH'
   | 'REFERENCE_MISMATCH'
+  | 'SHORTAGE'
+  | 'OVERAGE'
   | 'DAMAGE'
   | 'WET'
   | 'OPEN'
   | 'MISSING_DOCS'
-  | 'REFUSED'
   | 'CRUSHED_TORN_CARTONS'
+  | 'MIS_SHIP'
   | 'OTHER';
 
 export const SHIPMENT_EXCEPTION_CODE_META: Record<
@@ -26,18 +30,30 @@ export const SHIPMENT_EXCEPTION_CODE_META: Record<
   PIECES_MISMATCH: { label: 'Item Count Mismatch', icon: 'tag' },
   VENDOR_MISMATCH: { label: 'Vendor Mismatch', icon: 'storefront' },
   DESCRIPTION_MISMATCH: { label: 'Description Mismatch', icon: 'description' },
-  SIDEMARK_MISMATCH: { label: 'Side Mark Mismatch', icon: 'sell' },
+  SIDEMARK_MISMATCH: { label: 'Sidemark Mismatch', icon: 'sell' },
   SHIPPER_MISMATCH: { label: 'Shipper Mismatch', icon: 'local_shipping' },
   TRACKING_MISMATCH: { label: 'Tracking Mismatch', icon: 'qr_code' },
   REFERENCE_MISMATCH: { label: 'Reference Mismatch', icon: 'fingerprint' },
+  SHORTAGE: { label: 'Shortage', icon: 'remove_circle' },
+  OVERAGE: { label: 'Overage', icon: 'add_circle' },
   DAMAGE: { label: 'Damage', icon: 'broken_image' },
   WET: { label: 'Wet', icon: 'water_drop' },
   OPEN: { label: 'Open', icon: 'package_2' },
   MISSING_DOCS: { label: 'Missing Docs', icon: 'description' },
-  REFUSED: { label: 'Refused', icon: 'block', requiresNote: true },
   CRUSHED_TORN_CARTONS: { label: 'Crushed/Torn Cartons', icon: 'inventory_2' },
+  MIS_SHIP: { label: 'Mis-Ship', icon: 'swap_horiz' },
   OTHER: { label: 'Other', icon: 'more_horiz', requiresNote: true },
 };
+
+export const MATCHING_DISCREPANCY_CODES: ReadonlySet<ShipmentExceptionCode> = new Set([
+  'PIECES_MISMATCH',
+  'VENDOR_MISMATCH',
+  'DESCRIPTION_MISMATCH',
+  'SIDEMARK_MISMATCH',
+  'SHIPPER_MISMATCH',
+  'TRACKING_MISMATCH',
+  'REFERENCE_MISMATCH',
+]);
 
 export interface ShipmentExceptionRow {
   id: string;
@@ -68,11 +84,15 @@ interface UseShipmentExceptionsReturn {
   reopenException: (id: string) => Promise<boolean>;
 }
 
-export function useShipmentExceptions(shipmentId: string | undefined): UseShipmentExceptionsReturn {
+export function useShipmentExceptions(
+  shipmentId: string | undefined,
+  options?: { includeMatchingDiscrepancies?: boolean }
+): UseShipmentExceptionsReturn {
   const { profile } = useAuth();
   const { toast } = useToast();
   const [exceptions, setExceptions] = useState<ShipmentExceptionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const includeMatchingDiscrepancies = options?.includeMatchingDiscrepancies ?? false;
 
   const refetch = useCallback(async () => {
     if (!shipmentId || !profile?.tenant_id) return;
@@ -108,7 +128,68 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
       const normalizedNote = note?.trim() || null;
       const existingOpen = exceptions.find((e) => e.code === code && e.status === 'open');
 
+      // Keep a chip-generated Exception note row in shipment_notes in sync.
+      // This supports the shipment-level Notes system (All/Public/Internal/Exception)
+      // while preserving shipment_exceptions.note as the primary quick-entry field.
+      const syncChipGeneratedExceptionNote = async () => {
+        try {
+          const nowIso = new Date().toISOString();
+
+          const { data: existingNote } = await (supabase as any).from('shipment_notes')
+            .select('id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('note_type', 'exception')
+            .eq('exception_code', code)
+            .eq('is_chip_generated', true)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!normalizedNote) {
+            // Note removed/cleared → soft-delete chip-generated note rows for this code
+            await (supabase as any).from('shipment_notes')
+              .update({ deleted_at: nowIso })
+              .eq('tenant_id', profile.tenant_id)
+              .eq('shipment_id', shipmentId)
+              .eq('note_type', 'exception')
+              .eq('exception_code', code)
+              .eq('is_chip_generated', true)
+              .is('deleted_at', null);
+            return;
+          }
+
+          if (existingNote?.id) {
+            await (supabase as any).from('shipment_notes')
+              .update({
+                note: normalizedNote,
+                visibility: 'public',
+                updated_at: nowIso,
+              })
+              .eq('id', existingNote.id);
+          } else {
+            await (supabase as any).from('shipment_notes').insert({
+              tenant_id: profile.tenant_id,
+              shipment_id: shipmentId,
+              note: normalizedNote,
+              note_type: 'exception',
+              visibility: 'public',
+              exception_code: code,
+              is_chip_generated: true,
+              created_by: profile.id,
+              created_at: nowIso,
+              updated_at: nowIso,
+            });
+          }
+        } catch (noteErr) {
+          // Notes should never block exception save.
+          console.warn('[useShipmentExceptions] failed to sync shipment_notes exception note:', noteErr);
+        }
+      };
+
       if (existingOpen) {
+        const previousNote = existingOpen.note ?? null;
         const { data, error } = await (supabase as any)
           .from('shipment_exceptions')
           .update({
@@ -121,6 +202,26 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
 
         if (error) throw error;
         setExceptions((prev) => prev.map((e) => (e.id === existingOpen.id ? (data as ShipmentExceptionRow) : e)));
+
+        if (previousNote !== normalizedNote) {
+          void logActivity({
+            entityType: 'shipment',
+            tenantId: profile.tenant_id,
+            entityId: shipmentId,
+            actorUserId: profile.id,
+            eventType: 'shipment_exception_note_updated',
+            eventLabel: 'Exception note updated',
+            details: {
+              code,
+              label: SHIPMENT_EXCEPTION_CODE_META[code]?.label,
+              previous_note: previousNote,
+              note: normalizedNote,
+            },
+          });
+        }
+
+        // Mirror to shipment_notes (chip-generated exception note)
+        void syncChipGeneratedExceptionNote();
         return data as ShipmentExceptionRow;
       }
 
@@ -139,6 +240,57 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
 
       if (error) throw error;
       setExceptions((prev) => [data as ShipmentExceptionRow, ...prev]);
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: profile.tenant_id,
+        entityId: shipmentId,
+        actorUserId: profile.id,
+        eventType: 'shipment_exception_added',
+        eventLabel: 'Exception added',
+        details: {
+          code,
+          label: SHIPMENT_EXCEPTION_CODE_META[code]?.label,
+          note: normalizedNote,
+        },
+      });
+
+      // Queue internal-only exception alert (do not block UI save)
+      if (!MATCHING_DISCREPANCY_CODES.has(code)) {
+        void (async () => {
+          try {
+            // Guard: only queue if the tenant has explicitly enabled this trigger.
+            // If there is no communication_alerts row, send-alerts would otherwise "fail open"
+            // and send a generic email, which is not desired.
+            const { data: commAlert } = await (supabase.from('communication_alerts') as any)
+              .select('is_enabled, channels')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('trigger_event', 'receiving.exception_noted')
+              .maybeSingle();
+
+            if (!commAlert || commAlert.is_enabled !== true || commAlert.channels?.email !== true) {
+              return;
+            }
+
+            const { data: sh } = await (supabase.from('shipments') as any)
+              .select('shipment_number')
+              .eq('id', shipmentId)
+              .maybeSingle();
+            const shipmentNumber = (sh?.shipment_number as string | null) || shipmentId;
+            await queueReceivingExceptionAlert(
+              profile.tenant_id,
+              shipmentId,
+              shipmentNumber,
+              SHIPMENT_EXCEPTION_CODE_META[code]?.label || code
+            );
+          } catch (alertErr) {
+            console.warn('[useShipmentExceptions] failed to queue receiving exception alert:', alertErr);
+          }
+        })();
+      }
+
+      // Mirror to shipment_notes (chip-generated exception note)
+      void syncChipGeneratedExceptionNote();
       return data as ShipmentExceptionRow;
     } catch (err: any) {
       console.error('[useShipmentExceptions] upsert error:', err);
@@ -164,6 +316,36 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
 
       if (error) throw error;
       setExceptions((prev) => prev.filter((e) => !(e.code === code && e.status === 'open')));
+
+      // When a chip is removed, also remove (soft-delete) the chip-generated Exception note(s).
+      if (profile?.tenant_id) {
+        try {
+          await (supabase as any).from('shipment_notes')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('tenant_id', profile.tenant_id)
+            .eq('shipment_id', shipmentId)
+            .eq('note_type', 'exception')
+            .eq('exception_code', code)
+            .eq('is_chip_generated', true)
+            .is('deleted_at', null);
+        } catch (noteErr) {
+          console.warn('[useShipmentExceptions] failed to cleanup shipment_notes for removed chip:', noteErr);
+        }
+      }
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: profile.tenant_id,
+        entityId: shipmentId,
+        actorUserId: profile.id ?? null,
+        eventType: 'shipment_exception_removed',
+        eventLabel: 'Exception removed',
+        details: {
+          code,
+          label: SHIPMENT_EXCEPTION_CODE_META[code]?.label,
+        },
+      });
+
       return true;
     } catch (err: any) {
       console.error('[useShipmentExceptions] remove error:', err);
@@ -174,7 +356,7 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
       });
       return false;
     }
-  }, [shipmentId, profile?.tenant_id, toast]);
+  }, [shipmentId, profile?.tenant_id, profile?.id, toast]);
 
   const resolveException = useCallback(async (id: string, resolutionNote: string): Promise<boolean> => {
     if (!profile?.id) return false;
@@ -193,6 +375,21 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
 
       if (error) throw error;
       setExceptions((prev) => prev.map((e) => (e.id === id ? (data as ShipmentExceptionRow) : e)));
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: (data as ShipmentExceptionRow).tenant_id,
+        entityId: (data as ShipmentExceptionRow).shipment_id,
+        actorUserId: profile.id,
+        eventType: 'shipment_exception_resolved',
+        eventLabel: 'Exception resolved',
+        details: {
+          code: (data as ShipmentExceptionRow).code,
+          label: SHIPMENT_EXCEPTION_CODE_META[(data as ShipmentExceptionRow).code]?.label,
+          resolution_note: resolutionNote.trim(),
+        },
+      });
+
       return true;
     } catch (err: any) {
       console.error('[useShipmentExceptions] resolve error:', err);
@@ -224,6 +421,20 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
 
       if (error) throw error;
       setExceptions((prev) => prev.map((e) => (e.id === id ? (data as ShipmentExceptionRow) : e)));
+
+      void logActivity({
+        entityType: 'shipment',
+        tenantId: (data as ShipmentExceptionRow).tenant_id,
+        entityId: (data as ShipmentExceptionRow).shipment_id,
+        actorUserId: profile.id,
+        eventType: 'shipment_exception_reopened',
+        eventLabel: 'Exception reopened',
+        details: {
+          code: (data as ShipmentExceptionRow).code,
+          label: SHIPMENT_EXCEPTION_CODE_META[(data as ShipmentExceptionRow).code]?.label,
+        },
+      });
+
       return true;
     } catch (err: any) {
       console.error('[useShipmentExceptions] reopen error:', err);
@@ -236,13 +447,18 @@ export function useShipmentExceptions(shipmentId: string | undefined): UseShipme
     }
   }, [profile?.id, toast]);
 
+  const visibleExceptions = useMemo(() => {
+    if (includeMatchingDiscrepancies) return exceptions;
+    return exceptions.filter((e) => !MATCHING_DISCREPANCY_CODES.has(e.code));
+  }, [exceptions, includeMatchingDiscrepancies]);
+
   const openExceptions = useMemo(
-    () => exceptions.filter((e) => e.status === 'open'),
-    [exceptions]
+    () => visibleExceptions.filter((e) => e.status === 'open'),
+    [visibleExceptions]
   );
 
   return {
-    exceptions,
+    exceptions: visibleExceptions,
     openExceptions,
     openCount: openExceptions.length,
     loading,

@@ -20,6 +20,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useToast } from '@/hooks/use-toast';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { useAuth } from '@/contexts/AuthContext';
+import { logActivity } from '@/lib/activity/logActivity';
+import { getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 interface ClassOption {
   id: string;
@@ -53,6 +56,7 @@ export function AddShipmentItemDialog({
   classOptional = false,
 }: AddShipmentItemDialogProps) {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [saving, setSaving] = useState(false);
 
   // Form state
@@ -97,6 +101,20 @@ export function AddShipmentItemDialog({
 
       // Create actual item record if we have the required data
       if (tenantId && accountId && warehouseId) {
+        let classCubicFeet: number | null = null;
+        if (matchedClass?.id) {
+          try {
+            const { data: classRow } = await (supabase.from('classes') as any)
+              .select('min_cubic_feet, max_cubic_feet')
+              .eq('tenant_id', tenantId)
+              .eq('id', matchedClass.id)
+              .maybeSingle();
+            classCubicFeet = classRow ? getClassCubicFeetSingleValue(classRow) : null;
+          } catch {
+            // ignore
+          }
+        }
+
         const itemPayload = {
           tenant_id: tenantId,
           account_id: accountId,
@@ -105,6 +123,8 @@ export function AddShipmentItemDialog({
           vendor: vendor.trim() || null,
           quantity: itemQuantity,
           class_id: matchedClass?.id || null,
+          size: classCubicFeet,
+          size_unit: classCubicFeet !== null ? 'cu_ft' : null,
           sidemark_id: sidemarkId || null,
           receiving_shipment_id: shipmentId,
           status: 'pending_receipt',
@@ -136,6 +156,68 @@ export function AddShipmentItemDialog({
       });
 
       if (error) throw error;
+
+      // Activity log (best-effort)
+      if (profile?.tenant_id && profile?.id) {
+        void (async () => {
+          let shipmentNumber: string | null = null;
+          let shipmentType: string | null = null;
+          try {
+            const { data: shipRow } = await (supabase.from('shipments') as any)
+              .select('shipment_number, shipment_type')
+              .eq('id', shipmentId)
+              .maybeSingle();
+            shipmentNumber = shipRow?.shipment_number || null;
+            shipmentType = shipRow?.shipment_type || null;
+          } catch {
+            // ignore
+          }
+
+          const promises: Promise<void>[] = [];
+
+          if (itemId) {
+            promises.push(
+              logActivity({
+                entityType: 'item',
+                tenantId: profile.tenant_id,
+                entityId: itemId,
+                actorUserId: profile.id,
+                eventType: 'item_shipment_linked',
+                eventLabel: `Added to shipment ${shipmentNumber || 'SHP'}`,
+                details: {
+                  shipment_id: shipmentId,
+                  shipment_number: shipmentNumber,
+                  shipment_type: shipmentType,
+                  expected_description: description.trim(),
+                  expected_vendor: vendor.trim() || null,
+                  expected_quantity: itemQuantity,
+                  expected_class_id: matchedClass?.id || null,
+                },
+              })
+            );
+          }
+
+          promises.push(
+            logActivity({
+              entityType: 'shipment',
+              tenantId: profile.tenant_id,
+              entityId: shipmentId,
+              actorUserId: profile.id,
+              eventType: 'item_added',
+              eventLabel: `Expected item added: ${description.trim()}`,
+              details: {
+                item_id: itemId,
+                expected_description: description.trim(),
+                expected_vendor: vendor.trim() || null,
+                expected_quantity: itemQuantity,
+                expected_class_id: matchedClass?.id || null,
+              },
+            })
+          );
+
+          await Promise.allSettled(promises);
+        })();
+      }
 
       // Record field usage for future suggestions
       if (vendor) addVendorSuggestion(vendor);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -10,6 +10,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Form,
   FormControl,
@@ -38,9 +48,13 @@ import { ClassSelect } from '@/components/ui/class-select';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
+import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { Switch } from '@/components/ui/switch';
+import { formatClassCubicFeetLabel, getClassCubicFeetSingleValue } from '@/lib/pricing/classCubicFeet';
 
 const itemSchema = z.object({
   description: z.string().optional(),
+  sku: z.string().optional(),
   quantity: z.coerce.number().min(1).default(1),
   sidemark: z.string().optional(),
   sidemark_id: z.string().optional(),
@@ -77,6 +91,8 @@ interface ItemEditDialogProps {
     id: string;
     item_code: string;
     description: string | null;
+    sku?: string | null;
+    metadata?: Record<string, unknown> | null;
     quantity: number;
     sidemark: string | null;
     sidemark_id?: string | null;
@@ -106,6 +122,22 @@ const SIZE_UNITS = [
   { value: 'feet', label: 'feet' },
 ];
 
+function nearlyEqual(a: number, b: number, epsilon = 0.0001): boolean {
+  return Math.abs(a - b) <= epsilon;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 export function ItemEditDialog({
   open,
   onOpenChange,
@@ -116,9 +148,22 @@ export function ItemEditDialog({
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [sizeManuallyOverridden, setSizeManuallyOverridden] = useState(false);
+  const [overwriteSizeDialogOpen, setOverwriteSizeDialogOpen] = useState(false);
+  const [pendingAutoSize, setPendingAutoSize] = useState<{ size: number; sizeUnit: string; classId: string; classLabel?: string } | null>(null);
+
+  const classSizeCacheRef = useRef<Map<string, { single: number | null; label: string | null }>>(new Map());
+  const lastAutoSizeRef = useRef<number | null>(null);
+  const lastAutoClassIdRef = useRef<string | null>(null);
 
   // Field suggestions for room and sidemark
   const { suggestions: roomSuggestions, addOrUpdateSuggestion: addRoomSuggestion } = useFieldSuggestions('room');
+  const { suggestions: skuSuggestions, addOrUpdateSuggestion: addSkuSuggestion } = useFieldSuggestions('sku');
+
+  // Tenant-managed custom item fields
+  const { settings: itemDisplaySettings } = useItemDisplaySettings();
+  const customFieldsForForm = itemDisplaySettings.custom_fields.filter((f) => f.enabled && f.show_on_detail);
+  const [customFieldDraft, setCustomFieldDraft] = useState<Record<string, unknown>>({});
 
   // Fetch accounts
   useEffect(() => {
@@ -138,6 +183,7 @@ export function ItemEditDialog({
     resolver: zodResolver(itemSchema),
     defaultValues: {
       description: '',
+      sku: '',
       quantity: 1,
       sidemark: '',
       sidemark_id: '',
@@ -160,25 +206,141 @@ export function ItemEditDialog({
   const { sidemarks: accountSidemarks, addSidemark: addAccountSidemark } = useAccountSidemarks(selectedAccountId || undefined);
   const sidemarkSuggestions = accountSidemarks.map((s) => ({ value: s.sidemark, label: s.sidemark }));
 
+  const fetchClassSizeInfo = useCallback(async (classId: string) => {
+    if (!profile?.tenant_id) return null;
+    if (!classId) return null;
+
+    const cached = classSizeCacheRef.current.get(classId);
+    if (cached) return cached;
+
+    try {
+      const { data, error } = await (supabase.from('classes') as any)
+        .select('id, code, name, min_cubic_feet, max_cubic_feet')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', classId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+
+      const single = getClassCubicFeetSingleValue(data);
+      const label = formatClassCubicFeetLabel(data);
+      const info = { single, label };
+      classSizeCacheRef.current.set(classId, info);
+      return info;
+    } catch {
+      return null;
+    }
+  }, [profile?.tenant_id]);
+
   useEffect(() => {
     if (open && item) {
       form.reset({
         description: item.description || '',
+        sku: item.sku || '',
         quantity: item.quantity || 1,
         sidemark: item.sidemark || '',
         sidemark_id: item.sidemark_id || '',
         class_id: item.class_id || '',
         account_id: item.account_id || '',
         vendor: item.vendor || '',
-        size: item.size || undefined,
+        size: item.size ?? undefined,
         size_unit: item.size_unit || '',
         room: item.room || '',
         link: item.link || '',
         status: item.status || 'active',
         client_account: item.client_account || '',
       });
+
+      const meta = item.metadata && typeof item.metadata === 'object' ? item.metadata : null;
+      const custom = meta && typeof (meta as any).custom_fields === 'object' ? (meta as any).custom_fields : null;
+      setCustomFieldDraft(custom && typeof custom === 'object' ? { ...(custom as any) } : {});
+
+      // Initialize "manual size override" tracking so we can prompt on class changes.
+      // Best-effort: if size matches the current class cubic-feet default, treat as NOT overridden.
+      setOverwriteSizeDialogOpen(false);
+      setPendingAutoSize(null);
+      void (async () => {
+        const currentSize = item.size;
+        if (currentSize === null || currentSize === undefined) {
+          lastAutoSizeRef.current = null;
+          lastAutoClassIdRef.current = item.class_id || null;
+          setSizeManuallyOverridden(false);
+          return;
+        }
+
+        if (!item.class_id) {
+          lastAutoSizeRef.current = null;
+          lastAutoClassIdRef.current = null;
+          setSizeManuallyOverridden(true);
+          return;
+        }
+
+        const info = await fetchClassSizeInfo(item.class_id);
+        const classDefault = info?.single ?? null;
+        lastAutoSizeRef.current = classDefault;
+        lastAutoClassIdRef.current = item.class_id;
+
+        const unit = item.size_unit;
+        if (classDefault !== null && nearlyEqual(currentSize, classDefault) && (!unit || unit === 'cu_ft')) {
+          setSizeManuallyOverridden(false);
+        } else {
+          setSizeManuallyOverridden(true);
+        }
+      })();
+    } else if (open) {
+      setCustomFieldDraft({});
+      lastAutoSizeRef.current = null;
+      lastAutoClassIdRef.current = null;
+      setSizeManuallyOverridden(false);
+      setOverwriteSizeDialogOpen(false);
+      setPendingAutoSize(null);
     }
   }, [open, item]);
+
+  const applyAutoSize = useCallback((nextClassId: string, nextSize: number) => {
+    form.setValue('size', nextSize, { shouldDirty: true });
+    form.setValue('size_unit', 'cu_ft', { shouldDirty: true });
+    lastAutoSizeRef.current = nextSize;
+    lastAutoClassIdRef.current = nextClassId;
+    setSizeManuallyOverridden(false);
+    setOverwriteSizeDialogOpen(false);
+    setPendingAutoSize(null);
+  }, [form]);
+
+  const maybeAutoFillSizeFromClass = useCallback(async (nextClassId: string) => {
+    if (!nextClassId) return;
+    const info = await fetchClassSizeInfo(nextClassId);
+
+    if (!info) return;
+
+    if (info.single === null) {
+      // Legacy range or missing size — don't guess a single value.
+      if (info.label) {
+        toast({
+          title: 'Class size needs a single value',
+          description: `Selected class is configured as "${info.label}". Set a single cubic-feet value in Settings → Service Rates → Classes to enable auto-fill.`,
+        });
+      }
+      return;
+    }
+
+    const currentSize = toOptionalNumber(form.getValues('size'));
+    const hasManualSize = currentSize !== undefined && currentSize !== null;
+
+    // If user has manually edited size, prompt before overwriting.
+    if (sizeManuallyOverridden && hasManualSize) {
+      setPendingAutoSize({
+        size: info.single,
+        sizeUnit: 'cu_ft',
+        classId: nextClassId,
+        classLabel: info.label ?? undefined,
+      });
+      setOverwriteSizeDialogOpen(true);
+      return;
+    }
+
+    applyAutoSize(nextClassId, info.single);
+  }, [applyAutoSize, fetchClassSizeInfo, form, sizeManuallyOverridden, toast]);
 
   const onSubmit = async (data: ItemFormData) => {
     if (!item) return;
@@ -192,18 +354,58 @@ export function ItemEditDialog({
 
       const updateData = {
         description: data.description || null,
+        sku: data.sku || null,
         quantity: data.quantity,
         sidemark: data.sidemark || null,
         class_id: data.class_id || null,
         account_id: data.account_id || null,
         vendor: data.vendor || null,
-        size: data.size || null,
+        size: data.size ?? null,
         size_unit: data.size_unit || null,
         room: data.room || null,
         link: data.link || null,
         status: data.status || 'active',
         client_account: data.client_account || null,
       };
+
+      // Merge custom field values into metadata.custom_fields
+      const existingMeta = item.metadata && typeof item.metadata === 'object' ? (item.metadata as Record<string, unknown>) : {};
+      const existingCustom =
+        (existingMeta as any).custom_fields && typeof (existingMeta as any).custom_fields === 'object'
+          ? { ...(existingMeta as any).custom_fields }
+          : {};
+
+      const nextCustom: Record<string, unknown> = { ...(existingCustom as any) };
+      for (const f of customFieldsForForm) {
+        const raw = customFieldDraft[f.key];
+        if (raw === undefined || raw === null) {
+          delete (nextCustom as any)[f.key];
+          continue;
+        }
+        if (f.type === 'checkbox') {
+          if (raw === true) (nextCustom as any)[f.key] = true;
+          else delete (nextCustom as any)[f.key];
+          continue;
+        }
+        if (f.type === 'number') {
+          const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+          if (Number.isFinite(n)) (nextCustom as any)[f.key] = n;
+          else delete (nextCustom as any)[f.key];
+          continue;
+        }
+        const s = String(raw).trim();
+        if (s) (nextCustom as any)[f.key] = s;
+        else delete (nextCustom as any)[f.key];
+      }
+
+      const nextMeta: Record<string, unknown> = { ...(existingMeta as any) };
+      if (Object.keys(nextCustom).length > 0) {
+        (nextMeta as any).custom_fields = nextCustom;
+      } else {
+        delete (nextMeta as any).custom_fields;
+      }
+
+      (updateData as any).metadata = nextMeta;
 
       const { error } = await (supabase.from('items') as any)
         .update(updateData)
@@ -213,6 +415,22 @@ export function ItemEditDialog({
 
       // Log activity for key field changes
       if (profile?.tenant_id) {
+        // Custom field diffs (stored under metadata.custom_fields)
+        for (const f of customFieldsForForm) {
+          const fromVal = (existingCustom as any)[f.key] ?? null;
+          const toVal = (nextCustom as any)[f.key] ?? null;
+          if (fromVal === toVal) continue;
+
+          logItemActivity({
+            tenantId: profile.tenant_id,
+            itemId: item.id,
+            actorUserId: profile.id,
+            eventType: 'item_custom_field_updated',
+            eventLabel: `${f.label} updated`,
+            details: { field_key: f.key, label: f.label, from: fromVal, to: toVal },
+          });
+        }
+
         if (data.status !== item.status) {
           logItemActivity({
             tenantId: profile.tenant_id,
@@ -248,6 +466,7 @@ export function ItemEditDialog({
 
       // Add room to suggestions
       if (data.room) addRoomSuggestion(data.room);
+      if (data.sku) addSkuSuggestion(data.sku);
 
       toast({
         title: 'Item Updated',
@@ -291,7 +510,10 @@ export function ItemEditDialog({
                     <FormControl>
                       <ClassSelect
                         value={field.value}
-                        onChange={field.onChange}
+                        onChange={(next) => {
+                          field.onChange(next);
+                          void maybeAutoFillSizeFromClass(next);
+                        }}
                         placeholder="Select class..."
                       />
                     </FormControl>
@@ -361,6 +583,26 @@ export function ItemEditDialog({
                 )}
               />
 
+              {/* SKU */}
+              <FormField
+                control={form.control}
+                name="sku"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>SKU (optional)</FormLabel>
+                    <FormControl>
+                      <AutocompleteInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        suggestions={skuSuggestions}
+                        placeholder="SKU"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Description */}
               <FormField
                 control={form.control}
@@ -380,6 +622,59 @@ export function ItemEditDialog({
                   </FormItem>
                 )}
               />
+
+              {/* Custom Fields */}
+              {customFieldsForForm.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Custom Fields</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {customFieldsForForm.map((f) => {
+                      const raw = customFieldDraft[f.key];
+                      const stringVal = raw === null || raw === undefined ? '' : String(raw);
+                      const dateVal = stringVal && stringVal.includes('T') ? stringVal.slice(0, 10) : stringVal;
+                      const checked = raw === true || raw === 'true' || raw === 1 || raw === '1';
+
+                      return (
+                        <div key={f.id} className="space-y-1">
+                          <div className="text-xs text-muted-foreground">{f.label}</div>
+                          {f.type === 'select' ? (
+                            <Select
+                              value={stringVal || '__none__'}
+                              onValueChange={(val) => {
+                                const next = val === '__none__' ? '' : val;
+                                setCustomFieldDraft((prev) => ({ ...prev, [f.key]: next }));
+                              }}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Select…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">-</SelectItem>
+                                {(f.options || []).map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : f.type === 'checkbox' ? (
+                            <div className="h-9 flex items-center">
+                              <Switch checked={checked} onCheckedChange={(val) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: val }))} />
+                            </div>
+                          ) : (
+                            <Input
+                              value={f.type === 'date' ? dateVal : stringVal}
+                              type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                              onChange={(e) => setCustomFieldDraft((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                              placeholder="-"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Account */}
               <FormField
@@ -471,7 +766,7 @@ export function ItemEditDialog({
                   <FormItem>
                     <FormLabel>Link (URL)</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://..." {...field} />
+                      <Input type="url" placeholder="https://..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -487,7 +782,29 @@ export function ItemEditDialog({
                     <FormItem>
                       <FormLabel>Size</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="Size" {...field} />
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          placeholder="Size"
+                          value={field.value ?? ''}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (!raw) {
+                              field.onChange(undefined);
+                              setSizeManuallyOverridden(false);
+                              return;
+                            }
+                            const n = e.target.valueAsNumber;
+                            if (Number.isFinite(n)) {
+                              field.onChange(n);
+                              setSizeManuallyOverridden(true);
+                              return;
+                            }
+                            // Fallback: keep raw so the user can finish typing.
+                            field.onChange(raw as any);
+                            setSizeManuallyOverridden(true);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -500,7 +817,15 @@ export function ItemEditDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Size Unit</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                      <Select
+                        onValueChange={(val) => {
+                          field.onChange(val);
+                          if (toOptionalNumber(form.getValues('size')) !== undefined) {
+                            setSizeManuallyOverridden(true);
+                          }
+                        }}
+                        value={field.value || undefined}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Unit" />
@@ -530,6 +855,32 @@ export function ItemEditDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Prompt before overwriting a manually-entered size */}
+      <AlertDialog open={overwriteSizeDialogOpen} onOpenChange={setOverwriteSizeDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Overwrite item size?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This item&apos;s size was manually edited. Changing the class can auto-fill size from the selected class
+              {pendingAutoSize?.classLabel ? ` (${pendingAutoSize.classLabel})` : ''}. Do you want to overwrite your manual size?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setOverwriteSizeDialogOpen(false); setPendingAutoSize(null); }}>
+              Keep manual size
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingAutoSize) return;
+                applyAutoSize(pendingAutoSize.classId, pendingAutoSize.size);
+              }}
+            >
+              Overwrite
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

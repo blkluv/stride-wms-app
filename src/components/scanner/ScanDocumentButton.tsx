@@ -45,6 +45,16 @@ export function ScanDocumentButton({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanMode, setScanMode] = useState<'camera' | 'upload'>('camera');
 
+  // "Real scan" is mobile/tablet-focused; desktop uses upload-only.
+  const canWebScan =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches;
+
+  if (!isNative() && !canWebScan) {
+    return null;
+  }
+
   const handleOpenScanner = (mode: 'camera' | 'upload') => {
     setScanMode(mode);
     setScannerOpen(true);

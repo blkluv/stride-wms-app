@@ -121,7 +121,11 @@ export function TaskDialog({
 
   const selectableTaskTypes = useMemo(() => {
     // If we're editing an existing task, keep its type available for display/editing.
-    if (task) return taskTypes;
+    if (task) {
+      return taskTypes.filter(
+        (t) => !DEPRECATED_TASK_TYPES.has(t.name) || t.name === task.task_type
+      );
+    }
     return taskTypes.filter((t) => !DEPRECATED_TASK_TYPES.has(t.name));
   }, [task, taskTypes, DEPRECATED_TASK_TYPES]);
 

@@ -1046,6 +1046,28 @@ async function toolSubmitWillCall(
     return { result: { ok: false, error: "Failed to create pickup request" } };
   }
 
+  // Best-effort: coerce legacy SHP-###### → OUT-##### for new outbound shipments.
+  // (Some environments still have the old trigger installed.)
+  try {
+    const raw = String(shipment.shipment_number || "").trim().toUpperCase();
+    const match = raw.match(/^SHP-(\d{5,})$/);
+    if (match) {
+      const digits = match[1];
+      const outDigits = digits.length > 5 && digits[0] !== "0" ? digits : digits.slice(-5);
+      const coerced = `OUT-${outDigits}`;
+      const { error: renumberError } = await supabase
+        .from("shipments")
+        .update({ shipment_number: coerced })
+        .eq("tenant_id", scope.tenant_id)
+        .eq("id", shipment.id);
+      if (!renumberError) {
+        shipment.shipment_number = coerced;
+      }
+    }
+  } catch (err) {
+    console.warn("[client-chat] shipment_number coerce failed:", err);
+  }
+
   // Create shipment items
   const shipmentItems = draft.item_ids.map((item_id: string) => ({
     shipment_id: shipment.id,
@@ -1880,17 +1902,54 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Extract user ID from auth token if available
+    // Require authentication
     const authHeader = req.headers.get("authorization");
-    let userId = "anonymous";
-    if (authHeader) {
-      try {
-        const token = authHeader.replace("Bearer ", "");
-        const { data: { user } } = await supabase.auth.getUser(token);
-        if (user) userId = user.id;
-      } catch (e) {
-        console.error("Auth error:", e);
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let userId: string;
+    try {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Invalid or expired token" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
+      userId = user.id;
+
+      // Validate user belongs to the requested tenant/account
+      const { data: userProfile } = await supabase
+        .from("users")
+        .select("tenant_id, account_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!userProfile || userProfile.tenant_id !== tenantId) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized access" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // If accountId is provided, verify the user has access to it
+      if (accountId && userProfile.account_id && userProfile.account_id !== accountId) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized access to account" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } catch (e) {
+      console.error("Auth error:", e);
+      return new Response(
+        JSON.stringify({ error: "Authentication failed" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const scope: ChatScope = {

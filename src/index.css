@@ -181,6 +181,21 @@
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
 
+  /* Hide scrollbars (iOS-style horizontal tab bars, etc.) */
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Momentum scrolling for iOS */
+  .scroll-momentum {
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* Safe area insets for native apps (iOS notch, Android gesture bar) */
   .pt-safe {
     padding-top: max(0.5rem, env(safe-area-inset-top));
@@ -208,9 +223,11 @@
   }
 
   /* Minimum touch target utility (44x44px iOS guideline) */
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
+  @media (pointer: coarse) {
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
   }
 
   /* Data Label - Micro uppercase text for labels */
@@ -257,19 +274,33 @@
   }
 }
 
-/* Global interactive icon hover animation */
-button svg,
-a svg,
-[role="button"] svg,
-.cursor-pointer svg {
-  transition: transform 0.2s ease-out;
+/* Global interactive icon hover animation
+   Keep this subtle (more Apple-like) and only on true-hover devices. */
+@media (hover: hover) and (pointer: fine) {
+  button svg,
+  a svg,
+  [role="button"] svg,
+  .cursor-pointer svg {
+    transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+  }
+
+  button:hover svg,
+  a:hover svg,
+  [role="button"]:hover svg,
+  .cursor-pointer:hover svg {
+    transform: scale(1.06);
+    opacity: 0.92;
+  }
 }
 
-button:hover svg,
-a:hover svg,
-[role="button"]:hover svg,
-.cursor-pointer:hover svg {
-  transform: scale(1.15);
+@media (prefers-reduced-motion: reduce) {
+  button svg,
+  a svg,
+  [role="button"] svg,
+  .cursor-pointer svg {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 /* Prevent double-scaling for icons with explicit animations */
@@ -436,9 +467,9 @@ a:hover svg,
   filter: none;
 }
 
-.stoplight-sm { width: 10px; height: 10px; }
-.stoplight-md { width: 12px; height: 12px; }
-.stoplight-lg { width: 14px; height: 14px; }
+.stoplight-sm { width: 12px; height: 12px; }
+.stoplight-md { width: 14px; height: 14px; }
+.stoplight-lg { width: 16px; height: 16px; }
 
 .stoplight-close {
   background: linear-gradient(180deg, #FF6058 0%, #E7483B 100%);
@@ -473,9 +504,10 @@ a:hover svg,
   -webkit-overflow-scrolling: touch;
 }
 
-[data-radix-dialog-content],
-[data-radix-sheet-content],
-[role="dialog"] {
+/* Use :where() so component utility classes can override these defaults. */
+:where([data-radix-dialog-content]),
+:where([data-radix-sheet-content]),
+:where([role="dialog"]) {
   max-height: 85vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;

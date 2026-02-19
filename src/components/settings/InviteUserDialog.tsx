@@ -36,6 +36,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Role } from '@/hooks/useUsers';
 import { PromptLevel } from '@/types/guidedPrompts';
+import { syncStripeSubscriptionSeatsBestEffort } from '@/lib/saas/syncStripeSeats';
 
 const inviteSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -165,6 +166,9 @@ export function InviteUserDialog({
         title: 'Invitation sent',
         description: `An invitation has been created for ${data.email}. They will receive access when they sign up with this email.`,
       });
+
+      // Seat-based billing: adding a staff member should update Stripe quantity automatically.
+      void syncStripeSubscriptionSeatsBestEffort("invite_user_dialog_created");
 
       form.reset();
       onSuccess();
