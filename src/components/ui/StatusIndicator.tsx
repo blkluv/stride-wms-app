@@ -81,6 +81,16 @@ const statusStyles = {
     text: 'text-yellow-700 dark:text-yellow-400',
     dot: 'bg-yellow-500',
   },
+  pending_review: {
+    bg: 'bg-yellow-500/10 dark:bg-yellow-400/15',
+    text: 'text-yellow-700 dark:text-yellow-400',
+    dot: 'bg-yellow-500',
+  },
+  waiting_split: {
+    bg: 'bg-amber-500/10 dark:bg-amber-400/15',
+    text: 'text-amber-700 dark:text-amber-400',
+    dot: 'bg-amber-500',
+  },
   resolved: {
     bg: 'bg-green-500/10 dark:bg-green-400/15',
     text: 'text-green-700 dark:text-green-400',

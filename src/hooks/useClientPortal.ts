@@ -192,6 +192,7 @@ export function useClientShipments() {
           shipment_number,
           shipment_type,
           status,
+          metadata,
           scheduled_date,
           created_at,
           origin_name,
