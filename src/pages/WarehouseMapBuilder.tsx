@@ -38,6 +38,8 @@ type NodeDraft = {
   height: number;
 };
 
+const UNASSIGNED_ZONE_VALUE = '__unassigned__';
+
 export default function WarehouseMapBuilder() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -387,14 +389,16 @@ export default function WarehouseMapBuilder() {
                     <div className="space-y-2">
                       <Label>Zone</Label>
                       <Select
-                        value={draft.zone_id ?? ''}
-                        onValueChange={(v) => setDraft((d) => (d ? { ...d, zone_id: v || null } : d))}
+                        value={draft.zone_id ?? UNASSIGNED_ZONE_VALUE}
+                        onValueChange={(v) =>
+                          setDraft((d) => (d ? { ...d, zone_id: v === UNASSIGNED_ZONE_VALUE ? null : v } : d))
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Unassigned" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Unassigned</SelectItem>
+                          <SelectItem value={UNASSIGNED_ZONE_VALUE}>Unassigned</SelectItem>
                           {zones.map((z) => (
                             <SelectItem key={z.id} value={z.id}>
                               {z.zone_code}
