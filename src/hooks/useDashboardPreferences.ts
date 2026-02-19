@@ -18,8 +18,6 @@ export interface UseDashboardPreferencesOptions {
   defaultCardOrder: string[];
 }
 
-const LAYOUT_KEYS: DashboardLayoutKey[] = ['desktop', 'mobile'];
-
 const LEGACY_CARD_ID_ALIASES: Record<string, string> = {
   // Old dashboard card ids (keep best-effort compatibility)
   putaway: 'put_away',
