@@ -248,7 +248,7 @@ async function parseFile(
       if (!itemCode && quantity === 0) continue;
 
       // Custom fields (metadata.custom_fields)
-      const customFields: Record<string, unknown> = {};
+      const rowCustomFields: Record<string, unknown> = {};
       for (const { key, type, idx } of customFieldIndices) {
         const raw = row[idx];
         if (raw === null || raw === undefined || String(raw).trim() === '') continue;
@@ -262,7 +262,7 @@ async function parseFile(
           next = parseBoolean(raw);
         }
         if (next === null || next === undefined || next === '') continue;
-        customFields[key] = next;
+        rowCustomFields[key] = next;
       }
       
       items.push({
@@ -284,7 +284,7 @@ async function parseFile(
         dateReceived: getValue('dateReceived'),
         dateReleased: getValue('dateReleased'),
         size: getNumValue('size'),
-        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+        customFields: Object.keys(rowCustomFields).length > 0 ? rowCustomFields : undefined,
       });
     }
     
