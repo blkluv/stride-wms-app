@@ -1766,7 +1766,7 @@ export default function ScanHub() {
                   <QRScanner
                     onScan={serviceScanEngine.onScan}
                     onError={(error) => console.error('Scanner error:', error)}
-                    scanning={true}
+                    scanning={!processing}
                   />
                 </div>
 
