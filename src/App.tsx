@@ -92,6 +92,7 @@ import Messages from "./pages/Messages";
 import ComponentsDemo from "./pages/ComponentsDemo";
 import MaterialIconsSample from "./pages/MaterialIconsSample";
 import LocationDetail from "./pages/LocationDetail";
+import Containers from "./pages/Containers";
 import ContainerDetail from "./pages/ContainerDetail";
 import IncomingManager from "./pages/IncomingManager";
 import InboundManifestDetail from "./pages/InboundManifestDetail";
@@ -124,6 +125,7 @@ const App = () => (
             <Route path="/inventory" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Inventory /></RequireRole></ProtectedRoute>} />
             <Route path="/inventory/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ItemDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><LocationDetail /></RequireRole></ProtectedRoute>} />
+            <Route path="/containers" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Containers /></RequireRole></ProtectedRoute>} />
             <Route path="/containers/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ContainerDetail /></RequireRole></ProtectedRoute>} />
             {/* Incoming Manager (new inbound workflows) */}
             <Route path="/incoming/manager" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><IncomingManager /></RequireRole></ProtectedRoute>} />
