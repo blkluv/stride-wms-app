@@ -25,6 +25,7 @@ import { QRScanner } from '@/components/scan/QRScanner';
 import { useStocktakeScan, ScanResult } from '@/hooks/useStocktakes';
 import { useLocations } from '@/hooks/useLocations';
 import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
+import { useOrgPreferences } from '@/hooks/useOrgPreferences';
 import { supabase } from '@/integrations/supabase/client';
 import {
   hapticLight,
@@ -171,6 +172,8 @@ export default function StocktakeScanView() {
     recordScan,
     refetch,
   } = useStocktakeScan(id || '');
+
+  const { preferences: orgPrefs } = useOrgPreferences();
 
   // Item list view (tenant-managed)
   const {
@@ -460,23 +463,25 @@ export default function StocktakeScanView() {
     const input = data.trim();
 
     try {
-      const scannedContainer = await lookupContainer(input);
-      if (scannedContainer) {
-        hapticMedium();
-        const ok = window.confirm(
-          `Scanned container ${scannedContainer.container_code}.\n\nOpen container details? (This will leave stocktake scanning.)`
-        );
-        if (ok) {
-          navigate(`/containers/${scannedContainer.id}`);
+      if (orgPrefs.scan_shortcuts_open_container_enabled) {
+        const scannedContainer = await lookupContainer(input);
+        if (scannedContainer) {
+          hapticMedium();
+          const ok = window.confirm(
+            `Scanned container ${scannedContainer.container_code}.\n\nOpen container details? (This will leave stocktake scanning.)`
+          );
+          if (ok) {
+            navigate(`/containers/${scannedContainer.id}`);
+            return;
+          }
+          setLastScan({
+            itemCode: scannedContainer.container_code,
+            result: 'duplicate',
+            message: 'Container scan ignored.',
+            autoFixed: false,
+          });
           return;
         }
-        setLastScan({
-          itemCode: scannedContainer.container_code,
-          result: 'duplicate',
-          message: 'Container scan ignored.',
-          autoFixed: false,
-        });
-        return;
       }
 
       const item = await lookupItem(input);
@@ -528,7 +533,7 @@ export default function StocktakeScanView() {
     } finally {
       setProcessing(false);
     }
-  }, [processing, activeLocationId, id, recordScan, navigate]);
+  }, [processing, activeLocationId, id, recordScan, navigate, orgPrefs.scan_shortcuts_open_container_enabled]);
 
   const handleManualSubmit = async () => {
     if (!manualItemCode.trim()) return;

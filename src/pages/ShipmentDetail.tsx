@@ -56,6 +56,7 @@ import { useLocations } from '@/hooks/useLocations';
 import { useDocuments } from '@/hooks/useDocuments';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
 import { parseScanPayload } from '@/lib/scan/parseScanPayload';
+import { useOrgPreferences } from '@/hooks/useOrgPreferences';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
@@ -194,6 +195,7 @@ export default function ShipmentDetail() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { hasPermission, hasRole } = usePermissions();
+  const { preferences: orgPrefs } = useOrgPreferences();
 
   // Tenant-managed defaults + per-user overrides for item list views
   const {
@@ -991,7 +993,10 @@ export default function ShipmentDetail() {
           const payload = parseScanPayload(trimmed);
 
           // Container scan -> optionally open container detail
-          if (payload?.type === 'container' || /^CNT-[0-9]+$/i.test(payload?.code || trimmed)) {
+          if (
+            orgPrefs.scan_shortcuts_open_container_enabled &&
+            (payload?.type === 'container' || /^CNT-[0-9]+$/i.test(payload?.code || trimmed))
+          ) {
             const code = (payload?.code || trimmed).trim();
             let containerId: string | null = null;
 
@@ -1033,7 +1038,7 @@ export default function ShipmentDetail() {
           }
 
           // Location scan -> optionally open location detail
-          if (payload?.type === 'location') {
+          if (orgPrefs.scan_shortcuts_open_location_enabled && payload?.type === 'location') {
             const code = (payload?.code || payload?.id || trimmed).trim();
             const ok = window.confirm(
               `This screen expects item codes.\n\nYou scanned a location (${code}).\n\nOpen location details?`

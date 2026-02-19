@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { ClientGroupedItemSplitSection } from './ClientGroupedItemSplitSection';
+import { ScanShortcutsSection } from './ScanShortcutsSection';
 import {
   DndContext,
   closestCenter,
@@ -41,6 +42,7 @@ import {
 // Define the card IDs and their default order
 const DEFAULT_CARD_ORDER = [
   'space-tracking',
+  'scan-shortcuts',
   'storage-inspection',
   'client-grouped-split',
   'item-display-settings',
@@ -181,6 +183,16 @@ export function PreferencesContent() {
           containerVolumeMode={orgPrefs.container_volume_mode}
           onSpaceTrackingModeChange={(mode) => updateOrgPref('space_tracking_mode', mode)}
           onContainerVolumeModeChange={(mode) => updateOrgPref('container_volume_mode', mode)}
+        />
+      </SortableCard>
+    ),
+    'scan-shortcuts': (
+      <SortableCard id="scan-shortcuts" key="scan-shortcuts">
+        <ScanShortcutsSection
+          openContainerEnabled={orgPrefs.scan_shortcuts_open_container_enabled}
+          openLocationEnabled={orgPrefs.scan_shortcuts_open_location_enabled}
+          onOpenContainerEnabledChange={(next) => updateOrgPref('scan_shortcuts_open_container_enabled', next)}
+          onOpenLocationEnabledChange={(next) => updateOrgPref('scan_shortcuts_open_location_enabled', next)}
         />
       </SortableCard>
     ),
