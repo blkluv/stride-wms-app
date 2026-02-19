@@ -33,6 +33,7 @@ import { useWarehouses } from '@/hooks/useWarehouses';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { WillCallCompletionDialog } from '@/components/tasks/WillCallCompletionDialog';
@@ -88,6 +89,7 @@ export default function Tasks() {
   const { toast } = useToast();
   const { hasRole, isAdmin } = usePermissions();
   const { warehouses } = useWarehouses();
+  const { selectedWarehouseId } = useSelectedWarehouse();
   const { taskTypes } = useTaskTypes();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -99,6 +101,20 @@ export default function Tasks() {
     taskType: searchParams.get('type') || 'all',
     warehouseId: 'all',
   }));
+
+  // If this tenant only has one warehouse, default to it everywhere.
+  useEffect(() => {
+    if (warehouses.length === 1 && filters.warehouseId === 'all') {
+      setFilters((f) => ({ ...f, warehouseId: warehouses[0].id }));
+    }
+  }, [warehouses, filters.warehouseId]);
+
+  // If a global selected warehouse exists (WarehouseContext), prefer it when appropriate.
+  useEffect(() => {
+    if (selectedWarehouseId && warehouses.length === 1 && filters.warehouseId === 'all') {
+      setFilters((f) => ({ ...f, warehouseId: selectedWarehouseId }));
+    }
+  }, [selectedWarehouseId, warehouses.length, filters.warehouseId]);
 
   // Sync filters from URL params when they change (e.g. Dashboard tile click)
   // Also auto-open dialog when new=true param is present
@@ -494,19 +510,21 @@ export default function Tasks() {
             </SelectContent>
           </Select>
 
-          <div className="col-span-2 sm:col-span-auto">
-            <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Warehouse" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Warehouses</SelectItem>
-                {warehouses.map(wh => (
-                  <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {warehouses.length > 1 && (
+            <div className="col-span-2 sm:col-span-auto">
+              <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Warehouses</SelectItem>
+                  {warehouses.map(wh => (
+                    <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Refresh moved to header to match Dashboard */}
         </div>

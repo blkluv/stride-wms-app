@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,7 @@ import {
 import { CreateStocktakeDialog } from '@/components/stocktakes/CreateStocktakeDialog';
 import { useStocktakes, StocktakeStatus, CreateStocktakeData } from '@/hooks/useStocktakes';
 import { useWarehouses } from '@/hooks/useWarehouses';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
@@ -74,6 +75,14 @@ export default function Stocktakes() {
 
   const isMobile = useIsMobile();
   const { warehouses } = useWarehouses();
+  const { selectedWarehouseId } = useSelectedWarehouse();
+
+  // If this tenant only has one warehouse, default filters to it.
+  useEffect(() => {
+    if (warehouses.length === 1 && warehouseFilter === 'all') {
+      setWarehouseFilter(selectedWarehouseId || warehouses[0].id);
+    }
+  }, [warehouses, warehouseFilter, selectedWarehouseId]);
   const {
     stocktakes,
     loading,
@@ -272,19 +281,21 @@ export default function Stocktakes() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Warehouse" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Warehouses</SelectItem>
-                {warehouses.map((wh) => (
-                  <SelectItem key={wh.id} value={wh.id}>
-                    {wh.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {warehouses.length > 1 && (
+              <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Warehouses</SelectItem>
+                  {warehouses.map((wh) => (
+                    <SelectItem key={wh.id} value={wh.id}>
+                      {wh.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button variant="outline" size="icon" onClick={() => refetch()}>
               <MaterialIcon name="refresh" size="sm" />
             </Button>
