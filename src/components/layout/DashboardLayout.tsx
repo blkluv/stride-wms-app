@@ -139,7 +139,14 @@ function SortableNavItem({ item, isActive, sidebarCollapsed, onNavigate }: Sorta
         <button
           {...attributes}
           {...listeners}
-          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-100 dark:hover:bg-white/10 transition-opacity cursor-grab active:cursor-grabbing hidden lg:block"
+          className={cn(
+            "absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded transition-opacity cursor-grab active:cursor-grabbing",
+            "hover:bg-gray-100 dark:hover:bg-white/10",
+            // Mobile/tablet (no hover): keep handle visible so the menu is actually reorderable.
+            "opacity-100",
+            // Desktop: only show on hover to keep the sidebar clean.
+            "lg:opacity-0 lg:group-hover:opacity-100",
+          )}
           title="Drag to reorder"
         >
           <MaterialIcon name="drag_indicator" size="sm" className="text-gray-400 dark:text-white/40" />
