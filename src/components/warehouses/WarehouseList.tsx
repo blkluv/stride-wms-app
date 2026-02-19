@@ -174,6 +174,10 @@ export function WarehouseList({ warehouses, loading, onEdit, onRefresh }: Wareho
                           <MaterialIcon name="map" size="sm" className="mr-2" />
                           Map Builder
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/warehouses/${warehouse.id}/heatmap`)}>
+                          <MaterialIcon name="whatshot" size="sm" className="mr-2" />
+                          Heat Map
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => navigate(`/warehouses/${warehouse.id}/zones`)}>
                           <MaterialIcon name="grid_on" size="sm" className="mr-2" />
                           Zones

@@ -55,6 +55,7 @@ const navItems: NavItem[] = [
   { label: 'Shipments', href: '/shipments', icon: 'local_shipping' },
   { label: 'Inventory', href: '/inventory', icon: 'inventory_2' },
   { label: 'Map Builder', href: '/warehouse-map', icon: 'map', requiredRole: ['admin', 'tenant_admin', 'manager'] },
+  { label: 'Heat Map', href: '/heatmap', icon: 'whatshot', requiredRole: ['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff'] },
   { label: 'Tasks', href: '/tasks', icon: 'task_alt' },
   { label: 'Stocktake', href: '/stocktakes', icon: 'fact_check' },
   { label: 'Scan', href: '/scan', icon: 'qr_code_scanner', requiredRole: ['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff', 'repair_tech'] },

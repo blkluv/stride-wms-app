@@ -220,6 +220,14 @@ export default function WarehouseMapBuilder() {
                 </Link>
               </Button>
             )}
+            {warehouseId && (
+              <Button variant="outline" asChild>
+                <Link to={`/warehouses/${warehouseId}/heatmap`}>
+                  <MaterialIcon name="whatshot" size="sm" className="mr-2" />
+                  Heat Map
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setCreateMapOpen(true)}>
               <MaterialIcon name="add" size="sm" className="mr-2" />
               New Map
