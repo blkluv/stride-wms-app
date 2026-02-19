@@ -414,7 +414,8 @@ export default function Shipments() {
           setActiveTab(v as HubTab);
           if (v !== 'incoming') setIncomingSubTab(undefined);
         }}>
-          <TabsList>
+          {/* Mobile: centered, equal-width tabs matching the content card width */}
+          <TabsList className="w-full grid grid-cols-3 h-auto gap-1">
             <TabsTrigger value="hub" className="gap-2">
               <MaterialIcon name="dashboard" size="sm" />
               Hub
