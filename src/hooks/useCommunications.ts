@@ -134,6 +134,10 @@ export const TRIGGER_EVENTS = [
   { value: 'client.task_created', label: 'Client Created Task' },
   { value: 'client.claim_filed', label: 'Client Filed Claim' },
   { value: 'client.item_reassigned', label: 'Client Reassigned Items' },
+  // Split workflow triggers
+  { value: 'split.required', label: 'Split Required' },
+  { value: 'split.completed', label: 'Split Completed' },
+  { value: 'split.manual_review', label: 'Split Request Pending Review' },
   // Receiving triggers
   { value: 'receiving.discrepancy_created', label: 'Receiving Discrepancy Created' },
   { value: 'receiving.exception_noted', label: 'Receiving Exception Noted' },
@@ -209,6 +213,18 @@ export const COMMUNICATION_VARIABLES = [
   { key: 'assigned_to_name', label: 'Assigned To', group: 'Tasks', sample: 'John Doe', description: 'Name of the person the task is assigned to' },
   { key: 'completed_by_name', label: 'Completed By', group: 'Tasks', sample: 'Jane Smith', description: 'Name of person who completed the task' },
   { key: 'task_link', label: 'Task Link', group: 'Tasks', sample: 'https://portal.stride.com/tasks/123', description: 'Direct link to task' },
+
+  // Split workflow
+  { key: 'split_grouped_qty', label: 'Grouped Quantity', group: 'Split', sample: '4', description: 'Original grouped quantity on the parent item before split' },
+  { key: 'split_keep_qty', label: 'Keep Quantity', group: 'Split', sample: '2', description: 'Quantity that stays on the parent item code (the job ships/uses this)' },
+  { key: 'split_leftover_qty', label: 'Leftover Quantity', group: 'Split', sample: '2', description: 'Quantity split off into newly printed child labels' },
+  { key: 'split_requested_by_name', label: 'Requested By (Name)', group: 'Split', sample: 'Jane Client', description: 'Who requested the partial grouped quantity (best-effort)' },
+  { key: 'split_requested_by_email', label: 'Requested By (Email)', group: 'Split', sample: 'jane@client.com', description: 'Requestor email (best-effort)' },
+  { key: 'split_request_notes', label: 'Request Notes', group: 'Split', sample: 'Please pull matching set; see notes.', description: 'Notes carried from the originating job' },
+  { key: 'origin_job_type', label: 'Origin Job Type', group: 'Split', sample: 'Outbound Shipment', description: 'The job type that required the split (shipment/task)' },
+  { key: 'origin_job_number', label: 'Origin Job Number', group: 'Split', sample: 'OUT-000123', description: 'The originating job number/title (best-effort)' },
+  { key: 'origin_job_link', label: 'Origin Job Link', group: 'Split', sample: 'https://portal.stride.com/shipments/123', description: 'Deep link to originating job (best-effort)' },
+  { key: 'split_child_codes_list_text', label: 'Child Codes (Text List)', group: 'Split', sample: 'ITM-123-1\\nITM-123-2', description: 'Newly generated child codes (completion emails)' },
 
   // Releases
   { key: 'release_number', label: 'Release Number', group: 'Releases', sample: 'REL-001', description: 'Unique release identifier' },

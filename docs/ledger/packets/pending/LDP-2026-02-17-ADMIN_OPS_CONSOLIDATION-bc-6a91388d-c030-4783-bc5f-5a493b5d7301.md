@@ -12,9 +12,9 @@
 
 ## Scope Summary
 
-- Q&A items extracted: `22`
+- Q&A items extracted: `43`
 - Existing decisions mapped: `-`
-- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027`
+- New decisions added: `DL-2026-02-17-001, DL-2026-02-17-002, DL-2026-02-17-003, DL-2026-02-17-004, DL-2026-02-17-005, DL-2026-02-17-006, DL-2026-02-17-007, DL-2026-02-17-008, DL-2026-02-17-009, DL-2026-02-17-010, DL-2026-02-17-011, DL-2026-02-17-012, DL-2026-02-17-013, DL-2026-02-17-014, DL-2026-02-17-015, DL-2026-02-17-016, DL-2026-02-17-017, DL-2026-02-17-018, DL-2026-02-17-019, DL-2026-02-17-020, DL-2026-02-17-021, DL-2026-02-17-022, DL-2026-02-17-023, DL-2026-02-17-024, DL-2026-02-17-025, DL-2026-02-17-026, DL-2026-02-17-027, DL-2026-02-17-028, DL-2026-02-17-029, DL-2026-02-17-030, DL-2026-02-17-031, DL-2026-02-17-032, DL-2026-02-17-033, DL-2026-02-17-034, DL-2026-02-17-035, DL-2026-02-17-036, DL-2026-02-17-037, DL-2026-02-17-038, DL-2026-02-17-039, DL-2026-02-17-040, DL-2026-02-17-041, DL-2026-02-17-042, DL-2026-02-17-043, DL-2026-02-17-044, DL-2026-02-17-045, DL-2026-02-17-046, DL-2026-02-17-047, DL-2026-02-17-048`
 - Unresolved/open (draft): `DL-2026-02-17-002, DL-2026-02-17-009, DL-2026-02-17-012`
 - Supersedes: `-`
 
@@ -47,6 +47,27 @@
 | DL-2026-02-17-025 | Platform-managed per-tenant fallback sender local-part uses tenant code/slug (human-friendly) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-020` | - | - |
 | DL-2026-02-17-026 | Fallback sender base domain/subdomain is not finalized yet; keep admin-configurable (no hardcoded final domain) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-021` | - | - |
 | DL-2026-02-17-027 | Admin Email Ops config stores fallback sender as domain-only; app generates tenant-slug@domain | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-022` | - | - |
+| DL-2026-02-17-028 | Email Ops includes tenant status table with sortable columns, status filtering, and search autocomplete | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-023` | - | - |
+| DL-2026-02-17-029 | Builder will define plain-language Email Ops status taxonomy and meanings for operators | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-024` | - | - |
+| DL-2026-02-17-030 | Email Ops tenant table uses separate columns for Status and Sender Type | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-025` | - | - |
+| DL-2026-02-17-031 | Email Ops Sender Type filter values include Platform, Custom (verified), and Custom (pending) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-026` | - | - |
+| DL-2026-02-17-032 | Email Ops Status filter values include Ready, Pending, Action needed, Warning, and Error | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-027` | - | - |
+| DL-2026-02-17-033 | Email Ops tenant table shows multiple issue badges and computes an overall worst status | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-028` | - | - |
+| DL-2026-02-17-034 | Email Ops issue badges represent setup blockers (anything preventing successful email setup) | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-029` | - | - |
+| DL-2026-02-17-035 | Email Ops shows warning badges (distinct) that do not count as blocked | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-030` | - | - |
+| DL-2026-02-17-036 | Email Ops warning badges include DKIM not verified and SPF not verified | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-031` | - | - |
+| DL-2026-02-17-037 | Email Ops warning badges include DMARC missing/misconfigured | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-032` | - | - |
+| DL-2026-02-17-038 | DMARC warning triggers on missing OR p=none with distinct badge labels | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-033` | - | - |
+| DL-2026-02-17-039 | Only show warnings/custom-domain fields when tenant opts into using their own email; toggle controls UI | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-034` | - | - |
+| DL-2026-02-17-040 | Tenant email settings toggle label is “Send emails from my company domain” | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-035` | - | - |
+| DL-2026-02-17-041 | Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036` | - | - |
+| DL-2026-02-17-042 | Toggling back to platform sender clears previously entered custom-domain setup fields | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-037` | - | - |
+| DL-2026-02-17-043 | Confirm before clearing custom-domain setup when toggling off | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-038` | - | - |
+| DL-2026-02-17-044 | Cleanup Resend domain registration when tenant cancels custom sender setup | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-039` | - | - |
+| DL-2026-02-17-045 | Resend cleanup failures do not block switching back to platform sender (best-effort + retry) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-040` | - | - |
+| DL-2026-02-17-046 | Resend domain cleanup is performed by nightly cleanup job (not immediate on toggle-off) | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-041` | - | - |
+| DL-2026-02-17-047 | Resend cleanup job runs automatically nightly (no manual run button), with optional logs in Email Ops | SaaS Email System | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-042` | - | - |
+| DL-2026-02-17-048 | Email Ops includes a default-visible Cleanup Logs panel in /admin/saas-ops | SaaS Admin UI | accepted | `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-043` | - | - |
 
 ## Detailed Decision Entries
 
@@ -578,6 +599,444 @@ This keeps the operator-facing configuration simple and avoids exposing or maint
 - App code should generate the fallback From email as `{tenant_slug}@<configured_domain>`.
 - If the configured domain is unset, tenant-facing UI should show “not configured yet” and sending should use a safe fallback policy until configured.
 
+### DL-2026-02-17-028: Email Ops includes tenant status table with sortable columns, status filtering, and search autocomplete
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-023`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+`/admin/saas-ops` → Email Ops will include a tenant list/table that supports:
+- Sorting by clicking/tapping any column header
+- A Status column that supports filtering by status (e.g., show all “pending”)
+- A search autocomplete dropdown/select to quickly find a tenant by typing
+
+#### Why
+Operators need fast ways to triage onboarding and email setup issues across many tenants.
+
+#### Implementation impact
+- Implement a tenant list table component with:
+  - sortable columns
+  - status filter UI
+  - searchable tenant selector (autocomplete)
+- Follow-up decision needed: define the exact set of statuses and which fields/criteria produce each status.
+
+### DL-2026-02-17-029: Builder will define plain-language Email Ops status taxonomy and meanings for operators
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-024`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Because the operator is non-technical and does not know which email statuses matter, the builder will define an initial, plain-language status taxonomy (and the meaning/criteria for each status) for the Email Ops tenant table, focused on actionable onboarding and support triage.
+
+#### Why
+An operator-focused status system should reflect “what needs attention next” rather than internal technical states. Delegating this to the builder reduces decision burden and keeps the UI coherent.
+
+#### Implementation impact
+- Status values should be:
+  - understandable in plain English
+  - filterable in the admin table
+  - derived from concrete fields (so they remain accurate)
+- The set can be iterated later as operators use it in real workflows.
+
+### DL-2026-02-17-030: Email Ops tenant table uses separate columns for Status and Sender Type
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-025`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+In the Email Ops tenant table, “Status” (health/action-needed) and “Sender Type” (custom verified vs platform-managed fallback) will be separate columns, rather than combining both concepts into a single Status label.
+
+#### Why
+This makes the table clearer for non-technical operators: one column answers “is this OK / needs attention?”, and the other answers “who does it send as?”.
+
+#### Implementation impact
+- Implement both columns and allow sorting on both.
+- Status filtering should be based on the Status column only (not conflated with sender type).
+
+### DL-2026-02-17-031: Email Ops Sender Type filter values include Platform, Custom (verified), and Custom (pending)
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-026`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The Email Ops tenant table “Sender Type” filter will include these values:
+- Platform sender
+- Custom sender (verified)
+- Custom sender (pending)
+
+#### Why
+Operators need to quickly distinguish tenants that are fully sending from their own domain, tenants that are still in setup, and tenants using the platform fallback sender.
+
+#### Implementation impact
+- Compute sender type from existing configuration fields (e.g., `communication_brand_settings.use_default_email`, `custom_email_domain`, `email_domain_verified`, `dkim_verified`, `spf_verified`).
+- Ensure the Sender Type column is sortable and filterable, independent from overall Status (health/action-needed).
+
+### DL-2026-02-17-032: Email Ops Status filter values include Ready, Pending, Action needed, Warning, and Error
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-027`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Email Ops tenant table Status filter values will be:
+- Ready
+- Pending (waiting on tenant DNS)
+- Action needed (set Reply-To inbox)
+- Warning (deliverability risk)
+- Error (misconfigured)
+
+#### Why
+These statuses provide an operator-friendly, triage-oriented view of what is working vs what needs attention, without requiring technical knowledge of DNS/email standards.
+
+#### Implementation impact
+- Define deterministic criteria for each Status using existing fields (custom domain present/verified, DNS verification flags, Reply-To present, and any recent send failures).
+- Ensure Status is sortable and filterable independent from Sender Type.
+
+### DL-2026-02-17-033: Email Ops tenant table shows multiple issue badges and computes an overall worst status
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-028`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Email Ops tenant table should:
+- Show multiple issue badges/indicators per tenant when more than one issue applies (example: “Pending DNS” and “Missing Reply-To”).
+- Also compute and display a single “overall” status per tenant (worst/most severe applicable issue) so operators can sort/filter by the overall health/action-needed state.
+
+#### Why
+Operators need a fast overall signal for triage, but also need the specifics of what is wrong without drilling into details.
+
+#### Implementation impact
+- Represent “issues” as a list of derived flags per tenant.
+- Compute overall status as the max severity across issues (e.g., Error > Warning > Action needed > Pending > Ready).
+- Sorting/filtering should use the overall status, while the UI still surfaces issue badges for context.
+
+### DL-2026-02-17-034: Email Ops issue badges represent setup blockers (anything preventing successful email setup)
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-029`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Issue badges shown in the Email Ops tenant table should represent any issues that would prevent a tenant from successfully setting up email (setup blockers).
+
+#### Why
+Operators should be able to filter/sort and immediately see which tenants are blocked from finishing setup, without needing to interpret technical details.
+
+#### Implementation impact
+- Treat the issue badge list as the canonical “blocker” set.
+- Map blockers from concrete fields (e.g., missing required inputs, failed verification states, missing required platform configuration).
+- Non-blocking concerns (like best-practice deliverability enhancements) may be displayed separately as warnings if desired (requires follow-up decision).
+
+### DL-2026-02-17-035: Email Ops shows warning badges (distinct) that do not count as blocked
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-030`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Email Ops tenant table will show non-blocking warnings (example: deliverability risk such as DKIM/SPF incomplete) as badges too. Warning badges must be visually distinct (yellow) and must not count as “blocked”.
+
+#### Why
+Operators should be able to see best-practice risks at a glance without confusing them with true blockers that prevent setup completion.
+
+#### Implementation impact
+- Maintain two derived sets:
+  - Blocker issue badges (count toward “blocked” / overall worst status)
+  - Warning badges (do not count as blocked; still visible)
+- Overall status computation should treat warnings as lower severity than blockers.
+
+### DL-2026-02-17-036: Email Ops warning badges include DKIM not verified and SPF not verified
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-031`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The initial warning badge list (deliverability risks) will include:
+- DKIM not verified
+- SPF not verified
+
+#### Why
+These are the two most common DNS-level deliverability improvements and are already represented by existing verification fields in the system, making them practical to surface to operators.
+
+#### Implementation impact
+- Derive the warning badges from the existing `dkim_verified` and `spf_verified` flags.
+- If additional deliverability risks are added later (e.g., DMARC), they should be appended as additional warning badges via follow-up decisions and data fields.
+
+### DL-2026-02-17-037: Email Ops warning badges include DMARC missing/misconfigured
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-032`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Add DMARC as a deliverability warning badge in Email Ops (in addition to DKIM/SPF).
+
+#### Why
+DMARC is a common, recommended DNS record that improves anti-spoofing posture and can improve deliverability. Operators should be able to spot tenants missing DMARC so they can guide them to finish setup.
+
+#### Implementation impact
+- Add a DMARC presence/validity check for tenant custom sender domains (may require new code and/or a persisted status field).
+- Surface DMARC as a yellow, non-blocking warning badge (per `DL-2026-02-17-035`).
+
+### DL-2026-02-17-038: DMARC warning triggers on missing OR p=none with distinct badge labels
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-033`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+DMARC deliverability warning behavior:
+- Treat DMARC as a warning when:
+  - DMARC record is missing (no `_dmarc.<domain>` record found), OR
+  - DMARC record exists but policy is monitoring-only (`p=none`)
+- Display DMARC warning as one of two badge labels (so it’s clear and non-technical):
+  - “DMARC missing” (higher importance)
+  - “DMARC monitoring only (p=none)” (lower importance)
+
+#### Why
+This surfaces the next best-practice DNS item (DMARC) while avoiding a false sense of completion when DMARC exists but is not enforcing.
+
+#### Implementation impact
+- Implement DMARC DNS lookup/parsing for the tenant’s custom sender domain.
+- Store/compute DMARC state with at least these values:
+  - missing
+  - present_p_none
+  - present_enforcing (not shown as warning)
+- Only show DMARC warnings for custom sender domains (platform fallback sender does not require tenant DMARC).
+
+### DL-2026-02-17-039: Only show warnings/custom-domain fields when tenant opts into using their own email; toggle controls UI
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-034`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+Only show custom-domain setup fields and DKIM/SPF/DMARC warning badges when the tenant has explicitly opted into using their own company email/domain (not the platform-provided sender).
+
+Tenant email settings UX should use a simple checkbox/toggle:
+- Checked (“use my own email/domain”): show custom domain setup fields + DNS/verification UI.
+- Unchecked (platform sender): hide custom domain setup fields and show only platform sender info (per-tenant platform-created From address) + Reply-To/inbound address fields.
+
+#### Why
+Keep platform-sender mode as simple as possible for non-technical users; don’t show DNS/deliverability warnings unless they are actively trying to use their own domain.
+
+#### Implementation impact
+- Map the toggle state to a persisted field (preferably reusing an existing boolean like `use_default_email` if present).
+- Email Ops should only compute/display DKIM/SPF/DMARC warnings when the tenant is in “custom sender” mode (or has started custom sender setup).
+
+### DL-2026-02-17-040: Tenant email settings toggle label is “Send emails from my company domain”
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-035`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The tenant-facing checkbox/toggle label will be: “Send emails from my company domain”.
+
+#### Why
+This phrasing is simple and directly describes the benefit in plain language for non-technical users.
+
+#### Implementation impact
+- Use this label anywhere the tenant toggles between platform sender and custom domain sender setup.
+
+### DL-2026-02-17-041: Switching back to platform sender auto-applies platform sending + routes replies to tenant Reply-To
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-036`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant starts custom domain setup and then unchecks the toggle (switches back to platform sender), platform sender mode should apply automatically. Once the tenant has saved their Reply-To / inbound address, email replies should route to that defined Reply-To address without requiring any DNS setup or additional steps from the tenant.
+
+#### Why
+Tenants should be able to back out of advanced setup without getting “stuck” and still have a working email flow using the platform sender with replies going to their inbox.
+
+#### Implementation impact
+- Switching the toggle off should immediately switch sending to platform sender mode.
+- Ensure the Reply-To field is saved and used as the Reply-To header in platform sender mode (with fallback per `DL-2026-02-17-021`).
+
+### DL-2026-02-17-042: Toggling back to platform sender clears previously entered custom-domain setup fields
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-037`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If the tenant unchecks the “Send emails from my company domain” toggle (switches back to platform sender), clear any previously entered custom-domain setup fields rather than keeping them hidden.
+
+#### Why
+This reduces confusion for non-technical users who may assume the app is “half configured” or still in a failing state.
+
+#### Implementation impact
+- On toggle-off, reset custom sender inputs/state and clear persisted custom-domain configuration fields that represent an in-progress setup (so a future attempt starts fresh).
+- Add a confirmation prompt before clearing (per `DL-2026-02-17-043`).
+
+### DL-2026-02-17-043: Confirm before clearing custom-domain setup when toggling off
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-038`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+When the tenant toggles off “Send emails from my company domain” (switching back to platform sender), show a confirmation prompt warning that their custom-domain setup fields will be cleared.
+
+#### Why
+Prevents accidental data loss and reduces confusion for non-technical users.
+
+#### Implementation impact
+- Use a confirmation dialog with clear copy (example: “Switching back to platform sender will clear your custom domain setup fields. Continue?”).
+- Only clear the custom-domain fields after the tenant confirms.
+
+### DL-2026-02-17-044: Cleanup Resend domain registration when tenant cancels custom sender setup
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-039`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If a tenant begins custom sender setup and the platform registers the tenant’s domain in Resend, but the tenant later switches back to the platform sender (cancels custom sender setup), the platform should cleanup/remove that tenant domain registration in Resend as well (not just stop using it).
+
+#### Why
+Keeps the platform Resend account clean and reduces operational overhead (and potential plan limits on number of domains) when tenants abandon custom sender setup.
+
+#### Implementation impact
+- Implement a service-side cleanup call to Resend Domains API when custom sender is cancelled.
+- Cleanup should be best-effort and must not block switching back to platform sender mode; if cleanup fails, platform sender mode still applies and the system can retry or surface an admin warning.
+
+### DL-2026-02-17-045: Resend cleanup failures do not block switching back to platform sender (best-effort + retry)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-040`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+If the Resend cleanup/delete call fails (API/network error), the tenant must still be able to switch back to platform sender immediately. Cleanup is best-effort; failures should be logged and retried later (and/or surfaced in Email Ops).
+
+#### Why
+Tenant usability and continuity of sending should not be blocked by third-party API issues.
+
+#### Implementation impact
+- Perform Resend cleanup asynchronously/best-effort and never block the UI toggle-off action.
+- Log failures for later retry and operator visibility in Email Ops.
+
+### DL-2026-02-17-046: Resend domain cleanup is performed by nightly cleanup job (not immediate on toggle-off)
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-041`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+When a tenant cancels custom sender setup (switches back to platform sender), cleanup/removal of the tenant domain registration in Resend will be performed by a nightly cleanup job rather than immediately during the toggle-off flow.
+
+#### Why
+This reduces thrashing and risk from tenants repeatedly toggling on/off during onboarding, while still keeping Resend clean over time.
+
+#### Implementation impact
+- Record a “needs_cleanup” state/flag when custom sender is cancelled.
+- Nightly job processes the cleanup queue and removes tenant domains from Resend (best-effort, retry on failure).
+- Tenant UX should not wait on cleanup; switching to platform sender is immediate.
+
+### DL-2026-02-17-047: Resend cleanup job runs automatically nightly (no manual run button), with optional logs in Email Ops
+- Domain: SaaS Email System
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-042`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+The nightly Resend cleanup job will run fully automatically (no admin-only “Run cleanup now” button required). Email Ops may show logs/status for cleanup attempts.
+
+#### Why
+Reduces operator burden and keeps cleanup consistent while still providing visibility when something fails.
+
+#### Implementation impact
+- Implement scheduled execution (nightly) without requiring manual triggers.
+- Add an admin Email Ops view/log to see recent cleanup attempts and failures (optional but recommended).
+
+### DL-2026-02-17-048: Email Ops includes a default-visible Cleanup Logs panel in /admin/saas-ops
+- Domain: SaaS Admin UI
+- State: accepted
+- Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_ADMIN_OPS_CONSOLIDATION_2026-02-17_chat-bc-6a91388d-c030-4783-bc5f-5a493b5d7301.md#qa-2026-02-17-adminops-043`
+- Supersedes: -
+- Superseded by: -
+- Date created: 2026-02-17
+- Locked at: -
+
+#### Decision
+In the admin-dev console page (`/admin/saas-ops`) under Email Ops, include a Cleanup Logs panel that is visible by default to show recent cleanup activity.
+
+#### Why
+Operators need visibility into background cleanup behavior (success/failures) without needing to dig into the database or external systems.
+
+#### Implementation impact
+- Add a “Cleanup Logs” panel to Email Ops within `/admin/saas-ops`.
+- Show a simple recent-events list by default (e.g., last 50 events with timestamp, tenant, action, and success/failure).
+
 ## Implementation Log Rows
 
 | DLE-2026-02-17-001 | 2026-02-17 | DL-2026-02-17-002 | planned | - | builder | Pending Q&A: finalize scope, information architecture, wording, and link behavior before UI changes. |
@@ -606,3 +1065,24 @@ This keeps the operator-facing configuration simple and avoids exposing or maint
 | DLE-2026-02-17-024 | 2026-02-17 | DL-2026-02-17-025 | planned | - | builder | Use tenant code/slug as the local-part identifier for platform-managed per-tenant fallback sender addresses. |
 | DLE-2026-02-17-025 | 2026-02-17 | DL-2026-02-17-026 | planned | - | builder | Keep fallback sender base domain/subdomain admin-configurable (do not hardcode final production domain while app domain is TBD). |
 | DLE-2026-02-17-026 | 2026-02-17 | DL-2026-02-17-027 | planned | - | builder | Store fallback sender config as domain-only in Email Ops; app generates `{tenant_slug}@domain` automatically. |
+| DLE-2026-02-17-027 | 2026-02-17 | DL-2026-02-17-028 | planned | - | builder | Add Email Ops tenant status table with sortable columns, status filtering, and search autocomplete/selector. |
+| DLE-2026-02-17-028 | 2026-02-17 | DL-2026-02-17-029 | planned | - | builder | Define initial Email Ops tenant status taxonomy + criteria in plain language for non-technical operators. |
+| DLE-2026-02-17-029 | 2026-02-17 | DL-2026-02-17-030 | planned | - | builder | Separate Email Ops tenant table into “Status” and “Sender Type” columns for clarity and filterability. |
+| DLE-2026-02-17-030 | 2026-02-17 | DL-2026-02-17-031 | planned | - | builder | Implement Sender Type column + filters for Platform vs Custom (verified/pending). |
+| DLE-2026-02-17-031 | 2026-02-17 | DL-2026-02-17-032 | planned | - | builder | Implement Status column + filters for Ready/Pending/Action needed/Warning/Error with clear criteria and operator-friendly labels. |
+| DLE-2026-02-17-032 | 2026-02-17 | DL-2026-02-17-033 | planned | - | builder | Add per-tenant issue badges and compute overall worst status for sorting/filtering in Email Ops table. |
+| DLE-2026-02-17-033 | 2026-02-17 | DL-2026-02-17-034 | planned | - | builder | Define which derived issues count as “setup blockers” for issue badges and map them from concrete config/verification fields. |
+| DLE-2026-02-17-034 | 2026-02-17 | DL-2026-02-17-035 | planned | - | builder | Add warning badges (distinct, non-blocking) such as deliverability risks; ensure they do not count as blocked. |
+| DLE-2026-02-17-035 | 2026-02-17 | DL-2026-02-17-036 | planned | - | builder | Implement DKIM/SPF warning badges based on existing verification flags (deliverability risks). |
+| DLE-2026-02-17-036 | 2026-02-17 | DL-2026-02-17-037 | planned | - | builder | Add DMARC warning badge (presence/validity check) for tenant custom sender domains. |
+| DLE-2026-02-17-037 | 2026-02-17 | DL-2026-02-17-038 | planned | - | builder | Implement DMARC parsing to distinguish “missing” vs “p=none” warnings with distinct badge labels. |
+| DLE-2026-02-17-038 | 2026-02-17 | DL-2026-02-17-039 | planned | - | builder | Show custom-domain fields and warnings only when tenant opts into using their own email/domain; add checkbox/toggle to switch modes. |
+| DLE-2026-02-17-039 | 2026-02-17 | DL-2026-02-17-040 | planned | - | builder | Implement tenant toggle label copy: “Send emails from my company domain”. |
+| DLE-2026-02-17-040 | 2026-02-17 | DL-2026-02-17-041 | planned | - | builder | Ensure toggling back to platform sender auto-applies platform sending and Reply-To routes to the tenant’s saved Reply-To/inbound address. |
+| DLE-2026-02-17-041 | 2026-02-17 | DL-2026-02-17-042 | planned | - | builder | When tenant toggles off custom sender, clear/reset custom-domain setup fields (and persisted in-progress config) to avoid confusion. |
+| DLE-2026-02-17-042 | 2026-02-17 | DL-2026-02-17-043 | planned | - | builder | Add confirmation prompt before clearing custom sender setup when tenant toggles off custom-domain mode. |
+| DLE-2026-02-17-043 | 2026-02-17 | DL-2026-02-17-044 | planned | - | builder | When tenant cancels custom sender setup, cleanup/remove the tenant domain registration in Resend (best-effort; do not block platform fallback). |
+| DLE-2026-02-17-044 | 2026-02-17 | DL-2026-02-17-045 | planned | - | builder | Ensure Resend cleanup failures never block switching back to platform sender; log and retry later (and surface in Email Ops as needed). |
+| DLE-2026-02-17-045 | 2026-02-17 | DL-2026-02-17-046 | planned | - | builder | Implement nightly job/queue to cleanup Resend tenant domains marked for removal (avoid immediate toggle-off thrash). |
+| DLE-2026-02-17-046 | 2026-02-17 | DL-2026-02-17-047 | planned | - | builder | Run Resend cleanup automatically nightly (no manual button) and optionally surface cleanup logs/status in Email Ops. |
+| DLE-2026-02-17-047 | 2026-02-17 | DL-2026-02-17-048 | planned | - | builder | Add a default-visible Cleanup Logs panel in Email Ops on `/admin/saas-ops`. |

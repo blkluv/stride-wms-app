@@ -24,7 +24,7 @@ import {
 import { QRScanner } from '@/components/scan/QRScanner';
 import { useStocktakeScan, ScanResult } from '@/hooks/useStocktakes';
 import { useLocations } from '@/hooks/useLocations';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { supabase } from '@/integrations/supabase/client';
 import {
   hapticLight,
@@ -39,6 +39,7 @@ import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { formatItemSize } from '@/lib/items/formatItemSize';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -169,11 +170,12 @@ export default function StocktakeScanView() {
   // Item list view (tenant-managed)
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -542,7 +544,13 @@ export default function StocktakeScanView() {
               {stocktake.warehouse?.name}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center flex-wrap justify-end">
+            <JobTimerWidget
+              jobType="stocktake"
+              jobId={id}
+              variant="inline"
+              showControls
+            />
             <Button
               variant={viewMode === 'scan' ? 'default' : 'outline'}
               size="sm"
@@ -765,6 +773,7 @@ export default function StocktakeScanView() {
 
                     <ItemColumnsPopover
                       settings={itemDisplaySettings}
+                      baseSettings={tenantItemDisplaySettings}
                       viewId={activeItemViewId || defaultItemViewId || 'default'}
                       disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                       onSave={saveItemDisplaySettings}

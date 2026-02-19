@@ -55,14 +55,14 @@ No matching existing decision IDs were found for this heat map visualization sco
 
 | Source item | Mapping | State | Notes |
 |---|---|---|---|
-| QA-HMV-2026-02-15-001 | `DL-2026-02-15-017` (new candidate) | accepted | Schema/field naming compatibility policy. |
-| QA-HMV-2026-02-15-002 | `DL-2026-02-15-018` (new candidate) | accepted | Access matrix for builder/viewer routes. |
-| QA-HMV-2026-02-15-004 | `DL-2026-02-15-019` (new candidate) | accepted | Phase naming baseline. |
-| QA-HMV-2026-02-15-005 | `DL-2026-02-15-020` (new candidate) | accepted | Builder is required in phase one. |
-| QA-HMV-2026-02-15-003 | `DL-2026-02-15-021` (new candidate) | accepted | Read-only heat viewer with interactive drill-down. |
-| QA-HMV-2026-02-15-006 | `DL-2026-02-15-022` (new candidate) | accepted | Handoff/mergeability policy. |
-| QA-HMV-2026-02-15-005 (contingency clause) | `DL-2026-02-15-023` (new candidate) | draft | Scope contingency requires explicit trigger criteria. |
+| QA-HMV-2026-02-15-001 | `DL-2026-02-15-200` (new candidate) | accepted | Schema/field naming compatibility policy. |
+| QA-HMV-2026-02-15-002 | `DL-2026-02-15-201` (new candidate) | accepted | Access matrix for builder/viewer routes. |
+| QA-HMV-2026-02-15-004 | `DL-2026-02-15-202` (new candidate) | accepted | Phase naming baseline. |
+| QA-HMV-2026-02-15-005 | `DL-2026-02-15-203` (new candidate) | accepted | Builder is required in phase one. |
+| QA-HMV-2026-02-15-003 | `DL-2026-02-15-204` (new candidate) | accepted | Read-only heat viewer with interactive drill-down. |
+| QA-HMV-2026-02-15-006 | `DL-2026-02-15-205` (new candidate) | accepted | Handoff/mergeability policy. |
+| QA-HMV-2026-02-15-005 (contingency clause) | `DL-2026-02-15-206` (new candidate) | draft | Scope contingency requires explicit trigger criteria. |
 
 ## Unresolved / draft items
 
-- `DL-2026-02-15-023`: Criteria for invoking contingency sequencing (builder-first with deferred visualizer) is not yet explicitly defined.
+- `DL-2026-02-15-206`: Criteria for invoking contingency sequencing (builder-first with deferred visualizer) is not yet explicitly defined.

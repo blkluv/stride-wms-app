@@ -17,7 +17,7 @@
 
 ## Detailed Decision Entries
 
-### DL-2026-02-16-001
+### DL-2026-02-16-001: Use CLEAR token to explicitly unassign location zone in imports
 - Domain: Locations Import / Zones
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_IMPORT_ZONE_CLEAR_ROW_2026-02-16_chat-bc-1cce.md#qa-loc-2026-02-16-001`
@@ -34,7 +34,7 @@ Blank cells should be able to mean “leave unchanged”; an explicit token is r
 - Import parser must treat `CLEAR` as “set zone_id = NULL”.
 - User-facing help text must document this token.
 
-### DL-2026-02-16-002
+### DL-2026-02-16-002: Add import help tooltip explaining upsert + export/edit/reimport workflow
 - Domain: Locations Import / UX
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_IMPORT_ZONE_CLEAR_ROW_2026-02-16_chat-bc-1cce.md#qa-loc-2026-02-16-002`
@@ -53,7 +53,7 @@ Without explicit guidance, users won’t discover the intended “export → edi
 #### Implementation impact
 - Add a HelpTip next to Import action in Locations Settings.
 
-### DL-2026-02-16-003
+### DL-2026-02-16-003: Rename stored location type from aisle to row (do not touch billing)
 - Domain: Locations Data Model / Terminology
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_LOCATIONS_IMPORT_ZONE_CLEAR_ROW_2026-02-16_chat-bc-1cce.md#qa-loc-2026-02-16-003`

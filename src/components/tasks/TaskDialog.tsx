@@ -42,6 +42,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { queueSplitRequiredAlert } from '@/lib/alertQueue';
 
 interface TaskDialogProps {
   open: boolean;
@@ -60,6 +61,7 @@ interface Account {
 interface InventoryItem {
   id: string;
   item_code: string;
+  quantity?: number | null;
   description: string | null;
   vendor: string | null;
   sidemark: string | null;
@@ -85,6 +87,7 @@ export function TaskDialog({
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedItems, setSelectedItems] = useState<InventoryItem[]>([]);
+  const [requestedQtyByItemId, setRequestedQtyByItemId] = useState<Record<string, number>>({});
   const [showNewTaskType, setShowNewTaskType] = useState(false);
   const [newTaskTypeName, setNewTaskTypeName] = useState('');
   
@@ -287,7 +290,7 @@ export function TaskDialog({
 
     const { data } = await (supabase
       .from('items') as any)
-      .select('id, item_code, description, vendor, sidemark, client_account, account_id, warehouse_id')
+      .select('id, item_code, quantity, description, vendor, sidemark, client_account, account_id, warehouse_id')
       .in('id', selectedItemIds);
 
     setSelectedItems(data || []);
@@ -298,7 +301,7 @@ export function TaskDialog({
     try {
       const { data, error } = await (supabase
         .from('items') as any)
-        .select('id, item_code, description, vendor, sidemark, client_account, account_id, warehouse_id')
+        .select('id, item_code, quantity, description, vendor, sidemark, client_account, account_id, warehouse_id')
         .eq('account_id', accountId)
         .neq('status', 'released')
         .neq('status', 'disposed')
@@ -376,20 +379,64 @@ export function TaskDialog({
     // Clear selected items when account changes (only when not from inventory)
     if (!isFromInventory) {
       setSelectedItems([]);
+      setRequestedQtyByItemId({});
       setItemSearchQuery('');
       setItemDropdownOpen(false);
     }
   };
 
+  const getAvailableQty = (item: InventoryItem | null | undefined): number => {
+    const q = item?.quantity;
+    return typeof q === 'number' && Number.isFinite(q) ? q : 1;
+  };
+
+  const getRequestedQty = (itemId: string, available: number): number => {
+    const raw = requestedQtyByItemId[itemId];
+    const qty = typeof raw === 'number' && Number.isFinite(raw) ? raw : available;
+    return Math.max(1, Math.min(available, qty));
+  };
+
   const toggleItemSelection = (item: InventoryItem) => {
+    const exists = selectedItems.some((i) => i.id === item.id);
     setSelectedItems(prev => {
-      const exists = prev.find(i => i.id === item.id);
-      if (exists) {
-        return prev.filter(i => i.id !== item.id);
-      }
+      if (exists) return prev.filter(i => i.id !== item.id);
       return [...prev, item];
     });
+    setRequestedQtyByItemId((prev) => {
+      const next = { ...prev };
+      if (exists) {
+        delete next[item.id];
+      } else if (next[item.id] == null) {
+        next[item.id] = getAvailableQty(item);
+      }
+      return next;
+    });
   };
+
+  // Hydrate/clamp requested quantities when selected items change (including pre-selected)
+  useEffect(() => {
+    if (selectedItems.length === 0) return;
+    setRequestedQtyByItemId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const item of selectedItems) {
+        const available = getAvailableQty(item);
+        const current = next[item.id];
+        if (current == null) {
+          next[item.id] = available;
+          changed = true;
+        } else {
+          const clamped = Math.max(1, Math.min(available, current));
+          if (clamped !== current) {
+            next[item.id] = clamped;
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItems]);
 
   // Filter items based on search query
   const filteredItems = useMemo(() => {
@@ -454,6 +501,219 @@ export function TaskDialog({
         ? selectedItemIds
         : selectedItems.map(i => i.id);
 
+      // Fetch authoritative item quantities (avoid relying on possibly-stale dialog state)
+      const itemById = new Map<string, any>();
+      if (allItemIds.length > 0) {
+        const { data: itemRows, error: itemRowsError } = await (supabase
+          .from('items') as any)
+          .select('id, item_code, quantity, warehouse_id, account_id')
+          .in('id', allItemIds);
+
+        if (itemRowsError) throw itemRowsError;
+        for (const row of itemRows || []) {
+          if (row?.id) itemById.set(String(row.id), row);
+        }
+      }
+
+      const getGroupedQty = (itemId: string): number => {
+        const row = itemById.get(itemId);
+        const q = row?.quantity;
+        return typeof q === 'number' && Number.isFinite(q) ? q : 1;
+      };
+
+      const getItemCode = (itemId: string): string => {
+        const row = itemById.get(itemId);
+        const code = row?.item_code;
+        return typeof code === 'string' && code.trim() ? code : itemId;
+      };
+
+      const getItemWarehouseId = (itemId: string): string | null => {
+        const row = itemById.get(itemId);
+        const wid = row?.warehouse_id;
+        return typeof wid === 'string' ? wid : null;
+      };
+
+      const getItemAccountId = (itemId: string): string | null => {
+        const row = itemById.get(itemId);
+        const aid = row?.account_id;
+        return typeof aid === 'string' ? aid : null;
+      };
+
+      const requestedQtyMap = new Map<string, number>();
+      for (const itemId of allItemIds) {
+        const available = getGroupedQty(itemId);
+        requestedQtyMap.set(itemId, getRequestedQty(itemId, available));
+      }
+
+      const computeSplitCandidates = (itemIds: string[]) => {
+        return itemIds
+          .map((itemId) => {
+            const groupedQty = getGroupedQty(itemId);
+            const keepQty = requestedQtyMap.get(itemId) ?? 1;
+            const leftoverQty = Math.max(0, groupedQty - keepQty);
+            return {
+              itemId,
+              itemCode: getItemCode(itemId),
+              groupedQty,
+              keepQty,
+              leftoverQty,
+              warehouseId: getItemWarehouseId(itemId),
+              accountId: getItemAccountId(itemId),
+            };
+          })
+          .filter((c) => c.groupedQty > 1 && c.keepQty < c.groupedQty);
+      };
+
+      const createSplitTasksAndBlockOriginTask = async (args: {
+        originTaskId: string;
+        originTaskTitle: string;
+        originWarehouseId: string | null;
+        originAccountId: string | null;
+        originItemIds: string[];
+      }): Promise<{ splitTaskIds: string[] }> => {
+        const candidates = computeSplitCandidates(args.originItemIds);
+        if (candidates.length === 0) return { splitTaskIds: [] };
+
+        const nowIso = new Date().toISOString();
+        const requestNotes = formData.description?.trim() ? formData.description.trim() : null;
+        const splitTaskIds: string[] = [];
+        const splitItemsForMeta: any[] = [];
+
+        for (const c of candidates) {
+          // Idempotency: if a split task already exists for this origin task + item, reuse it.
+          const { data: existingSplitTask } = await (supabase.from('tasks') as any)
+            .select('id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('task_type', 'Split')
+            .contains('metadata', {
+              split_workflow: {
+                origin_entity_type: 'task',
+                origin_entity_id: args.originTaskId,
+                parent_item_id: c.itemId,
+              },
+            })
+            .in('status', ['pending', 'in_progress'])
+            .limit(1)
+            .maybeSingle();
+
+          let splitTaskId: string | null = existingSplitTask?.id || null;
+
+          if (!splitTaskId) {
+            const title = args.originTaskTitle
+              ? `Split - ${c.itemCode} (for ${args.originTaskTitle})`
+              : `Split - ${c.itemCode}`;
+
+            const description = [
+              `Split required for grouped item ${c.itemCode}.`,
+              `Keep qty on parent label: ${c.keepQty} (of ${c.groupedQty}).`,
+              `Leftover qty to relabel: ${c.leftoverQty}.`,
+              '',
+              'Instructions:',
+              `- Scan the parent item code (${c.itemCode}) before splitting.`,
+              `- Parent quantity will be set to ${c.keepQty}.`,
+              `- Leftover items will get NEW child labels and should be placed in the default receiving location (unless overridden).`,
+              '- Print and attach ALL new labels, then scan each new child label to confirm application.',
+              requestNotes ? ' ' : '',
+              requestNotes ? `Notes:\n${requestNotes}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n');
+
+            const splitWarehouseId = args.originWarehouseId || c.warehouseId;
+            const splitAccountId = args.originAccountId || c.accountId;
+
+            const { data: newTask, error: taskErr } = await (supabase.from('tasks') as any)
+              .insert({
+                tenant_id: profile.tenant_id,
+                account_id: splitAccountId,
+                warehouse_id: splitWarehouseId,
+                related_item_id: c.itemId,
+                task_type: 'Split',
+                title,
+                description,
+                priority: 'high',
+                status: 'pending',
+                assigned_department: 'warehouse',
+                metadata: {
+                  split_workflow: {
+                    origin_entity_type: 'task',
+                    origin_entity_id: args.originTaskId,
+                    origin_entity_number: args.originTaskTitle,
+                    parent_item_id: c.itemId,
+                    parent_item_code: c.itemCode,
+                    grouped_qty: c.groupedQty,
+                    keep_qty: c.keepQty,
+                    leftover_qty: c.leftoverQty,
+                    requested_by_user_id: profile.id,
+                    // Internal users: do NOT set requested_by_email (prevents client completion emails)
+                    requested_by_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Internal user',
+                    requested_by_email: null,
+                    request_notes: requestNotes,
+                    created_at: nowIso,
+                  },
+                },
+              })
+              .select('id')
+              .single();
+
+            if (taskErr) throw taskErr;
+            splitTaskId = newTask.id;
+
+            const { error: linkErr } = await (supabase.from('task_items') as any).insert({
+              task_id: splitTaskId,
+              item_id: c.itemId,
+              quantity: c.leftoverQty,
+            });
+            if (linkErr) throw linkErr;
+
+            // Notify office/warehouse (email + optional in-app configured by tenant)
+            void queueSplitRequiredAlert(profile.tenant_id, splitTaskId, c.itemCode);
+          }
+
+          if (splitTaskId) {
+            splitTaskIds.push(splitTaskId);
+            splitItemsForMeta.push({
+              parent_item_id: c.itemId,
+              parent_item_code: c.itemCode,
+              grouped_qty: c.groupedQty,
+              keep_qty: c.keepQty,
+              leftover_qty: c.leftoverQty,
+              split_task_id: splitTaskId,
+            });
+          }
+        }
+
+        // Mark origin task as blocked by split-required tasks (merge metadata)
+        const { data: originRow, error: originErr } = await (supabase.from('tasks') as any)
+          .select('metadata')
+          .eq('id', args.originTaskId)
+          .maybeSingle();
+        if (originErr) throw originErr;
+
+        const existingMeta =
+          originRow?.metadata && typeof originRow.metadata === 'object' ? originRow.metadata : {};
+        const existingIds: string[] = Array.isArray((existingMeta as any).split_required_task_ids)
+          ? (existingMeta as any).split_required_task_ids.map(String)
+          : [];
+
+        const nextIds = Array.from(new Set([...existingIds, ...splitTaskIds]));
+
+        const nextMeta: any = {
+          ...(existingMeta as any),
+          split_required: true,
+          split_required_task_ids: nextIds,
+          split_required_items: splitItemsForMeta,
+          split_required_created_at: nowIso,
+        };
+
+        const { error: metaErr } = await (supabase.from('tasks') as any)
+          .update({ metadata: nextMeta })
+          .eq('id', args.originTaskId);
+        if (metaErr) throw metaErr;
+
+        return { splitTaskIds: nextIds };
+      };
+
       // Check if this is a single-item task type with multiple items
       const isSingleItemTaskType = SINGLE_ITEM_TASK_TYPES.includes(formData.task_type);
       const hasMultipleItems = allItemIds.length > 1;
@@ -472,6 +732,7 @@ export function TaskDialog({
           assigned_department: formData.assigned_department || null,
           warehouse_id: formData.warehouse_id === 'none' ? null : formData.warehouse_id || null,
           account_id: formData.account_id === 'none' ? null : formData.account_id || null,
+          related_item_id: itemId,
           status: 'pending',
           bill_to: formData.bill_to,
           bill_to_customer_name:
@@ -490,10 +751,16 @@ export function TaskDialog({
 
         // Create task_items linking each task to its single item
         if (newTasks && newTasks.length > 0) {
-          const taskItems = newTasks.map((task: any, index: number) => ({
-            task_id: task.id,
-            item_id: allItemIds[index],
-          }));
+          const taskItems = newTasks.map((t: any, index: number) => {
+            const itemId = (t?.related_item_id as string | null) || allItemIds[index];
+            const available = getGroupedQty(itemId);
+            const requested = requestedQtyMap.get(itemId) ?? getRequestedQty(itemId, available);
+            return {
+              task_id: t.id,
+              item_id: itemId,
+              quantity: requested,
+            };
+          });
 
           const { error: taskItemsError } = await (supabase
             .from('task_items') as any)
@@ -505,9 +772,26 @@ export function TaskDialog({
           await updateInventoryStatus(allItemIds, formData.task_type, 'pending');
         }
 
+        // Split-required workflow (internal users): create Split task(s) per origin task if needed
+        let anySplit = false;
+        for (const t of newTasks || []) {
+          const itemId = (t?.related_item_id as string | null) || null;
+          if (!itemId) continue;
+          const result = await createSplitTasksAndBlockOriginTask({
+            originTaskId: t.id,
+            originTaskTitle: t.title || `${formData.task_type} task`,
+            originWarehouseId: t.warehouse_id ?? (formData.warehouse_id === 'none' ? null : formData.warehouse_id || null),
+            originAccountId: t.account_id ?? (formData.account_id === 'none' ? null : formData.account_id || null),
+            originItemIds: [itemId],
+          });
+          if (result.splitTaskIds.length > 0) anySplit = true;
+        }
+
         toast({
           title: `${allItemIds.length} Tasks Created`,
-          description: `Created one ${formData.task_type} task per item.`,
+          description: anySplit
+            ? `Created one ${formData.task_type} task per item. Some tasks are waiting for a warehouse Split.`
+            : `Created one ${formData.task_type} task per item.`,
         });
 
         // For multiple tasks, navigate to first one
@@ -559,10 +843,15 @@ export function TaskDialog({
 
           // Add task items
           if (allItemIds.length > 0 && newTask) {
-            const taskItems = allItemIds.map(itemId => ({
-              task_id: newTask.id,
-              item_id: itemId,
-            }));
+            const taskItems = allItemIds.map((itemId) => {
+              const available = getGroupedQty(itemId);
+              const requested = requestedQtyMap.get(itemId) ?? getRequestedQty(itemId, available);
+              return {
+                task_id: newTask.id,
+                item_id: itemId,
+                quantity: requested,
+              };
+            });
 
             const { error: taskItemsError } = await (supabase
               .from('task_items') as any)
@@ -574,9 +863,20 @@ export function TaskDialog({
             await updateInventoryStatus(allItemIds, formData.task_type, 'pending');
           }
 
+          // Split-required workflow (internal users): create blocking Split task(s) when a partial qty is requested from a grouped item
+          const splitResult = await createSplitTasksAndBlockOriginTask({
+            originTaskId: newTask.id,
+            originTaskTitle: newTask.title || generateTitle(),
+            originWarehouseId: newTask.warehouse_id ?? (formData.warehouse_id === 'none' ? null : formData.warehouse_id || null),
+            originAccountId: newTask.account_id ?? (formData.account_id === 'none' ? null : formData.account_id || null),
+            originItemIds: allItemIds,
+          });
+
           toast({
             title: 'Task Created',
-            description: 'Your task is now in the queue.',
+            description: splitResult.splitTaskIds.length > 0
+              ? 'Task created. Waiting for warehouse Split completion.'
+              : 'Your task is now in the queue.',
           });
 
           // Pass the new task ID to navigate to it
@@ -602,6 +902,12 @@ export function TaskDialog({
 
   const removeItem = (itemId: string) => {
     setSelectedItems(prev => prev.filter(item => item.id !== itemId));
+    setRequestedQtyByItemId((prev) => {
+      if (prev[itemId] == null) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
   };
 
   return (
@@ -829,6 +1135,53 @@ export function TaskDialog({
                     </Badge>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Quantity selection (supports grouped items) */}
+            {selectedItems.length > 0 && (
+              <div className="space-y-2">
+                <Label>Requested Quantities</Label>
+                <div className="space-y-2">
+                  {selectedItems.map((item) => {
+                    const available = getAvailableQty(item);
+                    const requested = getRequestedQty(item.id, available);
+                    return (
+                      <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{item.item_code}</div>
+                          {available > 1 && (
+                            <div className="text-xs text-muted-foreground">
+                              Grouped qty: {available}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={available}
+                            step={1}
+                            value={requested}
+                            disabled={available <= 1}
+                            onChange={(e) => {
+                              const raw = parseInt(e.target.value || '0', 10);
+                              const next = Number.isFinite(raw) ? raw : 1;
+                              const clamped = Math.max(1, Math.min(available, next));
+                              setRequestedQtyByItemId((prev) => ({ ...prev, [item.id]: clamped }));
+                            }}
+                            className="h-8 w-20 text-right"
+                            aria-label={`Requested quantity for ${item.item_code}`}
+                          />
+                          {available > 1 && <span className="text-xs text-muted-foreground">/ {available}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  For grouped items (qty &gt; 1), requesting a partial quantity will create a blocking <span className="font-medium">Split</span> task.
+                </p>
               </div>
             )}
 

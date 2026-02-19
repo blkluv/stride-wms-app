@@ -29,9 +29,12 @@ import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentException
 import { AccountSelect } from '@/components/ui/account-select';
 import { DocumentCapture } from '@/components/scanner/DocumentCapture';
 import { useDocuments } from '@/hooks/useDocuments';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import { BillingCalculator } from '@/components/billing/BillingCalculator';
 import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { timerEndJob } from '@/lib/time/timerClient';
 import {
   Dialog,
   DialogContent,
@@ -655,7 +658,21 @@ export function Stage1DockIntake({
 
       if (error) throw error;
 
+      // Stop Stage 1 timer interval (best-effort)
+      try {
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'shipment',
+          jobId: shipmentId,
+          reason: 'stage1_complete',
+        });
+      } catch (timerErr) {
+        console.warn('[Stage1] Failed to end timer interval:', timerErr);
+      }
+
       toast({ title: 'Stage 1 Complete', description: 'Dock intake has been recorded.' });
+      promptResumePausedTask();
       onComplete();
     } catch (err: any) {
       console.error('[Stage1] complete error:', err);
@@ -689,7 +706,15 @@ export function Stage1DockIntake({
                 Record the delivery at the dock. All fields autosave.
               </CardDescription>
             </div>
-            <AutosaveIndicator status={autosave.status} onRetry={autosave.retryNow} />
+            <div className="flex items-center gap-2">
+              <JobTimerWidget
+                jobType="shipment"
+                jobId={shipmentId}
+                variant="inline"
+                showControls={false}
+              />
+              <AutosaveIndicator status={autosave.status} onRetry={autosave.retryNow} />
+            </div>
           </div>
         </CardHeader>
       </Card>

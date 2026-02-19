@@ -13,6 +13,16 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +35,7 @@ import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge'
 import { IncomingContent } from '@/components/shipments/IncomingContent';
 import { OutboundContent } from '@/components/shipments/OutboundContent';
 import { format } from 'date-fns';
+import { timerStartJob } from '@/lib/time/timerClient';
 
 interface ShipmentCounts {
   expectedToday: number;
@@ -70,6 +81,11 @@ export default function Shipments() {
   const [activeTab, setActiveTab] = useState<HubTab>('hub');
   const [incomingSubTab, setIncomingSubTab] = useState<IncomingSubTab>(undefined);
   const [creatingIntake, setCreatingIntake] = useState(false);
+
+  // Start Dock Intake: pause existing job confirmation
+  const [dockIntakeConfirmOpen, setDockIntakeConfirmOpen] = useState(false);
+  const [dockIntakeConfirmLoading, setDockIntakeConfirmLoading] = useState(false);
+  const [dockIntakeActiveJobLabel, setDockIntakeActiveJobLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile?.tenant_id) {
@@ -227,7 +243,7 @@ export default function Shipments() {
     }
   };
 
-  const handleStartDockIntake = useCallback(async () => {
+  const createDockIntake = useCallback(async (pauseExisting: boolean) => {
     if (!profile?.tenant_id || creatingIntake) return;
     setCreatingIntake(true);
     try {
@@ -247,6 +263,22 @@ export default function Shipments() {
 
       if (error) throw error;
 
+      // Start timer for this intake
+      try {
+        const timerRes = await timerStartJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'shipment',
+          jobId: data.id,
+          pauseExisting,
+        });
+        if (timerRes && (timerRes as any).ok === false) {
+          console.warn('[Shipments] dock intake timer start failed:', (timerRes as any).error_message);
+        }
+      } catch (timerErr: any) {
+        console.warn('[Shipments] dock intake timer start failed:', timerErr?.message || timerErr);
+      }
+
       navigate(`/incoming/dock-intake/${data.id}`);
     } catch (err: any) {
       toast({
@@ -257,7 +289,59 @@ export default function Shipments() {
     } finally {
       setCreatingIntake(false);
     }
-  }, [profile, creatingIntake, navigate, toast]);
+  }, [profile?.tenant_id, profile?.id, creatingIntake, navigate, toast]);
+
+  const handleStartDockIntake = useCallback(async () => {
+    if (!profile?.tenant_id || creatingIntake) return;
+
+    // Preflight: if the user already has an active timer, prompt to pause it
+    try {
+      const { data: activeIntervals } = await (supabase
+        .from('job_time_intervals') as any)
+        .select('job_type, job_id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('user_id', profile.id)
+        .is('ended_at', null)
+        .limit(1);
+
+      const active = activeIntervals?.[0];
+      if (active) {
+        const activeType = active.job_type as string | null;
+        const activeId = active.job_id as string | null;
+
+        let label = 'another job';
+        try {
+          if (activeType === 'task' && activeId) {
+            const { data: t } = await (supabase.from('tasks') as any)
+              .select('title, task_type')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('id', activeId)
+              .maybeSingle();
+            label = t?.title || (t?.task_type ? `${t.task_type} task` : 'another task');
+          } else if (activeType === 'shipment' && activeId) {
+            const { data: s } = await (supabase.from('shipments') as any)
+              .select('shipment_number')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('id', activeId)
+              .maybeSingle();
+            label = s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
+          } else if (activeType) {
+            label = `${activeType} job`;
+          }
+        } catch {
+          // Best-effort
+        }
+
+        setDockIntakeActiveJobLabel(label);
+        setDockIntakeConfirmOpen(true);
+        return;
+      }
+    } catch {
+      // If preflight fails, proceed — RPC will still protect uniqueness.
+    }
+
+    await createDockIntake(false);
+  }, [profile?.tenant_id, profile?.id, creatingIntake, createDockIntake, toast]);
 
   const handleCardTap = (key: ExpandedCard) => {
     switch (key) {
@@ -523,6 +607,45 @@ export default function Shipments() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Pause existing job confirmation (Start Dock Intake) */}
+      <AlertDialog open={dockIntakeConfirmOpen} onOpenChange={setDockIntakeConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause current job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              It looks like you already have a job in progress{dockIntakeActiveJobLabel ? ` (${dockIntakeActiveJobLabel})` : ''}.
+              Do you want to pause it and start a dock intake?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setDockIntakeActiveJobLabel(null);
+              }}
+              disabled={dockIntakeConfirmLoading}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                setDockIntakeConfirmLoading(true);
+                try {
+                  await createDockIntake(true);
+                  setDockIntakeConfirmOpen(false);
+                  setDockIntakeActiveJobLabel(null);
+                } finally {
+                  setDockIntakeConfirmLoading(false);
+                }
+              }}
+              disabled={dockIntakeConfirmLoading}
+            >
+              Pause & Start
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

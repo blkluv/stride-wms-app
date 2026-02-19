@@ -83,7 +83,9 @@ import {
   getEffectiveRate,
   toRateLookupResult,
   logPricingFallbackExternal,
+  mapLegacyToUnit,
 } from '@/lib/billing/chargeTypeUtils';
+import { estimateServiceMinutes } from '@/lib/time/serviceTimeEstimate';
 
 /**
  * Map shipment direction to service codes
@@ -104,6 +106,9 @@ export interface RateLookupResult {
   serviceName: string;
   serviceCode: string;
   billingUnit: string;  // Flexible to handle all database values
+  // New: used for estimated service time calculations
+  unit?: string;
+  serviceTimeMinutes?: number;
   alertRule: string;
   hasError: boolean;
   errorMessage?: string;
@@ -139,7 +144,7 @@ export async function getRateByCategoryAndClass(
     if (classCode) {
       const { data: classService, error: classError } = await supabase
         .from('service_events')
-        .select('rate, service_name, service_code, billing_unit, alert_rule, uses_class_pricing')
+        .select('rate, service_name, service_code, billing_unit, alert_rule, uses_class_pricing, service_time_minutes')
         .eq('tenant_id', tenantId)
         .eq('category_id', categoryId)
         .eq('class_code', classCode)
@@ -159,6 +164,8 @@ export async function getRateByCategoryAndClass(
           serviceName: classService.service_name || 'Unknown',
           serviceCode: classService.service_code || 'UNKNOWN',
           billingUnit: classService.billing_unit || 'Item',
+          unit: mapLegacyToUnit(classService.billing_unit || 'Item'),
+          serviceTimeMinutes: classService.service_time_minutes ?? 0,
           alertRule: classService.alert_rule || 'none',
           hasError: classService.rate === null,
           errorMessage: classService.rate === null ? 'Rate not configured for this service' : undefined,
@@ -169,7 +176,7 @@ export async function getRateByCategoryAndClass(
     // Step 2: Try flat-rate service (class_code IS NULL, uses_class_pricing=false)
     const { data: flatRateService, error: flatError } = await supabase
       .from('service_events')
-      .select('rate, service_name, service_code, billing_unit, alert_rule, uses_class_pricing')
+      .select('rate, service_name, service_code, billing_unit, alert_rule, uses_class_pricing, service_time_minutes')
       .eq('tenant_id', tenantId)
       .eq('category_id', categoryId)
       .is('class_code', null)
@@ -199,6 +206,8 @@ export async function getRateByCategoryAndClass(
         serviceName: flatRateService.service_name || 'Unknown',
         serviceCode: flatRateService.service_code || 'UNKNOWN',
         billingUnit: flatRateService.billing_unit || 'Item',
+        unit: mapLegacyToUnit(flatRateService.billing_unit || 'Item'),
+        serviceTimeMinutes: flatRateService.service_time_minutes ?? 0,
         alertRule: flatRateService.alert_rule || 'none',
         hasError: flatRateService.rate === null,
         errorMessage: flatRateService.rate === null ? 'Rate not configured for this service' : undefined,
@@ -215,6 +224,8 @@ export async function getRateByCategoryAndClass(
       serviceName: 'Unknown',
       serviceCode: 'UNKNOWN',
       billingUnit: 'Item',
+      unit: 'per_item',
+      serviceTimeMinutes: 0,
       alertRule: 'none',
       hasError: true,
       errorMessage: errorMsg,
@@ -226,6 +237,8 @@ export async function getRateByCategoryAndClass(
       serviceName: 'Unknown',
       serviceCode: 'UNKNOWN',
       billingUnit: 'Item',
+      unit: 'per_item',
+      serviceTimeMinutes: 0,
       alertRule: 'none',
       hasError: true,
       errorMessage: 'Error looking up rate',
@@ -260,6 +273,8 @@ export async function getRateFromPriceList(
       serviceName: serviceCode,
       serviceCode,
       billingUnit: 'Item',
+      unit: 'per_item',
+      serviceTimeMinutes: 0,
       alertRule: 'none',
       hasError: true,
       errorMessage: 'Error looking up rate',
@@ -281,6 +296,7 @@ export interface BillingLineItem {
   quantity: number;
   unitRate: number;
   totalAmount: number;
+  estimatedMinutes: number;
   hasRateError: boolean;
   errorMessage?: string;
 }
@@ -386,6 +402,11 @@ export async function calculateTaskBillingPreview(
       serviceCode = rateResult.serviceCode;
 
       const totalAmount = quantity * rateResult.rate;
+      const estimatedMinutes = estimateServiceMinutes({
+        serviceTimeMinutes: rateResult.serviceTimeMinutes ?? 0,
+        unit: rateResult.unit,
+        quantity,
+      });
 
       lineItems.push({
         itemId: ti.item_id,
@@ -397,6 +418,7 @@ export async function calculateTaskBillingPreview(
         quantity,
         unitRate: rateResult.rate,
         totalAmount,
+        estimatedMinutes,
         hasRateError: rateResult.hasError,
         errorMessage: rateResult.errorMessage,
       });
@@ -536,6 +558,11 @@ export async function calculateShipmentBillingPreview(
     serviceName = rateResult.serviceName;
 
     const totalAmount = quantity * rateResult.rate;
+    const estimatedMinutes = estimateServiceMinutes({
+      serviceTimeMinutes: rateResult.serviceTimeMinutes ?? 0,
+      unit: rateResult.unit,
+      quantity,
+    });
 
     lineItems.push({
       itemId: si.item_id,
@@ -547,6 +574,7 @@ export async function calculateShipmentBillingPreview(
       quantity,
       unitRate: rateResult.rate,
       totalAmount,
+      estimatedMinutes,
       hasRateError: rateResult.hasError,
       errorMessage: rateResult.errorMessage,
     });

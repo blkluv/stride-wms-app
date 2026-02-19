@@ -45,8 +45,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
 import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
+import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
+import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { timerEndJob } from '@/lib/time/timerClient';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 interface ReceivedItem {
   id: string;
@@ -737,6 +743,7 @@ export function Stage2DetailedReceiving({
     setCompleting(true);
 
     try {
+      const completedAt = new Date().toISOString();
       let autoApplyArrivalNoIdFlag = true;
       let unidentifiedAccountId: string | null = null;
 
@@ -1045,11 +1052,74 @@ export function Stage2DetailedReceiving({
           inbound_status: 'closed',
           // User-facing shipment lifecycle: Stage 2 completion == received.
           status: 'received',
-          received_at: new Date().toISOString(),
+          received_at: completedAt,
         } as any)
         .eq('id', shipmentId);
 
       if (closeErr) throw closeErr;
+
+      // Stop Stage 2 timer interval (best-effort)
+      try {
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'shipment',
+          jobId: shipmentId,
+          reason: 'complete',
+        });
+      } catch (timerErr) {
+        console.warn('[Stage2] Failed to end timer interval:', timerErr);
+      }
+
+      // Snapshot estimated + actual minutes for reporting/display (best-effort)
+      try {
+        // Actual labor minutes: sum intervals for this shipment
+        const { data: rows } = await (supabase
+          .from('job_time_intervals') as any)
+          .select('started_at, ended_at')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('job_type', 'shipment')
+          .eq('job_id', shipmentId);
+
+        const laborMinutes = Math.round(
+          (rows || []).reduce((sum: number, r: any) => {
+            const start = r.started_at as string;
+            const end = (r.ended_at as string | null) || completedAt;
+            return sum + minutesBetweenIso(start, end);
+          }, 0)
+        );
+
+        // Estimated minutes from billing preview (uses pricing_rules.service_time_minutes)
+        const preview = await calculateShipmentBillingPreview(profile.tenant_id, shipmentId, 'inbound');
+        const estimatedMinutes = (preview?.lineItems || []).reduce((sum, li) => sum + (li.estimatedMinutes || 0), 0);
+
+        const { data: shipmentRow } = await supabase
+          .from('shipments')
+          .select('metadata')
+          .eq('id', shipmentId)
+          .maybeSingle();
+
+        let merged: any = shipmentRow?.metadata ?? null;
+        merged = mergeServiceTimeSnapshot(merged, {
+          estimated_minutes: Math.round(estimatedMinutes),
+          estimated_snapshot_at: completedAt,
+          estimated_source: 'billing_preview',
+          estimated_version: 1,
+        });
+        merged = mergeServiceTimeActualSnapshot(merged, {
+          actual_cycle_minutes: laborMinutes,
+          actual_labor_minutes: laborMinutes,
+          actual_snapshot_at: completedAt,
+          actual_version: 1,
+        });
+
+        await supabase
+          .from('shipments')
+          .update({ metadata: merged })
+          .eq('id', shipmentId);
+      } catch (snapshotErr) {
+        console.warn('[Stage2] Failed to snapshot service time:', snapshotErr);
+      }
 
       // Assign receiving location as safety net
       try {
@@ -1099,6 +1169,7 @@ export function Stage2DetailedReceiving({
       });
       setShowCompleteDialog(false);
       setShowAdminOverride(false);
+      promptResumePausedTask();
       onComplete();
     } catch (err: any) {
       console.error('[Stage2] complete error:', err);
@@ -1132,7 +1203,13 @@ export function Stage2DetailedReceiving({
                 Receive items, create inventory units, and verify quantities.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <JobTimerWidget
+                jobType="shipment"
+                jobId={shipmentId}
+                variant="inline"
+                showControls={false}
+              />
               <Badge variant="secondary" className="text-sm">
                 Carrier: {shipment.signed_pieces ?? '-'}
               </Badge>

@@ -23,6 +23,7 @@ import { LaborCostsTab } from '@/components/reports/LaborCostsTab';
 import { BillingReportTab } from '@/components/reports/BillingReportTab';
 import { RevenueLedgerTab } from '@/components/reports/RevenueLedgerTab';
 import { ReportBuilderTab } from '@/components/reports/ReportBuilderTab';
+import { ServiceTimeTab } from '@/components/reports/ServiceTimeTab';
 import { InvoiceTemplateTab } from '@/components/invoices/InvoiceTemplateTab';
 import { SavedInvoicesTab } from '@/components/invoices/SavedInvoicesTab';
 
@@ -36,7 +37,8 @@ interface ReportStats {
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))'];
 
 export default function Reports() {
-  const { isAdmin } = usePermissions();
+  const { isAdmin, hasRole } = usePermissions();
+  const canSeeServiceTime = isAdmin || hasRole('manager');
   const [stats, setStats] = useState<ReportStats>({
     totalItems: 0,
     itemsByStatus: [],
@@ -149,6 +151,12 @@ export default function Reports() {
               <TabsTrigger value="labor-costs" className="gap-2">
                 <MaterialIcon name="attach_money" size="sm" />
                 Labor Costs
+              </TabsTrigger>
+            )}
+            {canSeeServiceTime && (
+              <TabsTrigger value="service-time" className="gap-2">
+                <MaterialIcon name="schedule" size="sm" />
+                Service Time
               </TabsTrigger>
             )}
             {isAdmin && (
@@ -321,6 +329,12 @@ export default function Reports() {
           {isAdmin && (
             <TabsContent value="labor-costs" className="mt-6">
               <LaborCostsTab />
+            </TabsContent>
+          )}
+
+          {canSeeServiceTime && (
+            <TabsContent value="service-time" className="mt-6">
+              <ServiceTimeTab />
             </TabsContent>
           )}
 

@@ -53,7 +53,7 @@ import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantPreferences } from '@/hooks/useTenantPreferences';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -152,11 +152,12 @@ export default function Inventory() {
 
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeViewId, setActiveViewId] = useState<string>('');
 
   useEffect(() => {
@@ -790,6 +791,7 @@ export default function Inventory() {
 
                 <ItemColumnsPopover
                   settings={itemDisplaySettings}
+                  baseSettings={tenantItemDisplaySettings}
                   viewId={activeViewId || defaultItemViewId || 'default'}
                   disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                   onSave={saveItemDisplaySettings}

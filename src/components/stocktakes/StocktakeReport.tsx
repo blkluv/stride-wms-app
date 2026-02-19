@@ -34,6 +34,10 @@ import { useStocktakeScan, useStocktakeResults, ResultType } from '@/hooks/useSt
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
+import { usePermissions } from '@/hooks/usePermissions';
+import { ServiceTimeAdjustmentDialog } from '@/components/time/ServiceTimeAdjustmentDialog';
 
 const resultConfig: Record<ResultType, {
   color: string;
@@ -89,8 +93,12 @@ export default function StocktakeReport() {
     itemCode: string;
   } | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
+  const [adjustTimeOpen, setAdjustTimeOpen] = useState(false);
 
-  const { stocktake, stats, loading: stocktakeLoading } = useStocktakeScan(id || '');
+  const { hasRole } = usePermissions();
+  const canAdjustServiceTime = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
+
+  const { stocktake, stats, loading: stocktakeLoading, refetch: refetchStocktake } = useStocktakeScan(id || '');
   const { results, loading: resultsLoading, refetch, resolveResult } = useStocktakeResults(id || '');
 
   const loading = stocktakeLoading || resultsLoading;
@@ -242,11 +250,47 @@ export default function StocktakeReport() {
               )}
             </div>
           </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <JobTimerWidget
+              jobType="stocktake"
+              jobId={id}
+              variant="inline"
+              showControls={false}
+            />
+            {stocktake.duration_minutes != null && stocktake.duration_minutes > 0 && (
+              <Badge variant="secondary" className="tabular-nums whitespace-nowrap">
+                Actual {formatMinutesShort(stocktake.duration_minutes)}
+              </Badge>
+            )}
+            {canAdjustServiceTime && (stocktake.duration_minutes != null && stocktake.duration_minutes > 0) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAdjustTimeOpen(true)}
+                title="Adjust actual service time (manager/admin)"
+              >
+                <MaterialIcon name="schedule" size="sm" className="mr-2" />
+                Adjust Time
+              </Button>
+            )}
+          </div>
           <Button variant="outline" onClick={exportCSV}>
             <MaterialIcon name="download" size="sm" className="mr-2" />
             Export CSV
           </Button>
         </div>
+
+        <ServiceTimeAdjustmentDialog
+          open={adjustTimeOpen}
+          onOpenChange={setAdjustTimeOpen}
+          jobType="stocktake"
+          jobId={id}
+          currentMinutes={stocktake.duration_minutes}
+          onSaved={() => {
+            refetchStocktake();
+            refetch();
+          }}
+        />
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">

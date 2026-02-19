@@ -13,6 +13,13 @@ export interface OrgPreferences {
   space_tracking_mode: SpaceTrackingMode;
   inventory_group_mode: InventoryGroupMode;
   inventory_line_format: InventoryLineFormat;
+  /**
+   * Client portal only:
+   * When true, clients may request partial quantities from grouped items (qty > 1),
+   * which creates a warehouse "Split" task and blocks the job until completed.
+   * When false, the request is allowed but marked "Pending review" (manual workflow).
+   */
+  client_partial_grouped_enabled: boolean;
 }
 
 const DEFAULTS: OrgPreferences = {
@@ -20,6 +27,8 @@ const DEFAULTS: OrgPreferences = {
   space_tracking_mode: 'none',
   inventory_group_mode: 'none',
   inventory_line_format: 'single_line',
+  // Conservative default: require manual review unless explicitly enabled.
+  client_partial_grouped_enabled: false,
 };
 
 export function useOrgPreferences() {
@@ -37,7 +46,13 @@ export function useOrgPreferences() {
         .from('tenant_settings')
         .select('setting_key, setting_value')
         .eq('tenant_id', profile.tenant_id)
-        .in('setting_key', ['container_volume_mode', 'space_tracking_mode', 'inventory_group_mode', 'inventory_line_format']);
+        .in('setting_key', [
+          'container_volume_mode',
+          'space_tracking_mode',
+          'inventory_group_mode',
+          'inventory_line_format',
+          'client_partial_grouped_enabled',
+        ]);
 
       if (error) throw error;
 
@@ -55,6 +70,16 @@ export function useOrgPreferences() {
         if (row.setting_key === 'inventory_line_format' && row.setting_value) {
           prefs.inventory_line_format = (row.setting_value as unknown as string) as InventoryLineFormat;
         }
+        if (row.setting_key === 'client_partial_grouped_enabled') {
+          const v = row.setting_value as unknown;
+          if (typeof v === 'boolean') {
+            prefs.client_partial_grouped_enabled = v;
+          } else if (typeof v === 'string') {
+            prefs.client_partial_grouped_enabled = v.trim().toLowerCase() === 'true';
+          } else {
+            prefs.client_partial_grouped_enabled = DEFAULTS.client_partial_grouped_enabled;
+          }
+        }
       });
 
       setPreferences(prefs);
@@ -69,7 +94,7 @@ export function useOrgPreferences() {
     fetchPreferences();
   }, [fetchPreferences]);
 
-  const updatePreference = useCallback(async (key: keyof OrgPreferences, value: string) => {
+  const updatePreference = useCallback(async <K extends keyof OrgPreferences>(key: K, value: OrgPreferences[K]) => {
     if (!profile?.tenant_id) return false;
 
     try {
@@ -80,7 +105,7 @@ export function useOrgPreferences() {
           [{
             tenant_id: profile.tenant_id,
             setting_key: key,
-            setting_value: value,
+            setting_value: value as any,
             updated_by: profile.id,
             updated_at: new Date().toISOString(),
           }],
@@ -89,7 +114,7 @@ export function useOrgPreferences() {
 
       if (error) throw error;
 
-      setPreferences((prev) => ({ ...prev, [key]: value }));
+      setPreferences((prev) => ({ ...prev, [key]: value } as OrgPreferences));
       toast({
         title: 'Preference Updated',
         description: `${key.replace(/_/g, ' ')} has been saved.`,
