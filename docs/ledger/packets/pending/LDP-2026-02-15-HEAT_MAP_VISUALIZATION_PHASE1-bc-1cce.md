@@ -11,17 +11,17 @@
 
 | Decision ID | Action | Title | State | Notes |
 |---|---|---|---|---|
-| DL-2026-02-15-017 | add | Heat map phase implementation must map to existing schema names when possible | accepted | Prefer compatibility mapping over schema churn. |
-| DL-2026-02-15-018 | add | Access matrix for HMV-P1 is builder admin+manager and viewer admin+manager+warehouse | accepted | Role keys align to app role model. |
-| DL-2026-02-15-019 | add | Rename this initiative to Heat Map & Visualization Phase 1 (HMV-P1) | accepted | Supersedes prior "Phase 5.1" naming in planning context. |
-| DL-2026-02-15-020 | add | HMV-P1 includes Map Builder as prerequisite capability | accepted | Heat map depends on map setup. |
-| DL-2026-02-15-021 | add | Heat viewer remains read-only but supports zone tap drill-down to location-level capacity list | accepted | Interactivity is inspection-only, not editing. |
-| DL-2026-02-15-022 | add | Final handoff process auto-resolves PR conflicts and verifies mergeability | accepted | Delivery policy requested by user. |
-| DL-2026-02-15-023 | add | If scope overruns, visualizer sequencing may be deferred behind builder delivery | draft | Trigger criteria not yet finalized. |
+| DL-2026-02-15-200 | add | Heat map phase implementation must map to existing schema names when possible | accepted | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
+| DL-2026-02-15-201 | add | Access matrix for HMV-P1 is builder admin+manager and viewer admin+manager+warehouse | accepted | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
+| DL-2026-02-15-202 | add | Rename this initiative to Heat Map & Visualization Phase 1 (HMV-P1) | accepted | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
+| DL-2026-02-15-203 | add | HMV-P1 includes Map Builder as prerequisite capability | accepted | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
+| DL-2026-02-15-204 | add | Heat viewer remains read-only but supports zone tap drill-down to location-level capacity list | accepted | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
+| DL-2026-02-15-205 | add | Final handoff process auto-resolves PR conflicts and verifies mergeability | accepted | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
+| DL-2026-02-15-206 | add | If scope overruns, visualizer sequencing may be deferred behind builder delivery | draft | Renumbered to avoid collision with existing DL IDs on 2026-02-15. |
 
 ## Detailed Decision Entries
 
-### DL-2026-02-15-017
+### DL-2026-02-15-200: Heat map phase implementation must map to existing schema names when possible
 - Domain: Heat Map / Data Integration
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-001`
@@ -38,7 +38,7 @@ User explicitly chose compatibility-first implementation to reduce migration dri
 - Prefer existing columns/functions/table conventions in migrations/hooks/UI wiring.
 - Document any unavoidable naming bridge explicitly.
 
-### DL-2026-02-15-018
+### DL-2026-02-15-201: Access matrix for HMV-P1 is builder admin+manager and viewer admin+manager+warehouse
 - Domain: Heat Map / Access Control
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-002`
@@ -57,7 +57,7 @@ User provided explicit role access expectations for both build and view workflow
 - Route guards and in-app entry points must enforce this matrix.
 - Viewer remains broadly operational; builder remains elevated.
 
-### DL-2026-02-15-019
+### DL-2026-02-15-202: Rename this initiative to Heat Map & Visualization Phase 1 (HMV-P1)
 - Domain: Program Governance
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-004`
@@ -73,7 +73,7 @@ User explicitly changed phase naming because this is being treated as a new feat
 #### Implementation impact
 - Update planning references and execution summaries to HMV-P1 nomenclature.
 
-### DL-2026-02-15-020
+### DL-2026-02-15-203: HMV-P1 includes Map Builder as prerequisite capability
 - Domain: Heat Map / Scope
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-005`
@@ -90,7 +90,7 @@ User explicitly stated builder must be phase one due to dependency ordering.
 - Phase plan must sequence builder foundation before/with viewer enablement.
 - Do not ship viewer-only if it leaves tenants without map authoring path.
 
-### DL-2026-02-15-021
+### DL-2026-02-15-204: Heat viewer supports zone drill-down to location-level capacity list
 - Domain: Heat Map / UX Behavior
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-003`
@@ -107,7 +107,7 @@ User identified operational blind spot in zone-only aggregation and requested di
 - Keep viewer non-editing.
 - Add interaction model for zone detail inspection without per-zone API fanout.
 
-### DL-2026-02-15-022
+### DL-2026-02-15-205: Final handoff process auto-resolves PR conflicts and verifies mergeability
 - Domain: Delivery Process
 - State: accepted
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-006`
@@ -123,7 +123,7 @@ User explicitly set this as a standing operating rule for future handoffs.
 #### Implementation impact
 - Add mergeability verification/conflict resolution as mandatory pre-handoff checklist.
 
-### DL-2026-02-15-023
+### DL-2026-02-15-206: If scope overruns, visualizer sequencing may be deferred behind builder delivery
 - Domain: Heat Map / Scope Contingency
 - State: draft
 - Source: `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md#qa-hmv-2026-02-15-005`
@@ -143,9 +143,9 @@ User offered contingency language but did not define specific criteria/threshold
 
 | Event ID | Date | Decision ID | Event Type | Evidence | Actor | Notes |
 |---|---|---|---|---|---|---|
-| DLE-2026-02-15-023 | 2026-02-15 | DL-2026-02-15-017 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured compatibility-first schema mapping directive. |
-| DLE-2026-02-15-024 | 2026-02-15 | DL-2026-02-15-018 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured builder/viewer role access matrix. |
-| DLE-2026-02-15-025 | 2026-02-15 | DL-2026-02-15-019 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured HMV-P1 phase naming directive. |
-| DLE-2026-02-15-026 | 2026-02-15 | DL-2026-02-15-020 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured phase-one map builder prerequisite requirement. |
-| DLE-2026-02-15-027 | 2026-02-15 | DL-2026-02-15-021 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured read-only heat viewer with zone drill-down detail behavior. |
-| DLE-2026-02-15-028 | 2026-02-15 | DL-2026-02-15-022 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured mandatory pre-handoff mergeability/conflict-resolution rule. |
+| DLE-2026-02-15-200 | 2026-02-15 | DL-2026-02-15-200 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured compatibility-first schema mapping directive. |
+| DLE-2026-02-15-201 | 2026-02-15 | DL-2026-02-15-201 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured builder/viewer role access matrix. |
+| DLE-2026-02-15-202 | 2026-02-15 | DL-2026-02-15-202 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured HMV-P1 phase naming directive. |
+| DLE-2026-02-15-203 | 2026-02-15 | DL-2026-02-15-203 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured phase-one map builder prerequisite requirement. |
+| DLE-2026-02-15-204 | 2026-02-15 | DL-2026-02-15-204 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured read-only heat viewer with zone drill-down detail behavior. |
+| DLE-2026-02-15-205 | 2026-02-15 | DL-2026-02-15-205 | planned | `docs/ledger/sources/LOCKED_DECISION_SOURCE_HEAT_MAP_VISUALIZATION_PHASE1_2026-02-15_chat-bc-1cce.md` | gpt-5.3-codex-high | Captured mandatory pre-handoff mergeability/conflict-resolution rule. |
