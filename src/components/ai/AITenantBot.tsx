@@ -496,7 +496,7 @@ export function AITenantBot() {
 
   if (isMinimized) {
     return (
-      <Card className="fixed bottom-6 right-6 w-72 shadow-lg z-50 bg-slate-900 border-slate-700">
+      <Card className="fixed bottom-3 left-3 right-3 sm:bottom-6 sm:left-auto sm:right-6 sm:w-72 shadow-lg z-50 bg-slate-900 border-slate-700">
         <CardHeader className="p-3 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <MaterialIcon name="terminal" size="md" className="text-green-400" />
@@ -516,7 +516,7 @@ export function AITenantBot() {
   }
 
   return (
-    <Card className="fixed bottom-6 right-6 w-[420px] h-[560px] shadow-lg z-50 flex flex-col bg-slate-900 border-slate-700">
+    <Card className="fixed inset-2 sm:inset-auto sm:bottom-6 sm:right-6 sm:w-[420px] sm:h-[560px] shadow-lg z-50 flex flex-col bg-slate-900 border-slate-700">
       <CardHeader className="p-3 border-b border-slate-700 flex flex-row items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <MaterialIcon name="terminal" size="md" className="text-green-400" />
