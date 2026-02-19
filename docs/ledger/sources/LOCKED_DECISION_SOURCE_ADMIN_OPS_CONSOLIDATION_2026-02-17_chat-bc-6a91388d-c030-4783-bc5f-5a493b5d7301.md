@@ -217,3 +217,8 @@ User decision (confirmation prompt on toggle off):
 User decision (cleanup Resend domain registration on cancel):
 - If a tenant starts custom domain setup and we registered the domain with Resend, then the tenant switches back to platform sender, we should remove/cleanup the domain registration in Resend as well (not just stop using it).
 
+### QA-2026-02-17-ADMINOPS-040
+User decision (cleanup failures do not block):
+- If Resend cleanup/delete fails (API/network error), the tenant must still be able to switch back to platform sender immediately.
+- Cleanup is best-effort; failures should be logged and retried later (or surfaced in Email Ops).
+
