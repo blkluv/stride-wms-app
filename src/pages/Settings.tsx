@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/page-header';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -192,11 +192,14 @@ export default function Settings() {
   }, [profile?.id]);
 
   const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const skipNextTabOrderPersistRef = useRef(false);
   const [reorderTabsOpen, setReorderTabsOpen] = useState(false);
 
   // Load saved tab order per user
   useEffect(() => {
     if (!settingsTabOrderKey) return;
+    // Prevent overwriting the saved value with the initial `[]` before this effect's state update lands.
+    skipNextTabOrderPersistRef.current = true;
     const saved = localStorage.getItem(settingsTabOrderKey);
     if (!saved) return;
     try {
@@ -212,6 +215,10 @@ export default function Settings() {
   // Persist tab order per user
   useEffect(() => {
     if (!settingsTabOrderKey) return;
+    if (skipNextTabOrderPersistRef.current) {
+      skipNextTabOrderPersistRef.current = false;
+      return;
+    }
     localStorage.setItem(settingsTabOrderKey, JSON.stringify(tabOrder));
   }, [settingsTabOrderKey, tabOrder]);
 
