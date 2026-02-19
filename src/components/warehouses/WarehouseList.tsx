@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Warehouse } from '@/hooks/useWarehouses';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ interface WarehouseListProps {
 }
 
 export function WarehouseList({ warehouses, loading, onEdit, onRefresh }: WarehouseListProps) {
+  const navigate = useNavigate();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [warehouseToDelete, setWarehouseToDelete] = useState<Warehouse | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -168,6 +170,14 @@ export function WarehouseList({ warehouses, loading, onEdit, onRefresh }: Wareho
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => navigate(`/warehouses/${warehouse.id}/map`)}>
+                          <MaterialIcon name="map" size="sm" className="mr-2" />
+                          Map Builder
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/warehouses/${warehouse.id}/zones`)}>
+                          <MaterialIcon name="grid_on" size="sm" className="mr-2" />
+                          Zones
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => onEdit(warehouse.id)}>
                           <MaterialIcon name="edit" size="sm" className="mr-2" />
                           Edit
