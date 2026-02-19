@@ -70,6 +70,8 @@ import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTy
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 import { mergeServiceTimeActualSnapshot, mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 // ============================================
@@ -1096,32 +1098,6 @@ export default function ShipmentDetail() {
     }
   };
 
-  const resolveActiveJobLabel = async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-
-    try {
-      if (jobType === 'task') {
-        const { data: t } = await (supabase.from('tasks') as any)
-          .select('title, task_type')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return t?.title || (t?.task_type ? `${t.task_type} task` : 'another task');
-      }
-      if (jobType === 'shipment') {
-        const { data: s } = await (supabase.from('shipments') as any)
-          .select('shipment_number')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
-      }
-      return `${jobType} job`;
-    } catch {
-      return 'another job';
-    }
-  };
-
   const beginOutboundMode = async (mode: 'pull' | 'release') => {
     if (!shipment) return;
 
@@ -1162,7 +1138,9 @@ export default function ShipmentDetail() {
       if (res?.ok === false) {
         if (res.error_code === 'ACTIVE_TIMER_EXISTS' && !pauseExisting) {
           setOutboundTimerPendingMode(mode);
-          setOutboundTimerActiveJobLabel(await resolveActiveJobLabel(res.active_job_type, res.active_job_id));
+          setOutboundTimerActiveJobLabel(
+            await resolveActiveJobLabel(profile?.tenant_id, res.active_job_type, res.active_job_id),
+          );
           setOutboundTimerConfirmOpen(true);
           return false;
         }
@@ -1405,13 +1383,6 @@ export default function ShipmentDetail() {
             .eq('tenant_id', profile.tenant_id)
             .eq('job_type', 'shipment')
             .eq('job_id', shipment.id);
-
-          const minutesBetweenIso = (startIso: string, endIso: string) => {
-            const start = new Date(startIso).getTime();
-            const end = new Date(endIso).getTime();
-            if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-            return (end - start) / 60000;
-          };
 
           const laborMinutes = Math.round(
             (rows || []).reduce((sum: number, r: any) => {
