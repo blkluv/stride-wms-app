@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
 import type { TimerStartResult } from '@/hooks/useJobTimer';
 import { mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 // Type-safe supabase client cast for tables/functions not in generated types
@@ -223,13 +224,6 @@ export function useStocktakes(filters?: StocktakeFilters) {
 
     await fetchStocktakes();
     return result;
-  };
-
-  const minutesBetweenIso = (startIso: string, endIso: string) => {
-    const start = new Date(startIso).getTime();
-    const end = new Date(endIso).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-    return (end - start) / 60000;
   };
 
   const startStocktakeDetailed = useCallback(async (

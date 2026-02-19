@@ -81,6 +81,7 @@ export function JobTimerWidgetFromState(props: {
   const [concurrentLoading, setConcurrentLoading] = useState(false);
   const [concurrentUserNames, setConcurrentUserNames] = useState<string>('');
   const [concurrentPendingPauseExisting, setConcurrentPendingPauseExisting] = useState<boolean>(false);
+  const [resumeConfirmedConcurrent, setResumeConfirmedConcurrent] = useState<boolean>(false);
 
   // If job changes, close confirm dialog
   useEffect(() => {
@@ -91,6 +92,7 @@ export function JobTimerWidgetFromState(props: {
     setConcurrentLoading(false);
     setConcurrentUserNames('');
     setConcurrentPendingPauseExisting(false);
+    setResumeConfirmedConcurrent(false);
   }, [props.jobType, props.jobId]);
 
   const timeLabel = useMemo(() => formatMinutesShort(props.timer.laborMinutes), [props.timer.laborMinutes]);
@@ -195,7 +197,15 @@ export function JobTimerWidgetFromState(props: {
               Pause
             </Button>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => void requestResume(false)} disabled={props.timer.loading}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setResumeConfirmedConcurrent(false);
+                void requestResume(false);
+              }}
+              disabled={props.timer.loading}
+            >
               <MaterialIcon name="play_arrow" size="sm" className="mr-1.5" />
               {props.timer.isPausedForMe ? 'Resume' : 'Start'}
             </Button>
@@ -222,6 +232,7 @@ export function JobTimerWidgetFromState(props: {
                 e.preventDefault();
                 setConcurrentLoading(true);
                 try {
+                  setResumeConfirmedConcurrent(true);
                   await requestResume(concurrentPendingPauseExisting, true);
                   setConcurrentOpen(false);
                   setConcurrentUserNames('');
@@ -254,7 +265,7 @@ export function JobTimerWidgetFromState(props: {
                 e.preventDefault();
                 setConfirmLoading(true);
                 try {
-                  await requestResume(true);
+                  await requestResume(true, resumeConfirmedConcurrent);
                   setConfirmOpen(false);
                   setActiveJobTypeLabel(null);
                 } finally {

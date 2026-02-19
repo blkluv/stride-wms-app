@@ -51,6 +51,7 @@ import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 
 const statusLabels: Record<StocktakeStatus, string> = {
   draft: 'Draft',
@@ -88,7 +89,6 @@ export default function Stocktakes() {
     refetch,
     createStocktake,
     startStocktakeDetailed,
-    startStocktake,
     closeStocktake,
     cancelStocktake,
   } = useStocktakes({
@@ -108,40 +108,6 @@ export default function Stocktakes() {
 
   const handleCreateStocktake = async (data: CreateStocktakeData) => {
     await createStocktake(data);
-  };
-
-  const resolveActiveJobLabel = async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-
-    try {
-      if (jobType === 'task') {
-        const { data: t } = await (supabase.from('tasks') as any)
-          .select('title, task_type')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return t?.title || (t?.task_type ? `${t.task_type} task` : 'another task');
-      }
-      if (jobType === 'shipment') {
-        const { data: s } = await (supabase.from('shipments') as any)
-          .select('shipment_number')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
-      }
-      if (jobType === 'stocktake') {
-        const { data: st } = await (supabase.from('stocktakes') as any)
-          .select('stocktake_number, name')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return st?.name || (st?.stocktake_number ? `Stocktake ${st.stocktake_number}` : 'another stocktake');
-      }
-      return `${jobType} job`;
-    } catch {
-      return 'another job';
-    }
   };
 
   const handleConfirmAction = async () => {
@@ -184,7 +150,9 @@ export default function Stocktakes() {
           if ((res as any)?.ok === false) {
             if ((res as any)?.error_code === 'ACTIVE_TIMER_EXISTS') {
               setStartSwitchStocktakeId(confirmAction.id);
-              setActiveJobLabel(await resolveActiveJobLabel((res as any)?.active_job_type, (res as any)?.active_job_id));
+              setActiveJobLabel(
+                await resolveActiveJobLabel(profile?.tenant_id, (res as any)?.active_job_type, (res as any)?.active_job_id)
+              );
               setStartSwitchOpen(true);
               return;
             }
