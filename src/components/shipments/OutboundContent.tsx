@@ -225,11 +225,11 @@ export function OutboundContent() {
       add(s.po_number, 'PO');
       add(s.carrier, 'Carrier');
       add(s.outbound_type_name, 'Type');
-      add(s.status, 'Status');
+      add(getDisplayStatus(s).label, 'Status');
     }
 
     return out;
-  }, [searchQuery, shipments]);
+  }, [searchQuery, shipments, getDisplayStatus]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -258,7 +258,7 @@ export function OutboundContent() {
           cmp = compareString(a.outbound_type_name, b.outbound_type_name);
           break;
         case 'status':
-          cmp = compareString(statusLabels[a.status] || a.status, statusLabels[b.status] || b.status);
+          cmp = compareString(getDisplayStatus(a).label, getDisplayStatus(b).label);
           break;
         case 'created_at':
         default:
@@ -267,7 +267,7 @@ export function OutboundContent() {
       }
       return cmp * dir;
     });
-  }, [filteredShipments, sortField, sortDirection]);
+  }, [filteredShipments, sortField, sortDirection, getDisplayStatus]);
 
   if (loading) {
     return (

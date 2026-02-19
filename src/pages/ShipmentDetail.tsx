@@ -1020,20 +1020,14 @@ export default function ShipmentDetail() {
               containerId = data?.id || null;
             }
 
-            const ok = window.confirm(
-              `This screen expects item codes.\n\nYou scanned a container (${code}).\n\nOpen container details?`
-            );
-            if (ok) {
-              if (containerId) {
+            if (containerId) {
+              const ok = window.confirm(
+                `This screen expects item codes.\n\nYou scanned a container (${code}).\n\nOpen container details?`
+              );
+              if (ok) {
                 navigate(`/containers/${containerId}`);
                 return;
               }
-              toast({
-                variant: 'destructive',
-                title: 'Container not found',
-                description: `No container found with code "${code}".`,
-              });
-              return;
             }
           }
 
