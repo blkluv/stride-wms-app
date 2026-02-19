@@ -112,7 +112,9 @@ export function useClientItems() {
         .select(`
           id,
           account_id,
+          warehouse_id,
           item_code,
+          quantity,
           description,
           status,
           condition,
@@ -191,6 +193,7 @@ export function useClientShipments() {
           shipment_number,
           shipment_type,
           status,
+          metadata,
           scheduled_date,
           created_at,
           origin_name,

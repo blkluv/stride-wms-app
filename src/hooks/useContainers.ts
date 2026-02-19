@@ -9,7 +9,10 @@ type ContainerRow = Database['public']['Tables']['containers']['Row'];
 export type Container = ContainerRow;
 
 export interface CreateContainerParams {
-  container_code: string;
+  /**
+   * Optional override. When omitted/blank, a CNT-##### code is auto-generated.
+   */
+  container_code?: string | null;
   container_type: string;
   warehouse_id: string;
   location_id?: string | null;
@@ -77,31 +80,27 @@ export function useContainers(warehouseId?: string) {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('containers')
-        .insert({
-          tenant_id: profile.tenant_id,
-          container_code: params.container_code,
-          container_type: params.container_type,
-          warehouse_id: params.warehouse_id,
-          location_id: params.location_id ?? null,
-          footprint_cu_ft: params.footprint_cu_ft ?? null,
-          status: 'active',
-          is_active: true,
-          created_by: profile.id,
-        })
-        .select()
-        .single();
+      const providedCode = (params.container_code || '').trim();
+      const { data, error } = await (supabase.rpc as any)('rpc_create_container', {
+        p_container_type: params.container_type,
+        p_warehouse_id: params.warehouse_id,
+        p_location_id: params.location_id ?? null,
+        p_container_code: providedCode ? providedCode.toUpperCase() : null,
+        p_footprint_cu_ft: params.footprint_cu_ft ?? null,
+      });
 
       if (error) throw error;
 
+      const created = data as ContainerRow | null;
+      const createdCode = created?.container_code || (providedCode ? providedCode.toUpperCase() : '');
+
       toast({
         title: 'Container Created',
-        description: `Container ${params.container_code} has been created.`,
+        description: createdCode ? `Container ${createdCode} has been created.` : 'Container has been created.',
       });
 
       await fetchContainers();
-      return data;
+      return created;
     } catch (error: unknown) {
       console.error('[useContainers] Create failed:', error);
       const isDuplicate = error instanceof Object && 'code' in error && (error as { code: string }).code === '23505';
@@ -109,7 +108,7 @@ export function useContainers(warehouseId?: string) {
         variant: 'destructive',
         title: isDuplicate ? 'Duplicate Container' : 'Error',
         description: isDuplicate
-          ? `Container code "${params.container_code}" already exists.`
+          ? `That container code already exists.`
           : 'Failed to create container.',
       });
       return null;

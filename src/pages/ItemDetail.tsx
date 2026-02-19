@@ -3,9 +3,19 @@ import { useNavigate, useParams, Navigate, useSearchParams } from 'react-router-
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { AutocompleteInput } from '@/components/ui/autocomplete-input';
+import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { useAccountSidemarks } from '@/hooks/useAccountSidemarks';
@@ -57,6 +67,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { QuickReleaseDialog } from '@/components/inventory/QuickReleaseDialog';
 import { ReassignAccountDialog } from '@/components/common/ReassignAccountDialog';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
+import { queueSplitRequiredAlert } from '@/lib/alertQueue';
 import {
   Select,
   SelectContent,
@@ -243,6 +254,12 @@ export default function ItemDetail() {
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
   const [activeIndicatorFlags, setActiveIndicatorFlags] = useState<Array<{ code: string; name: string }>>([]);
+
+  // Split (grouped item) action from Item Detail
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitLeftoverQty, setSplitLeftoverQty] = useState<number>(1);
+  const [splitRequestNotes, setSplitRequestNotes] = useState<string>('');
+  const [splitCreating, setSplitCreating] = useState(false);
 
   // Inline edit state for autocomplete fields
   const [editVendor, setEditVendor] = useState('');
@@ -588,6 +605,134 @@ export default function ItemDetail() {
     }
   };
 
+  useEffect(() => {
+    if (!splitDialogOpen || !item) return;
+    const grouped = typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+    const maxLeftover = Math.max(1, grouped - 1);
+    // Default: keep 1 on the parent label.
+    setSplitLeftoverQty(maxLeftover);
+    setSplitRequestNotes('');
+  }, [splitDialogOpen, item?.id]);
+
+  const handleCreateSplitTaskFromItem = async () => {
+    if (!profile?.tenant_id || !profile?.id || !item) return;
+
+    const groupedQty = typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+    if (groupedQty <= 1) {
+      toast({ variant: 'destructive', title: 'Not grouped', description: 'This item does not have a grouped quantity.' });
+      return;
+    }
+
+    const rawLeftover = Number.isFinite(splitLeftoverQty) ? Math.floor(splitLeftoverQty) : 1;
+    const leftoverQty = Math.max(1, Math.min(groupedQty - 1, rawLeftover));
+    const keepQty = groupedQty - leftoverQty;
+
+    if (keepQty < 1) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid split quantity',
+        description: 'Keep quantity must be at least 1.',
+      });
+      return;
+    }
+
+    setSplitCreating(true);
+    try {
+      // Idempotency: if any Split task is already open for this item, reuse it.
+      const { data: existingSplitTask, error: existingErr } = await (supabase.from('tasks') as any)
+        .select('id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('task_type', 'Split')
+        .contains('metadata', { split_workflow: { parent_item_id: item.id } })
+        .in('status', ['pending', 'in_progress'])
+        .limit(1)
+        .maybeSingle();
+      if (existingErr) throw existingErr;
+
+      if (existingSplitTask?.id) {
+        toast({
+          title: 'Split task already exists',
+          description: 'Opening the existing Split task.',
+        });
+        setSplitDialogOpen(false);
+        navigate(`/tasks/${existingSplitTask.id}`);
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const notes = splitRequestNotes.trim() || null;
+
+      const title = `Split - ${item.item_code}`;
+      const description = [
+        'Split requested from Item Detail.',
+        `Keep qty on parent label: ${keepQty} (of ${groupedQty}).`,
+        `Leftover qty to relabel: ${leftoverQty}.`,
+        notes ? '' : '',
+        notes ? `Notes:\n${notes}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      const { data: newTask, error: taskErr } = await (supabase.from('tasks') as any)
+        .insert({
+          tenant_id: profile.tenant_id,
+          account_id: item.account_id,
+          warehouse_id: item.warehouse?.id ?? null,
+          related_item_id: item.id,
+          task_type: 'Split',
+          title,
+          description,
+          priority: 'high',
+          status: 'pending',
+          assigned_department: 'warehouse',
+          metadata: {
+            split_workflow: {
+              parent_item_id: item.id,
+              parent_item_code: item.item_code,
+              grouped_qty: groupedQty,
+              keep_qty: keepQty,
+              leftover_qty: leftoverQty,
+              requested_by_user_id: profile.id,
+              requested_by_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Internal user',
+              requested_by_email: null,
+              request_notes: notes,
+              created_at: nowIso,
+            },
+          },
+        })
+        .select('id')
+        .single();
+
+      if (taskErr) throw taskErr;
+
+      const { error: linkErr } = await (supabase.from('task_items') as any).insert({
+        task_id: newTask.id,
+        item_id: item.id,
+        quantity: leftoverQty,
+      });
+      if (linkErr) throw linkErr;
+
+      // Notify office/warehouse (email + in-app are tenant-configurable)
+      void queueSplitRequiredAlert(profile.tenant_id, newTask.id, item.item_code);
+
+      toast({
+        title: 'Split task created',
+        description: 'A warehouse split is required before this grouped item can be partially used/shipped.',
+      });
+      setSplitDialogOpen(false);
+      navigate(`/tasks/${newTask.id}`);
+    } catch (err: any) {
+      console.error('[ItemDetail] create split task error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Could not create Split task',
+        description: err?.message || 'Please try again.',
+      });
+    } finally {
+      setSplitCreating(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       active: 'default',
@@ -839,8 +984,12 @@ export default function ItemDetail() {
           <div className="w-full sm:w-auto">
             <div
               className={cn(
-                "grid grid-cols-2 gap-2 w-full sm:flex sm:items-center sm:justify-end sm:w-auto",
-                (!isClientUser && item.status === 'active') ? "" : "grid-cols-1",
+                "grid gap-2 w-full sm:flex sm:items-center sm:justify-end sm:w-auto",
+                (!isClientUser && item.quantity > 1 && item.status !== 'released' && item.status !== 'disposed' && item.status === 'active')
+                  ? 'grid-cols-3'
+                  : (!isClientUser && ((item.quantity > 1 && item.status !== 'released' && item.status !== 'disposed') || item.status === 'active'))
+                    ? 'grid-cols-2'
+                    : 'grid-cols-1',
               )}
             >
               {/* Consolidated Actions Menu (Tasks + Item actions) */}
@@ -924,6 +1073,12 @@ export default function ItemDetail() {
                       <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
                         🖨️ Print 4x6 Label
                       </DropdownMenuItem>
+                      {item.quantity > 1 && item.status !== 'released' && item.status !== 'disposed' && (
+                        <DropdownMenuItem onClick={() => setSplitDialogOpen(true)}>
+                          <MaterialIcon name="call_split" size="sm" className="mr-2" />
+                          Split / Relabel
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => setBillingChargeDialogOpen(true)}>
                         💰 Add Charge
                       </DropdownMenuItem>
@@ -947,6 +1102,18 @@ export default function ItemDetail() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {/* Split Button - Only show for grouped items */}
+              {!isClientUser && item.quantity > 1 && item.status !== 'released' && item.status !== 'disposed' && (
+                <Button
+                  variant="outline"
+                  onClick={() => setSplitDialogOpen(true)}
+                  className="w-full sm:w-auto justify-center"
+                >
+                  <MaterialIcon name="call_split" size="sm" className="mr-2" />
+                  Split
+                </Button>
+              )}
 
               {/* Release Button - Only show for active items */}
               {!isClientUser && item.status === 'active' && (
@@ -1482,6 +1649,74 @@ export default function ItemDetail() {
           )}
         </Tabs>
       </div>
+
+      {/* Split (grouped item) dialog */}
+      <Dialog
+        open={splitDialogOpen}
+        onOpenChange={(open) => {
+          if (splitCreating) return;
+          setSplitDialogOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MaterialIcon name="call_split" size="sm" />
+              Split / Relabel
+            </DialogTitle>
+            <DialogDescription>
+              Create a warehouse Split task for this grouped item. The parent label quantity will be reduced and new child labels will be created for the leftover units.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <div className="font-medium">{item.item_code}</div>
+              <div className="text-muted-foreground">Grouped quantity: {item.quantity}</div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Split qty (new labels)</div>
+              <Input
+                type="number"
+                min={1}
+                max={Math.max(1, (item.quantity || 1) - 1)}
+                step={1}
+                value={splitLeftoverQty}
+                onChange={(e) => {
+                  const grouped = typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+                  const raw = parseInt(e.target.value || '0', 10);
+                  const next = Number.isFinite(raw) ? raw : 1;
+                  const clamped = Math.max(1, Math.min(Math.max(1, grouped - 1), next));
+                  setSplitLeftoverQty(clamped);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Keep qty on parent: {Math.max(1, (item.quantity || 1) - Math.max(1, Math.min((item.quantity || 1) - 1, splitLeftoverQty)))} / {item.quantity}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Notes (optional)</div>
+              <Textarea
+                value={splitRequestNotes}
+                onChange={(e) => setSplitRequestNotes(e.target.value)}
+                placeholder="Add any handling notes for the warehouse team…"
+                rows={3}
+              />
+            </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSplitDialogOpen(false)} disabled={splitCreating}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateSplitTaskFromItem} disabled={splitCreating}>
+              {splitCreating ? 'Creating…' : 'Create Split Task'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <TaskDialog
         open={taskDialogOpen}

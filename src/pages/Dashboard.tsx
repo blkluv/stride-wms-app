@@ -30,6 +30,7 @@ import { useDashboardStats, PutAwayItem, TaskItem, ShipmentItem } from '@/hooks/
 import { useCountUp } from '@/hooks/useCountUp';
 import { CapacityCard } from '@/components/dashboard/CapacityCard';
 import { HeatMapHeroTile } from '@/components/dashboard/HeatMapHeroTile';
+import { ActiveJobsCard } from '@/components/dashboard/ActiveJobsCard';
 import { SortableDashboardTile } from '@/components/dashboard/SortableDashboardTile';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDashboardPreferences } from '@/hooks/useDashboardPreferences';
@@ -73,11 +74,13 @@ type ExpandedCard = 'put_away' | 'inspection' | 'assembly' | 'incoming_shipments
 type DashboardCardId =
   | 'heat_map'
   | 'warehouse_capacity'
+  | 'active_jobs'
   | Exclude<ExpandedCard, null>;
 
 const DASHBOARD_CARD_LABELS: Record<DashboardCardId, string> = {
   heat_map: 'Heat Map (Preview)',
   warehouse_capacity: 'Warehouse Capacity',
+  active_jobs: 'Active Jobs',
   put_away: 'Put Away',
   inspection: 'Needs Inspection',
   assembly: 'Needs Assembly',
@@ -95,6 +98,7 @@ const DEFAULT_DASHBOARD_CARD_ORDER: DashboardCardId[] = [
   'incoming_shipments',
   'repairs',
   'repair_quotes',
+  'active_jobs',
 ];
 
 /**
@@ -365,6 +369,10 @@ export default function Dashboard() {
       return <CapacityCard warehouseId={selectedWarehouseId ?? undefined} />;
     }
 
+    if (id === 'active_jobs') {
+      return <ActiveJobsCard />;
+    }
+
     const t = tileById.get(id);
     if (!t) return null;
 
@@ -464,7 +472,8 @@ export default function Dashboard() {
   const renderedCards = visibleOrderedCardIds.flatMap((id, index) => {
     const element = renderDashboardCard(id, index);
     if (!element) return [];
-    const spanClass = id === 'heat_map' ? 'md:col-span-2 lg:col-span-3' : undefined;
+    const spanClass =
+      id === 'heat_map' || id === 'active_jobs' ? 'md:col-span-2 lg:col-span-3' : undefined;
     return [{ id, element: (
       <SortableDashboardTile key={id} id={id} className={spanClass}>
         {element}

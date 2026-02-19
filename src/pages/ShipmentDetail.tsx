@@ -69,7 +69,13 @@ import { createCharges } from '@/services/billing';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 import { mergeServiceTimeActualSnapshot, mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
+import { ServiceTimeAdjustmentDialog } from '@/components/time/ServiceTimeAdjustmentDialog';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 // ============================================
 // TYPES
@@ -151,6 +157,7 @@ interface Shipment {
   receiving_notes: string | null;
   receiving_photos: (string | TaggablePhoto)[] | null;
   receiving_documents: string[] | null;
+  metadata?: Record<string, any> | null;
   release_type: string | null;
   released_to: string | null;
   release_to_phone: string | null;
@@ -218,6 +225,7 @@ export default function ShipmentDetail() {
 
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
+  const canAdjustServiceTime = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
   // Only admins can add credits
   const canAddCredit = hasRole('admin') || hasRole('tenant_admin');
 
@@ -233,6 +241,7 @@ export default function ShipmentDetail() {
   const [createdItemIds, setCreatedItemIds] = useState<string[]>([]);
   const [createdItemsForLabels, setCreatedItemsForLabels] = useState<ItemLabelData[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [adjustTimeOpen, setAdjustTimeOpen] = useState(false);
   const [editCarrier, setEditCarrier] = useState('');
   const [editTrackingNumber, setEditTrackingNumber] = useState('');
   const [editPoNumber, setEditPoNumber] = useState('');
@@ -355,6 +364,9 @@ export default function ShipmentDetail() {
       });
     }
     const result = await rawFinishSession(verificationData, createItems);
+    if (result.success) {
+      promptResumePausedTask();
+    }
     // Track competency after completion
     if (promptContext?.trackCompetencyEvent) {
       promptContext.trackCompetencyEvent('receiving', 'task_completed');
@@ -420,7 +432,7 @@ export default function ShipmentDetail() {
       if (itemIds.length > 0) {
         const { data: itemsRows, error: itemsFetchError } = await supabase
           .from('items')
-          .select('id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
+          .select('id, item_code, quantity, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, class_id, declared_value, coverage_type, current_location_id, account_id')
           .in('id', itemIds);
 
         if (itemsFetchError) {
@@ -585,13 +597,17 @@ export default function ShipmentDetail() {
         item_count: activeOutboundItems.length,
       });
       // End pull timer interval (best-effort)
-      supabase.rpc('rpc_timer_end_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipment.id,
-        p_reason: 'pull_complete',
-      }).catch(() => undefined);
+      if (profile?.tenant_id && profile?.id) {
+        timerEndJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'shipment',
+          jobId: shipment.id,
+          reason: 'pull_complete',
+        }).catch(() => undefined);
+      }
     }
-  }, [activeOutboundItems.length, allPulled, logShipmentAudit, pullSessionActive, shipment, toast]);
+  }, [activeOutboundItems.length, allPulled, logShipmentAudit, pullSessionActive, shipment, toast, profile?.tenant_id, profile?.id]);
 
   useEffect(() => {
     if (!shipment || shipment.shipment_type !== 'outbound') return;
@@ -606,16 +622,20 @@ export default function ShipmentDetail() {
         item_count: activeOutboundItems.length,
       });
       // End release timer interval (best-effort)
-      supabase.rpc('rpc_timer_end_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipment.id,
-        p_reason: 'release_complete',
-      }).catch(() => undefined);
+      if (profile?.tenant_id && profile?.id) {
+        timerEndJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'shipment',
+          jobId: shipment.id,
+          reason: 'release_complete',
+        }).catch(() => undefined);
+      }
       if (shipment.status !== 'released') {
         updateShipmentStatus('released');
       }
     }
-  }, [activeOutboundItems.length, allReleased, logShipmentAudit, releaseSessionActive, shipment, toast, updateShipmentStatus]);
+  }, [activeOutboundItems.length, allReleased, logShipmentAudit, releaseSessionActive, shipment, toast, updateShipmentStatus, profile?.tenant_id, profile?.id]);
 
   useEffect(() => {
     if (!shipment || shipment.shipment_type !== 'outbound') return;
@@ -1059,6 +1079,24 @@ export default function ShipmentDetail() {
           return;
         }
 
+        const groupedQty =
+          typeof (matched.item as any).quantity === 'number' && Number.isFinite((matched.item as any).quantity)
+            ? (matched.item as any).quantity
+            : 1;
+        if (groupedQty > 1) {
+          const ok = window.confirm(
+            `This label represents quantity ${groupedQty}.\n\nMark ALL ${groupedQty} units as Released for this outbound?`
+          );
+          if (!ok) {
+            setLastScan({
+              itemCode: matched.item.item_code,
+              result: 'error',
+              message: 'Release cancelled.',
+            });
+            return;
+          }
+        }
+
         await updateItemLocation(matched.item.id, releasedLocation.id);
         await updateItemReleasedState(matched.item.id);
         await updateShipmentItemRelease(matched.id);
@@ -1095,32 +1133,6 @@ export default function ShipmentDetail() {
     }
   };
 
-  const resolveActiveJobLabel = async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-
-    try {
-      if (jobType === 'task') {
-        const { data: t } = await (supabase.from('tasks') as any)
-          .select('title, task_type')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return t?.title || (t?.task_type ? `${t.task_type} task` : 'another task');
-      }
-      if (jobType === 'shipment') {
-        const { data: s } = await (supabase.from('shipments') as any)
-          .select('shipment_number')
-          .eq('tenant_id', profile.tenant_id)
-          .eq('id', jobId)
-          .maybeSingle();
-        return s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
-      }
-      return `${jobType} job`;
-    } catch {
-      return 'another job';
-    }
-  };
-
   const beginOutboundMode = async (mode: 'pull' | 'release') => {
     if (!shipment) return;
 
@@ -1150,18 +1162,19 @@ export default function ShipmentDetail() {
     if (!shipment || !profile?.tenant_id) return false;
 
     try {
-      const { data, error } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipment.id,
-        p_pause_existing: pauseExisting,
+      const res = await timerStartJob({
+        tenantId: profile.tenant_id,
+        userId: profile.id,
+        jobType: 'shipment',
+        jobId: shipment.id,
+        pauseExisting,
       });
-      if (error) throw error;
-
-      const res = (data || {}) as any;
       if (res?.ok === false) {
         if (res.error_code === 'ACTIVE_TIMER_EXISTS' && !pauseExisting) {
           setOutboundTimerPendingMode(mode);
-          setOutboundTimerActiveJobLabel(await resolveActiveJobLabel(res.active_job_type, res.active_job_id));
+          setOutboundTimerActiveJobLabel(
+            await resolveActiveJobLabel(profile?.tenant_id, res.active_job_type, res.active_job_id),
+          );
           setOutboundTimerConfirmOpen(true);
           return false;
         }
@@ -1186,6 +1199,43 @@ export default function ShipmentDetail() {
 
   const handleStartPull = async () => {
     if (!shipment) return;
+    const meta = shipment.metadata && typeof shipment.metadata === 'object' ? shipment.metadata : null;
+    const splitRequired = !!(meta && (meta as any).split_required === true);
+    const splitTaskIds = splitRequired && Array.isArray((meta as any).split_required_task_ids)
+      ? ((meta as any).split_required_task_ids as any[]).map(String)
+      : [];
+    const pendingReview = !!(meta && (meta as any).pending_review === true);
+
+    if (splitRequired) {
+      toast({
+        variant: 'destructive',
+        title: 'Split required',
+        description: splitTaskIds.length > 0
+          ? `This outbound is blocked until ${splitTaskIds.length} Split task(s) are completed.`
+          : 'This outbound is blocked until the required Split task is completed.',
+      });
+      return;
+    }
+
+    // Manual review workflow: allow start, but clear the "Pending review" marker.
+    if (pendingReview) {
+      try {
+        const nextMeta: any = { ...(meta as any) };
+        delete nextMeta.pending_review;
+        delete nextMeta.pending_review_reason;
+        delete nextMeta.split_workflow;
+        const { error: clearErr } = await (supabase.from('shipments') as any)
+          .update({ metadata: nextMeta })
+          .eq('id', shipment.id);
+        if (clearErr) throw clearErr;
+        toast({
+          title: 'Review started',
+          description: 'Pending review cleared for this shipment.',
+        });
+      } catch (err) {
+        console.warn('[ShipmentDetail] failed to clear pending_review metadata:', err);
+      }
+    }
     if (!outboundDockLocation?.id) {
       toast({
         variant: 'destructive',
@@ -1389,10 +1439,12 @@ export default function ShipmentDetail() {
         if (profile?.tenant_id) {
           // End any active interval for this shipment first (idempotent)
           try {
-            await supabase.rpc('rpc_timer_end_job', {
-              p_job_type: 'shipment',
-              p_job_id: shipment.id,
-              p_reason: 'complete',
+            await timerEndJob({
+              tenantId: profile.tenant_id,
+              userId: profile.id,
+              jobType: 'shipment',
+              jobId: shipment.id,
+              reason: 'complete',
             });
           } catch {
             // Best-effort
@@ -1404,13 +1456,6 @@ export default function ShipmentDetail() {
             .eq('tenant_id', profile.tenant_id)
             .eq('job_type', 'shipment')
             .eq('job_id', shipment.id);
-
-          const minutesBetweenIso = (startIso: string, endIso: string) => {
-            const start = new Date(startIso).getTime();
-            const end = new Date(endIso).getTime();
-            if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-            return (end - start) / 60000;
-          };
 
           const laborMinutes = Math.round(
             (rows || []).reduce((sum: number, r: any) => {
@@ -1813,6 +1858,7 @@ export default function ShipmentDetail() {
       }
 
       toast({ title: 'Shipment Shipped', description: 'Items have been released and release document generated.' });
+      promptResumePausedTask();
       setShowOutboundCompleteDialog(false);
       setShowSignatureDialog(false);
       setPendingOverrideWarnings(undefined);
@@ -2012,6 +2058,19 @@ export default function ShipmentDetail() {
   const canCompleteOutbound = isOutbound && (activeOutboundItems.length === 0 || allReleased);
   const partialReleaseCandidates = activeOutboundItems.filter(item => !isReleasedLocation(item.item?.current_location?.code));
 
+  const serviceTimeSnapshot = ((shipment as any)?.metadata as any)?.service_time as
+    | {
+        estimated_minutes?: number;
+        estimated_snapshot_at?: string;
+        actual_labor_minutes?: number;
+        actual_cycle_minutes?: number;
+        actual_snapshot_at?: string;
+      }
+    | undefined;
+
+  const estimatedMinutes = Number(serviceTimeSnapshot?.estimated_minutes ?? 0);
+  const actualLaborMinutes = Number(serviceTimeSnapshot?.actual_labor_minutes ?? 0);
+
   return (
     <DashboardLayout>
       {/* Header / Billing / Actions (keep stable during sidebar expand/collapse) */}
@@ -2035,6 +2094,24 @@ export default function ShipmentDetail() {
               <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
               {shipment.release_type && (
                 <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
+              )}
+              {estimatedMinutes > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs tabular-nums whitespace-nowrap"
+                  title={serviceTimeSnapshot?.estimated_snapshot_at ? `Estimated snapshot: ${serviceTimeSnapshot.estimated_snapshot_at}` : undefined}
+                >
+                  Est. {formatMinutesShort(estimatedMinutes)}
+                </Badge>
+              )}
+              {actualLaborMinutes > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs tabular-nums whitespace-nowrap"
+                  title={serviceTimeSnapshot?.actual_snapshot_at ? `Actual snapshot: ${serviceTimeSnapshot.actual_snapshot_at}` : undefined}
+                >
+                  Actual {formatMinutesShort(actualLaborMinutes)}
+                </Badge>
               )}
             </div>
             <p className="text-muted-foreground text-sm truncate">
@@ -2098,6 +2175,18 @@ export default function ShipmentDetail() {
               <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit'}</span>
               <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
             </Button>
+            {canAdjustServiceTime && actualLaborMinutes > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAdjustTimeOpen(true)}
+                title="Adjust actual service time (manager/admin)"
+              >
+                <MaterialIcon name="schedule" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Adjust Time</span>
+                <span className="sm:hidden">Time</span>
+              </Button>
+            )}
             {canReceive && !isReceiving && hasPermission(PERMISSIONS.SHIPMENTS_RECEIVE) && (
               <Button size="sm" onClick={startSession} disabled={sessionLoading}>
                 <MaterialIcon name="play_arrow" size="sm" className="mr-1 sm:mr-2" />
@@ -3546,6 +3635,18 @@ export default function ShipmentDetail() {
         tenantId={profile?.tenant_id}
         classes={classes}
         onSuccess={() => {
+          fetchShipment();
+        }}
+      />
+
+      {/* Service time adjustment (manager/admin) */}
+      <ServiceTimeAdjustmentDialog
+        open={adjustTimeOpen}
+        onOpenChange={setAdjustTimeOpen}
+        jobType="shipment"
+        jobId={shipment.id}
+        currentMinutes={actualLaborMinutes > 0 ? actualLaborMinutes : null}
+        onSaved={() => {
           fetchShipment();
         }}
       />

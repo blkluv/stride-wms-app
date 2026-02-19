@@ -83,6 +83,15 @@ export default function ClientShipments() {
     return matchesSearch && matchesFilter;
   });
 
+  const getDisplayStatus = (shipment: any): { status: string; label?: string; pendingReview: boolean; waitingSplit: boolean } => {
+    const meta = shipment?.metadata && typeof shipment.metadata === 'object' ? shipment.metadata : null;
+    const pendingReview = !!(meta && (meta as any).pending_review === true);
+    const waitingSplit = !!(meta && (meta as any).split_required === true);
+    if (pendingReview) return { status: 'pending_review', label: 'Pending review', pendingReview, waitingSplit: false };
+    if (waitingSplit) return { status: 'pending', label: 'Waiting for split', pendingReview: false, waitingSplit };
+    return { status: shipment.status || 'pending', pendingReview: false, waitingSplit: false };
+  };
+
   if (contextLoading) {
     return (
       <ClientPortalLayout>
@@ -178,12 +187,24 @@ export default function ClientShipments() {
                     <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <p className="font-medium">{shipment.shipment_number}</p>
+                          <p className="font-medium flex items-center gap-2">
+                            {shipment.shipment_number}
+                            {getDisplayStatus(shipment).pendingReview && (
+                              <span title="Pending review" className="text-amber-600">
+                                <MaterialIcon name="search" size="sm" />
+                              </span>
+                            )}
+                          </p>
                           <div className="flex items-center gap-2 mt-1">
                             {getTypeBadge(shipment.shipment_type)}
                           </div>
                         </div>
-                        <StatusIndicator status={shipment.status || 'pending'} size="sm" />
+                        {(() => {
+                          const ds = getDisplayStatus(shipment);
+                          return (
+                            <StatusIndicator status={ds.status} label={ds.label} size="sm" />
+                          );
+                        })()}
                       </div>
                       <div className="flex flex-col gap-1 text-sm text-muted-foreground mt-3">
                         {(shipment.origin_name || shipment.destination_name) && (
@@ -246,12 +267,22 @@ export default function ClientShipments() {
                             className="hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {shipment.shipment_number}
+                            <span className="inline-flex items-center gap-2">
+                              {shipment.shipment_number}
+                              {getDisplayStatus(shipment).pendingReview && (
+                                <span title="Pending review" className="text-amber-600">
+                                  <MaterialIcon name="search" size="sm" />
+                                </span>
+                              )}
+                            </span>
                           </Link>
                         </TableCell>
                         <TableCell>{getTypeBadge(shipment.shipment_type)}</TableCell>
                         <TableCell>
-                          <StatusIndicator status={shipment.status || 'pending'} size="sm" />
+                          {(() => {
+                            const ds = getDisplayStatus(shipment);
+                            return <StatusIndicator status={ds.status} label={ds.label} size="sm" />;
+                          })()}
                         </TableCell>
                         <TableCell>
                           {shipment.scheduled_date

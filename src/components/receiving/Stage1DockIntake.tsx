@@ -33,6 +33,8 @@ import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import { BillingCalculator } from '@/components/billing/BillingCalculator';
 import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { timerEndJob } from '@/lib/time/timerClient';
 import {
   Dialog,
   DialogContent,
@@ -658,16 +660,19 @@ export function Stage1DockIntake({
 
       // Stop Stage 1 timer interval (best-effort)
       try {
-        await supabase.rpc('rpc_timer_end_job', {
-          p_job_type: 'shipment',
-          p_job_id: shipmentId,
-          p_reason: 'stage1_complete',
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'shipment',
+          jobId: shipmentId,
+          reason: 'stage1_complete',
         });
       } catch (timerErr) {
         console.warn('[Stage1] Failed to end timer interval:', timerErr);
       }
 
       toast({ title: 'Stage 1 Complete', description: 'Dock intake has been recorded.' });
+      promptResumePausedTask();
       onComplete();
     } catch (err: any) {
       console.error('[Stage1] complete error:', err);

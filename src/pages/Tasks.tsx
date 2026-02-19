@@ -43,8 +43,8 @@ import { useWarehouses } from '@/hooks/useWarehouses';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { WillCallCompletionDialog } from '@/components/tasks/WillCallCompletionDialog';
@@ -183,23 +183,6 @@ export default function Tasks() {
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [startSwitchLoading, setStartSwitchLoading] = useState(false);
 
-  const resolveActiveJobLabel = async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-    if (jobType !== 'task') return `${jobType} job`;
-    try {
-      const { data } = await (supabase.from('tasks') as any)
-        .select('title, task_type')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('id', jobId)
-        .maybeSingle();
-      if (data?.title) return data.title;
-      if (data?.task_type) return `${data.task_type} task`;
-      return 'another task';
-    } catch {
-      return 'another task';
-    }
-  };
-
   const handleStartTaskClick = async (task: Task) => {
     if (!profile?.tenant_id) return;
     setStartSwitchLoading(true);
@@ -212,7 +195,7 @@ export default function Tasks() {
 
       if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
         setStartSwitchTask(task);
-        setActiveJobLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setActiveJobLabel(await resolveActiveJobLabel(profile?.tenant_id, result.active_job_type, result.active_job_id));
         setStartSwitchOpen(true);
         return;
       }

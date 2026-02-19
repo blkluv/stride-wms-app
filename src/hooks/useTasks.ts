@@ -16,6 +16,8 @@ import {
   type ServiceTimeSnapshotV1,
   type ServiceTimeActualSnapshotV1,
 } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 type TimerRpcResult = {
   ok: boolean;
@@ -730,7 +732,8 @@ export function useTasks(filters?: {
     // Get task info first
     const { data: taskData, error: taskFetchError } = await (supabase
       .from('tasks') as any)
-      .select('task_type, started_at')
+      .select('task_type, started_at, metadata')
+      .eq('tenant_id', profile.tenant_id)
       .eq('id', taskId)
       .single();
 
@@ -742,22 +745,77 @@ export function useTasks(filters?: {
       };
     }
 
-    // Start timer interval first (so we don't mark a task in-progress without a timer)
-    const { data: timerStart, error: timerError } = await supabase.rpc('rpc_timer_start_job', {
-      p_job_type: 'task',
-      p_job_id: taskId,
-      p_pause_existing: options?.pauseExisting ?? false,
-    });
+    // Block starting origin tasks that are waiting on one or more Split tasks.
+    // (Split tasks themselves are allowed to start.)
+    if (taskData?.task_type !== 'Split') {
+      const meta = taskData?.metadata && typeof taskData.metadata === 'object' ? taskData.metadata : null;
+      const metaSplitRequired = !!(meta && (meta as any).split_required === true);
+      const metaSplitTaskIds: string[] = metaSplitRequired && Array.isArray((meta as any).split_required_task_ids)
+        ? (meta as any).split_required_task_ids.map(String)
+        : [];
 
-    if (timerError) {
-      return {
-        ok: false,
-        error_code: 'RPC_ERROR',
-        error_message: timerError.message || 'Failed to start timer',
-      };
+      const { data: linkedSplitTasks, error: linkedErr } = await (supabase
+        .from('tasks') as any)
+        .select('id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('task_type', 'Split')
+        .contains('metadata', {
+          split_workflow: {
+            origin_entity_type: 'task',
+            origin_entity_id: taskId,
+          },
+        })
+        .in('status', ['pending', 'in_progress']);
+
+      if (linkedErr) {
+        return {
+          ok: false,
+          error_code: 'SPLIT_CHECK_FAILED',
+          error_message: linkedErr.message || 'Failed to check Split tasks',
+        };
+      }
+
+      const linkedIds = (linkedSplitTasks || []).map((t: any) => String(t.id));
+      let metaPendingIds: string[] = [];
+      if (metaSplitTaskIds.length > 0) {
+        const { data: metaPendingTasks, error: metaPendingErr } = await (supabase
+          .from('tasks') as any)
+          .select('id')
+          .eq('tenant_id', profile.tenant_id)
+          .in('id', metaSplitTaskIds)
+          .in('status', ['pending', 'in_progress']);
+
+        if (metaPendingErr) {
+          return {
+            ok: false,
+            error_code: 'SPLIT_CHECK_FAILED',
+            error_message: metaPendingErr.message || 'Failed to check Split tasks',
+          };
+        }
+
+        metaPendingIds = (metaPendingTasks || []).map((t: any) => String(t.id));
+      }
+
+      const totalIds = Array.from(new Set([...metaPendingIds, ...linkedIds]));
+
+      if (totalIds.length > 0) {
+        return {
+          ok: false,
+          error_code: 'SPLIT_REQUIRED',
+          error_message: `This task is blocked until ${totalIds.length} Split task(s) are completed.`,
+        };
+      }
     }
 
-    const startResult = (timerStart || {}) as TimerRpcResult;
+    // Start timer interval first (so we don't mark a task in-progress without a timer).
+    // Supports offline fallback (queues interval locally and syncs later).
+    const startResult = (await timerStartJob({
+      tenantId: profile.tenant_id,
+      userId: profile.id,
+      jobType: 'task',
+      jobId: taskId,
+      pauseExisting: options?.pauseExisting ?? false,
+    })) as unknown as TimerRpcResult;
     if (!startResult.ok) return startResult;
 
     try {
@@ -771,18 +829,42 @@ export function useTasks(filters?: {
         taskUpdates.started_by = profile.id;
       }
 
+      // Manual review workflow: allow start, but clear the "Pending review" marker.
+      // (Used when client partial-from-grouped is disabled and staff chooses to proceed.)
+      try {
+        const meta = taskData?.metadata && typeof taskData.metadata === 'object' ? taskData.metadata : null;
+        if (meta && (meta as any).pending_review === true) {
+          const nextMeta: any = { ...(meta as any) };
+          delete nextMeta.pending_review;
+          delete nextMeta.pending_review_reason;
+          delete nextMeta.split_workflow;
+          taskUpdates.metadata = nextMeta;
+        }
+      } catch {
+        // optional
+      }
+
       const { error: updateError } = await (supabase
         .from('tasks') as any)
         .update(taskUpdates)
+        .eq('tenant_id', profile.tenant_id)
         .eq('id', taskId);
 
       if (updateError) {
+        // If we started the timer offline, allow the workflow to continue even though we
+        // can't persist task status changes yet. Status will update once back online.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          return startResult;
+        }
+
         // Best-effort rollback: end the interval we just started
         try {
-          await supabase.rpc('rpc_timer_end_job', {
-            p_job_type: 'task',
-            p_job_id: taskId,
-            p_reason: 'rollback',
+          await timerEndJob({
+            tenantId: profile.tenant_id,
+            userId: profile.id,
+            jobType: 'task',
+            jobId: taskId,
+            reason: 'rollback',
           });
         } catch {
           // ignore
@@ -830,35 +912,6 @@ export function useTasks(filters?: {
       };
     }
   };
-
-  const startTask = async (taskId: string, options?: { pauseExisting?: boolean }) => {
-    const result = await startTaskDetailed(taskId, options);
-    if (result.ok) {
-      const paused = !!(options?.pauseExisting && result.paused_interval_id);
-      toast({
-        title: 'Task Started',
-        description: paused ? 'Paused your previous job and started this task.' : 'Task is now in progress.',
-      });
-      return true;
-    }
-
-    if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
-      toast({
-        variant: 'destructive',
-        title: 'Another job is already in progress',
-        description: 'Pause your active job before starting this task.',
-      });
-      return false;
-    }
-
-    toast({
-      variant: 'destructive',
-      title: 'Error',
-      description: result.error_message || 'Failed to start task',
-    });
-    return false;
-  };
-
   // -------------------------------------------------------------------------
   // Estimated Service Time snapshot (for historical reporting)
   // -------------------------------------------------------------------------
@@ -1059,20 +1112,15 @@ export function useTasks(filters?: {
   }): Promise<ServiceTimeActualSnapshotV1 | null> => {
     if (!profile?.tenant_id || !profile?.id) return null;
 
-    const minutesBetweenIso = (startIso: string, endIso: string) => {
-      const start = new Date(startIso).getTime();
-      const end = new Date(endIso).getTime();
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-      return (end - start) / 60000;
-    };
-
     try {
       // End any active interval for THIS user + task (idempotent)
       try {
-        await supabase.rpc('rpc_timer_end_job', {
-          p_job_type: 'task',
-          p_job_id: params.taskId,
-          p_reason: 'complete',
+        await timerEndJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'task',
+          jobId: params.taskId,
+          reason: 'complete',
         });
       } catch (endErr) {
         // Best-effort — still compute from what we have
@@ -1172,15 +1220,6 @@ export function useTasks(filters?: {
 
       // Handle Will Call completion - requires pickup name
       if (taskData.task_type === SPECIAL_TASK_TYPES.WILL_CALL) {
-        if (!pickupName) {
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'Pickup name is required for Will Call completion',
-          });
-          return false;
-        }
-
         // Update task with pickup info
         const willCallUpdates: any = {
             status: 'completed',
@@ -2053,7 +2092,6 @@ export function useTasks(filters?: {
     createTask,
     updateTask,
     startTaskDetailed,
-    startTask,
     completeTask,
     completeTaskWithServices,
     getTaskServiceLineCount,
