@@ -424,7 +424,7 @@ export function ServiceTimeTab() {
             )}
             {computed.delta != null && (
               <Badge variant="outline" className="tabular-nums">
-                Delta: {computed.delta >= 0 ? '+' : ''}{formatMinutesShort(Math.abs(computed.delta))}
+                Delta: {computed.delta >= 0 ? '+' : '-'}{formatMinutesShort(Math.abs(computed.delta))}
               </Badge>
             )}
             <Badge variant="outline" className="tabular-nums">
@@ -486,7 +486,7 @@ export function ServiceTimeTab() {
                   <TableCell className="whitespace-nowrap tabular-nums">
                     {r.varianceMinutes != null ? (
                       <span className={r.varianceMinutes > 0 ? 'text-red-500' : r.varianceMinutes < 0 ? 'text-green-500' : ''}>
-                        {r.varianceMinutes > 0 ? '+' : ''}{formatMinutesShort(Math.abs(r.varianceMinutes))}
+                        {r.varianceMinutes > 0 ? '+' : r.varianceMinutes < 0 ? '-' : ''}{formatMinutesShort(Math.abs(r.varianceMinutes))}
                       </span>
                     ) : (
                       '-'
