@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -46,6 +48,7 @@ type ServiceTimeRow = {
   estimatedMinutes: number | null;
   actualMinutes: number | null;
   varianceMinutes: number | null;
+  billedAmount: number | null;
   url: string;
 };
 
@@ -75,12 +78,25 @@ function formatDateTimeShort(iso: string) {
   }
 }
 
+function formatUsd(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return '-';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export function ServiceTimeTab() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
   const [jobType, setJobType] = useState<JobTypeFilter>('all');
+  const [includeBillingTotals, setIncludeBillingTotals] = useState(false);
 
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
@@ -175,6 +191,7 @@ export function ServiceTimeTab() {
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
+          billedAmount: null,
           url: `/tasks/${t.id}`,
         });
       }
@@ -199,6 +216,7 @@ export function ServiceTimeTab() {
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
+          billedAmount: null,
           url: `/shipments/${s.id}`,
         });
       }
@@ -221,11 +239,61 @@ export function ServiceTimeTab() {
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
+          billedAmount: null,
           url: `/stocktakes/${st.id}/report`,
         });
       }
 
-      setRows(next);
+      if (!includeBillingTotals) {
+        setRows(next);
+        return;
+      }
+
+      // Attach billing totals (best-effort). We sum all billing_events linked to a task/shipment.
+      const taskIds = next.filter(r => r.jobType === 'task').map(r => r.jobId);
+      const shipmentIds = next.filter(r => r.jobType === 'shipment').map(r => r.jobId);
+
+      const totalsByTask = new Map<string, number>();
+      const totalsByShipment = new Map<string, number>();
+
+      const addTotal = (map: Map<string, number>, id: string, amount: unknown) => {
+        const n = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+        map.set(id, (map.get(id) || 0) + n);
+      };
+
+      const idsChunkSize = 150;
+
+      for (const batch of chunk(taskIds, idsChunkSize)) {
+        const { data: billRows, error } = await (supabase.from('billing_events') as any)
+          .select('task_id, total_amount, status')
+          .eq('tenant_id', profile.tenant_id)
+          .in('task_id', batch)
+          .neq('status', 'void');
+        if (error) throw error;
+        for (const r of billRows || []) {
+          if (!r?.task_id) continue;
+          addTotal(totalsByTask, String(r.task_id), r.total_amount);
+        }
+      }
+
+      for (const batch of chunk(shipmentIds, idsChunkSize)) {
+        const { data: billRows, error } = await (supabase.from('billing_events') as any)
+          .select('shipment_id, total_amount, status')
+          .eq('tenant_id', profile.tenant_id)
+          .in('shipment_id', batch)
+          .neq('status', 'void');
+        if (error) throw error;
+        for (const r of billRows || []) {
+          if (!r?.shipment_id) continue;
+          addTotal(totalsByShipment, String(r.shipment_id), r.total_amount);
+        }
+      }
+
+      setRows(next.map((r) => {
+        if (r.jobType === 'task') return { ...r, billedAmount: totalsByTask.get(r.jobId) ?? 0 };
+        if (r.jobType === 'shipment') return { ...r, billedAmount: totalsByShipment.get(r.jobId) ?? 0 };
+        return r;
+      }));
     } catch (err: any) {
       console.error('[ServiceTimeTab] fetch error:', err);
       toast({
@@ -275,6 +343,7 @@ export function ServiceTimeTab() {
 
     const totalEstimated = sorted.reduce((sum, r) => sum + (r.estimatedMinutes ?? 0), 0);
     const totalActual = sorted.reduce((sum, r) => sum + (r.actualMinutes ?? 0), 0);
+    const totalBilled = sorted.reduce((sum, r) => sum + (r.billedAmount ?? 0), 0);
     const withEstimate = sorted.filter(r => (r.estimatedMinutes ?? 0) > 0).length;
     const withActual = sorted.filter(r => (r.actualMinutes ?? 0) > 0).length;
 
@@ -283,6 +352,7 @@ export function ServiceTimeTab() {
       total: sorted.length,
       totalEstimated,
       totalActual,
+      totalBilled,
       withEstimate,
       withActual,
       delta: totalEstimated > 0 && totalActual > 0 ? Math.round(totalActual - totalEstimated) : null,
@@ -325,7 +395,11 @@ export function ServiceTimeTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end gap-2">
+            <div className="flex items-end gap-2 flex-wrap">
+              <div className="flex items-center gap-2 mr-2">
+                <Switch checked={includeBillingTotals} onCheckedChange={setIncludeBillingTotals} />
+                <span className="text-sm text-muted-foreground">Include billing totals</span>
+              </div>
               <Button variant="outline" onClick={fetchData} disabled={loading}>
                 <MaterialIcon name="refresh" size="sm" className={loading ? 'animate-spin mr-2' : 'mr-2'} />
                 Refresh
@@ -343,6 +417,11 @@ export function ServiceTimeTab() {
             <Badge variant="secondary" className="tabular-nums">
               Actual Total: {formatMinutesShort(computed.totalActual)}
             </Badge>
+            {includeBillingTotals && (
+              <Badge variant="secondary" className="tabular-nums">
+                Billed Total: {formatUsd(computed.totalBilled)}
+              </Badge>
+            )}
             {computed.delta != null && (
               <Badge variant="outline" className="tabular-nums">
                 Delta: {computed.delta >= 0 ? '+' : ''}{formatMinutesShort(Math.abs(computed.delta))}
@@ -382,6 +461,9 @@ export function ServiceTimeTab() {
                 <TableHead role="button" onClick={() => handleSort('variance')} className="whitespace-nowrap">
                   Variance <SortIcon field="variance" />
                 </TableHead>
+                {includeBillingTotals && (
+                  <TableHead className="whitespace-nowrap text-right">Billed</TableHead>
+                )}
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -410,8 +492,13 @@ export function ServiceTimeTab() {
                       '-'
                     )}
                   </TableCell>
+                  {includeBillingTotals && (
+                    <TableCell className="whitespace-nowrap tabular-nums text-right">
+                      {formatUsd(r.billedAmount)}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => window.location.assign(r.url)}>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(r.url)}>
                       Open
                       <MaterialIcon name="chevron_right" size="sm" className="ml-1" />
                     </Button>
@@ -421,7 +508,7 @@ export function ServiceTimeTab() {
 
               {computed.rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={includeBillingTotals ? 8 : 7} className="text-center text-muted-foreground py-10">
                     {loading ? 'Loading…' : 'No jobs found for this date range.'}
                   </TableCell>
                 </TableRow>
