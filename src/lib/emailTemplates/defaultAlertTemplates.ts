@@ -393,6 +393,74 @@ export const DEFAULT_ALERT_TEMPLATES: Record<string, DefaultAlertTemplate> = {
     inAppRecipients: '[[manager_role]], [[warehouse_role]]',
   },
 
+  // ==================== SPLIT WORKFLOW ====================
+  'split.required': {
+    heading: 'Split Required',
+    subject: '[[tenant_name]]: Split Required — [[item_code]]',
+    body: `A partial quantity was requested from a grouped item, and a warehouse split is required before the job can start.
+
+**Item:** [[item_code]]
+**Current Location:** [[item_location]]
+**Grouped Qty:** [[split_grouped_qty]]
+**Keep Qty (on parent):** [[split_keep_qty]]
+**Split Qty (leftover):** [[split_leftover_qty]]
+
+**Origin Job:** [[origin_job_type]] [[origin_job_number]]
+[[origin_job_link]]
+
+**Notes:** [[split_request_notes]]
+
+[[items_table_html]]`,
+    ctaLabel: 'Open Split Task',
+    ctaLink: '[[task_link]]',
+    smsBody: '[[tenant_name]]: Split required for [[item_code]] (keep [[split_keep_qty]] of [[split_grouped_qty]]). Location: [[item_location]].',
+    inAppBody: 'Split required for [[item_code]] (keep [[split_keep_qty]] of [[split_grouped_qty]]).',
+    inAppRecipients: '[[warehouse_role]], [[manager_role]]',
+  },
+  'split.completed': {
+    heading: 'Split Completed',
+    subject: '[[tenant_name]]: Split Completed — [[item_code]]',
+    body: `Your request has been processed — the warehouse has completed the split/relabel step.
+
+**Item:** [[item_code]]
+**Grouped Qty (before):** [[split_grouped_qty]]
+**Kept Qty (on parent):** [[split_keep_qty]]
+**Split Qty (new labels):** [[split_leftover_qty]]
+
+New item labels:
+[[split_child_codes_list_text]]
+
+**Origin Job:** [[origin_job_type]] [[origin_job_number]]
+[[origin_job_link]]`,
+    ctaLabel: 'View Job',
+    ctaLink: '[[origin_job_link]]',
+    smsBody: '[[tenant_name]]: Split completed for [[item_code]]. New labels created: [[split_leftover_qty]].',
+    inAppBody: 'Split completed for [[item_code]].',
+    inAppRecipients: '[[client_user_role]]',
+  },
+  'split.manual_review': {
+    heading: 'Split Request Pending Review',
+    subject: '[[tenant_name]]: Pending Review — Partial request from grouped item ([[item_code]])',
+    body: `A client requested a partial quantity from a grouped item, but automated split tasks are disabled for this tenant. This job is marked *Pending review*.
+
+**Item:** [[item_code]]
+**Current Location:** [[item_location]]
+**Grouped Qty:** [[split_grouped_qty]]
+**Requested Qty:** [[split_keep_qty]]
+
+**Origin Job:** [[origin_job_type]] [[origin_job_number]]
+[[origin_job_link]]
+
+**Notes:** [[split_request_notes]]
+
+[[items_table_html]]`,
+    ctaLabel: 'View Job',
+    ctaLink: '[[origin_job_link]]',
+    smsBody: '[[tenant_name]]: Pending review — partial request from grouped item [[item_code]] (requested [[split_keep_qty]] of [[split_grouped_qty]]).',
+    inAppBody: 'Pending review — partial request from grouped item [[item_code]].',
+    inAppRecipients: '[[warehouse_role]], [[manager_role]]',
+  },
+
   // ==================== INSPECTIONS ====================
   'inspection_started': {
     heading: 'Inspection Started',

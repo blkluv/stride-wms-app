@@ -730,7 +730,8 @@ export function useTasks(filters?: {
     // Get task info first
     const { data: taskData, error: taskFetchError } = await (supabase
       .from('tasks') as any)
-      .select('task_type, started_at')
+      .select('task_type, started_at, metadata')
+      .eq('tenant_id', profile.tenant_id)
       .eq('id', taskId)
       .single();
 
@@ -740,6 +741,50 @@ export function useTasks(filters?: {
         error_code: 'TASK_FETCH_FAILED',
         error_message: taskFetchError?.message || 'Failed to load task',
       };
+    }
+
+    // Block starting origin tasks that are waiting on one or more Split tasks.
+    // (Split tasks themselves are allowed to start.)
+    if (taskData?.task_type !== 'Split') {
+      const meta = taskData?.metadata && typeof taskData.metadata === 'object' ? taskData.metadata : null;
+      const metaSplitRequired = !!(meta && (meta as any).split_required === true);
+      const metaSplitTaskIds: string[] = metaSplitRequired && Array.isArray((meta as any).split_required_task_ids)
+        ? (meta as any).split_required_task_ids.map(String)
+        : [];
+
+      const { data: linkedSplitTasks, error: linkedErr } = await (supabase
+        .from('tasks') as any)
+        .select('id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('task_type', 'Split')
+        .contains('metadata', {
+          split_workflow: {
+            origin_entity_type: 'task',
+            origin_entity_id: taskId,
+          },
+        })
+        .in('status', ['pending', 'in_progress']);
+
+      if (linkedErr) {
+        return {
+          ok: false,
+          error_code: 'SPLIT_CHECK_FAILED',
+          error_message: linkedErr.message || 'Failed to check Split tasks',
+        };
+      }
+
+      const linkedIds = (linkedSplitTasks || []).map((t: any) => String(t.id));
+      const totalIds = Array.from(new Set([...metaSplitTaskIds, ...linkedIds]));
+
+      if (metaSplitRequired || totalIds.length > 0) {
+        return {
+          ok: false,
+          error_code: 'SPLIT_REQUIRED',
+          error_message: totalIds.length > 0
+            ? `This task is blocked until ${totalIds.length} Split task(s) are completed.`
+            : 'This task is blocked until the required Split task is completed.',
+        };
+      }
     }
 
     // Start timer interval first (so we don't mark a task in-progress without a timer)
@@ -774,6 +819,7 @@ export function useTasks(filters?: {
       const { error: updateError } = await (supabase
         .from('tasks') as any)
         .update(taskUpdates)
+        .eq('tenant_id', profile.tenant_id)
         .eq('id', taskId);
 
       if (updateError) {
@@ -847,6 +893,15 @@ export function useTasks(filters?: {
         variant: 'destructive',
         title: 'Another job is already in progress',
         description: 'Pause your active job before starting this task.',
+      });
+      return false;
+    }
+
+    if (result.error_code === 'SPLIT_REQUIRED') {
+      toast({
+        variant: 'destructive',
+        title: 'Split required',
+        description: result.error_message || 'This task is blocked until the required Split task is completed.',
       });
       return false;
     }
