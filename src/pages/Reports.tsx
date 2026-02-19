@@ -37,7 +37,8 @@ interface ReportStats {
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))'];
 
 export default function Reports() {
-  const { isAdmin } = usePermissions();
+  const { isAdmin, hasRole } = usePermissions();
+  const canSeeServiceTime = isAdmin || hasRole('manager');
   const [stats, setStats] = useState<ReportStats>({
     totalItems: 0,
     itemsByStatus: [],
@@ -152,7 +153,7 @@ export default function Reports() {
                 Labor Costs
               </TabsTrigger>
             )}
-            {isAdmin && (
+            {canSeeServiceTime && (
               <TabsTrigger value="service-time" className="gap-2">
                 <MaterialIcon name="schedule" size="sm" />
                 Service Time
@@ -331,7 +332,7 @@ export default function Reports() {
             </TabsContent>
           )}
 
-          {isAdmin && (
+          {canSeeServiceTime && (
             <TabsContent value="service-time" className="mt-6">
               <ServiceTimeTab />
             </TabsContent>
