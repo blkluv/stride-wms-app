@@ -834,6 +834,21 @@ export function useTasks(filters?: {
         taskUpdates.started_by = profile.id;
       }
 
+      // Manual review workflow: allow start, but clear the "Pending review" marker.
+      // (Used when client partial-from-grouped is disabled and staff chooses to proceed.)
+      try {
+        const meta = taskData?.metadata && typeof taskData.metadata === 'object' ? taskData.metadata : null;
+        if (meta && (meta as any).pending_review === true) {
+          const nextMeta: any = { ...(meta as any) };
+          delete nextMeta.pending_review;
+          delete nextMeta.pending_review_reason;
+          delete nextMeta.split_workflow;
+          taskUpdates.metadata = nextMeta;
+        }
+      } catch {
+        // optional
+      }
+
       const { error: updateError } = await (supabase
         .from('tasks') as any)
         .update(taskUpdates)
