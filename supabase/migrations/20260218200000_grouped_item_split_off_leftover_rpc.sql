@@ -256,8 +256,8 @@ BEGIN
       v_parent.receiving_shipment_id,
       v_parent.received_at,
       v_parent.received_date,
-      v_target_location.id,
-      v_target_location.id,
+      v_target_location,
+      v_target_location,
       COALESCE(v_parent.metadata, '{}'::jsonb) || jsonb_build_object(
         'split_parent_item_id', v_parent.id,
         'split_parent_item_code', v_parent.item_code,
@@ -283,7 +283,7 @@ BEGIN
     'previous_grouped_qty', v_grouped_qty,
     'keep_qty', v_keep_qty,
     'leftover_qty', p_leftover_qty,
-    'target_location_id', v_target_location.id,
+    'target_location_id', v_target_location,
     'start_suffix', v_start_suffix,
     'child_item_ids', v_child_ids,
     'child_item_codes', v_codes

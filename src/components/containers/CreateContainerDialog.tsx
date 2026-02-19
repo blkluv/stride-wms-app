@@ -39,7 +39,8 @@ const CONTAINER_TYPES = [
 ];
 
 const containerSchema = z.object({
-  container_code: z.string().min(1, 'Container code is required').max(50),
+  // Optional override. If left blank, the system auto-generates a CNT-##### code.
+  container_code: z.string().max(50).optional(),
   container_type: z.string().min(1, 'Container type is required'),
   footprint_cu_ft: z.number().optional(),
 });
@@ -77,7 +78,7 @@ export function CreateContainerDialog({
     setSaving(true);
     try {
       const result = await createContainer({
-        container_code: data.container_code.toUpperCase(),
+        container_code: data.container_code?.trim() ? data.container_code.trim().toUpperCase() : null,
         container_type: data.container_type,
         warehouse_id: warehouseId,
         location_id: locationId ?? null,
@@ -112,13 +113,13 @@ export function CreateContainerDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    <HelpTip tooltip="A unique code for this container. Must match the physical barcode label on the container.">
-                      Container Code *
+                    <HelpTip tooltip="Optional override. Leave blank to auto-generate a CNT-##### barcode code.">
+                      Container Code
                     </HelpTip>
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="CT-12345"
+                      placeholder="Auto-generated (CNT-#####) or enter a code"
                       {...field}
                       onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                       className="font-mono"

@@ -112,6 +112,7 @@ export function useClientItems() {
         .select(`
           id,
           account_id,
+          warehouse_id,
           item_code,
           quantity,
           description,

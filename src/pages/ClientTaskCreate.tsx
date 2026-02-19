@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { ClientPortalLayout } from '@/components/client-portal/ClientPortalLayout';
 import { useClientPortalContext, useClientItems } from '@/hooks/useClientPortal';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { queueSplitManualReviewAlert, queueSplitRequiredAlert } from '@/lib/alertQueue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,9 +57,86 @@ export default function ClientTaskCreate() {
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [requestedQtyByItemId, setRequestedQtyByItemId] = useState<Record<string, number>>({});
+  const [clientPartialGroupedEnabled, setClientPartialGroupedEnabled] = useState(false);
 
   // Resolve item codes for the selected items
-  const selectedItems = allItems.filter((item: any) => itemIds.includes(item.id));
+  const selectedItems = useMemo(() => {
+    return (allItems as any[]).filter((item: any) => itemIds.includes(item.id));
+  }, [allItems, itemIds]);
+
+  const availableQtyById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of selectedItems as any[]) {
+      const qty = typeof item?.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+      if (typeof item?.id === 'string') map.set(item.id, qty);
+    }
+    return map;
+  }, [selectedItems]);
+
+  const getRequestedQty = (itemId: string): number => {
+    const available = availableQtyById.get(itemId) ?? 1;
+    const raw = requestedQtyByItemId[itemId];
+    const qty = typeof raw === 'number' && Number.isFinite(raw) ? raw : available;
+    return Math.max(1, Math.min(available, qty));
+  };
+
+  // Hydrate/clamp requested quantities for selected items
+  useEffect(() => {
+    if (selectedItems.length === 0) return;
+    setRequestedQtyByItemId((prev) => {
+      let changed = false;
+      const next: Record<string, number> = { ...prev };
+      for (const item of selectedItems as any[]) {
+        const available = availableQtyById.get(item.id) ?? 1;
+        const current = next[item.id];
+        if (current == null) {
+          next[item.id] = available;
+          changed = true;
+        } else {
+          const clamped = Math.max(1, Math.min(available, current));
+          if (clamped !== current) {
+            next[item.id] = clamped;
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [availableQtyById, selectedItems]);
+
+  // Load preference (best-effort; default = disabled/manual review)
+  useEffect(() => {
+    if (!portalUser?.tenant_id) return;
+    const run = async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('tenant_settings')
+          .select('setting_value')
+          .eq('tenant_id', portalUser.tenant_id)
+          .eq('setting_key', 'client_partial_grouped_enabled')
+          .maybeSingle();
+        if (error) throw error;
+        const v = data?.setting_value as unknown;
+        if (typeof v === 'boolean') setClientPartialGroupedEnabled(v);
+        else if (typeof v === 'string') setClientPartialGroupedEnabled(v.trim().toLowerCase() === 'true');
+        else setClientPartialGroupedEnabled(false);
+      } catch {
+        // Safe default: disabled/manual review
+        setClientPartialGroupedEnabled(false);
+      }
+    };
+    void run();
+  }, [portalUser?.tenant_id]);
+
+  const hasPartialGroupedSelection = useMemo(() => {
+    return (selectedItems as any[]).some((item: any) => {
+      const available = availableQtyById.get(item.id) ?? 1;
+      const requested = getRequestedQty(item.id);
+      return available > 1 && requested < available;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableQtyById, selectedItems, requestedQtyByItemId]);
 
   const userName = portalUser?.first_name
     ? `${portalUser.first_name} ${portalUser.last_name || ''}`.trim()
@@ -95,6 +173,37 @@ export default function ClientTaskCreate() {
       return;
     }
 
+    const splitCandidates = itemIds
+      .map((itemId: string) => {
+        const available = availableQtyById.get(itemId) ?? 1;
+        const requested = getRequestedQty(itemId);
+        return {
+          item_id: itemId,
+          available,
+          requested,
+          leftover: Math.max(0, available - requested),
+        };
+      })
+      .filter((r) => r.available > 1 && r.requested < r.available);
+
+    if (splitCandidates.length > 0) {
+      if (!clientPartialGroupedEnabled) {
+        const ok = window.confirm(
+          `${tenant?.name || 'The warehouse team'} will review this request before processing.\n\n` +
+            `This task includes a partial quantity from a grouped item.\n\n` +
+            `Continue and submit as Pending review?`
+        );
+        if (!ok) return;
+      } else {
+        const ok = window.confirm(
+          `This task includes a partial quantity from a grouped item.\n\n` +
+            `The warehouse will create new labels and complete a Split task before starting this request.\n\n` +
+            `Continue and submit?`
+        );
+        if (!ok) return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -104,18 +213,26 @@ export default function ClientTaskCreate() {
         ? `${taskType} - ${itemCount} item${itemCount !== 1 ? 's' : ''} (Client Request)`
         : `${taskType} (Client Request)`;
 
+      const warehouseIds = Array.from(
+        new Set((selectedItems as any[]).map((it: any) => it?.warehouse_id).filter(Boolean).map(String))
+      );
+      const derivedWarehouseId = warehouseIds.length === 1 ? warehouseIds[0] : null;
+
       // Insert the task
       const { data: task, error: taskError } = await (supabase
         .from('tasks') as any)
         .insert({
           tenant_id: portalUser.tenant_id,
           account_id: accountId,
+          warehouse_id: derivedWarehouseId,
+          related_item_id: itemIds.length === 1 ? itemIds[0] : null,
           task_type: taskType,
           title,
           description: description.trim() || null,
           priority,
           due_date: dueDate || null,
           status: 'pending',
+          assigned_department: 'warehouse',
           metadata: {
             client_portal_request: true,
             requested_by_email: portalUser.email,
@@ -134,6 +251,7 @@ export default function ClientTaskCreate() {
         const taskItems = itemIds.map((itemId: string) => ({
           task_id: task.id,
           item_id: itemId,
+          quantity: getRequestedQty(itemId),
         }));
 
         const { error: itemsError } = await (supabase
@@ -146,9 +264,173 @@ export default function ClientTaskCreate() {
         }
       }
 
+      // Grouped-item partial requests (client portal):
+      // - if enabled: create blocking Split task(s) per item + alert internal
+      // - if disabled: mark the origin task Pending review (manual) + alert internal
+      if (task && splitCandidates.length > 0) {
+        const requestNotes = description.trim() || null;
+
+        if (clientPartialGroupedEnabled) {
+          const splitTaskIds: string[] = [];
+          const splitItemsForMeta: any[] = [];
+
+          for (const c of splitCandidates) {
+            const itemRow = (selectedItems as any[]).find((it: any) => it.id === c.item_id);
+            const itemCode = itemRow?.item_code || c.item_id;
+            const groupedQty = typeof itemRow?.quantity === 'number' && Number.isFinite(itemRow.quantity) ? itemRow.quantity : c.available;
+            const keepQty = c.requested;
+            const leftoverQty = groupedQty - keepQty;
+            const itemWarehouseId = itemRow?.warehouse_id ? String(itemRow.warehouse_id) : (derivedWarehouseId || null);
+            if (!itemWarehouseId) throw new Error('Missing warehouse for split task');
+
+            // Idempotency: reuse existing split task if it already exists
+            const { data: existingSplitTask } = await (supabase.from('tasks') as any)
+              .select('id')
+              .eq('tenant_id', portalUser.tenant_id)
+              .eq('task_type', 'Split')
+              .contains('metadata', {
+                split_workflow: {
+                  origin_entity_type: 'task',
+                  origin_entity_id: task.id,
+                  parent_item_id: c.item_id,
+                },
+              })
+              .in('status', ['pending', 'in_progress'])
+              .limit(1)
+              .maybeSingle();
+
+            let splitTaskId: string | null = existingSplitTask?.id || null;
+
+            if (!splitTaskId) {
+              const nowIso = new Date().toISOString();
+              const splitTitle = title ? `Split - ${itemCode} (for ${title})` : `Split - ${itemCode}`;
+              const splitDesc = [
+                `Split required for grouped item ${itemCode}.`,
+                `Keep qty on parent label: ${keepQty} (of ${groupedQty}).`,
+                `Leftover qty to relabel: ${leftoverQty}.`,
+                '',
+                'Client note:',
+                requestNotes || '(none)',
+              ].join('\n');
+
+              const { data: newSplitTask, error: splitErr } = await (supabase.from('tasks') as any)
+                .insert({
+                  tenant_id: portalUser.tenant_id,
+                  account_id: accountId,
+                  warehouse_id: itemWarehouseId,
+                  related_item_id: c.item_id,
+                  task_type: 'Split',
+                  title: splitTitle,
+                  description: splitDesc,
+                  priority: 'high',
+                  status: 'pending',
+                  assigned_department: 'warehouse',
+                  metadata: {
+                    client_portal_request: true,
+                    requested_by_email: portalUser.email,
+                    requested_by_name: userName,
+                    split_workflow: {
+                      origin_entity_type: 'task',
+                      origin_entity_id: task.id,
+                      origin_entity_number: title,
+                      parent_item_id: c.item_id,
+                      parent_item_code: itemCode,
+                      grouped_qty: groupedQty,
+                      keep_qty: keepQty,
+                      leftover_qty: leftoverQty,
+                      requested_by_name: userName,
+                      requested_by_email: portalUser.email,
+                      request_notes: requestNotes,
+                      created_at: nowIso,
+                    },
+                  },
+                })
+                .select('id')
+                .single();
+
+              if (splitErr) throw splitErr;
+              splitTaskId = newSplitTask.id;
+
+              const { error: linkErr } = await (supabase.from('task_items') as any).insert({
+                task_id: splitTaskId,
+                item_id: c.item_id,
+                quantity: leftoverQty,
+              });
+              if (linkErr) throw linkErr;
+            }
+
+            if (splitTaskId) {
+              splitTaskIds.push(splitTaskId);
+              splitItemsForMeta.push({
+                parent_item_id: c.item_id,
+                parent_item_code: itemCode,
+                grouped_qty: groupedQty,
+                keep_qty: keepQty,
+                leftover_qty: leftoverQty,
+                split_task_id: splitTaskId,
+              });
+              void queueSplitRequiredAlert(portalUser.tenant_id, splitTaskId, itemCode);
+            }
+          }
+
+          const existingMeta = task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
+          const { error: metaErr } = await (supabase.from('tasks') as any)
+            .update({
+              metadata: {
+                ...(existingMeta as any),
+                split_required: true,
+                split_required_task_ids: splitTaskIds,
+                split_required_items: splitItemsForMeta,
+                split_required_created_at: new Date().toISOString(),
+              },
+            })
+            .eq('id', task.id)
+            .eq('tenant_id', portalUser.tenant_id);
+          if (metaErr) console.warn('[ClientTaskCreate] split metadata update failed:', metaErr);
+        } else {
+          // Manual review flow: no split task, mark the job Pending review + alert internal staff
+          const first = splitCandidates[0];
+          const itemRow = (selectedItems as any[]).find((it: any) => it.id === first.item_id);
+          const itemCode = itemRow?.item_code || first.item_id;
+          const reviewReason = `Client requested ${first.requested} of ${first.available} units from grouped item ${itemCode}.`;
+
+          const existingMeta = task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
+          const { error: metaErr } = await (supabase.from('tasks') as any)
+            .update({
+              metadata: {
+                ...(existingMeta as any),
+                pending_review: true,
+                pending_review_reason: reviewReason,
+                split_workflow: {
+                  origin_entity_type: 'task',
+                  origin_entity_id: task.id,
+                  origin_entity_number: title,
+                  parent_item_id: first.item_id,
+                  parent_item_code: itemCode,
+                  grouped_qty: first.available,
+                  keep_qty: first.requested,
+                  leftover_qty: first.leftover,
+                  request_notes: requestNotes,
+                  requested_by_name: userName,
+                  requested_by_email: portalUser.email,
+                },
+              },
+            })
+            .eq('id', task.id)
+            .eq('tenant_id', portalUser.tenant_id);
+          if (metaErr) console.warn('[ClientTaskCreate] pending review metadata update failed:', metaErr);
+
+          void queueSplitManualReviewAlert(portalUser.tenant_id, 'task', task.id, itemCode);
+        }
+      }
+
       toast({
         title: 'Task Submitted',
-        description: 'Your task request has been submitted to the warehouse team.',
+        description: splitCandidates.length > 0
+          ? clientPartialGroupedEnabled
+            ? 'Submitted. Waiting for warehouse split completion.'
+            : 'Submitted as Pending review.'
+          : 'Your task request has been submitted to the warehouse team.',
       });
 
       navigate('/client/items');
@@ -266,6 +548,11 @@ export default function ClientTaskCreate() {
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
                 />
+                {hasPartialGroupedSelection && (
+                  <p className="text-xs text-muted-foreground">
+                    If you need specific items from a grouped package/carton, add details here (e.g., matching set, serials, photos, etc.).
+                  </p>
+                )}
               </div>
 
               {/* Due Date */}
@@ -289,15 +576,39 @@ export default function ClientTaskCreate() {
                       selectedItems.map((item: any) => (
                         <div
                           key={item.id}
-                          className="px-3 py-2 text-sm flex items-center gap-2"
+                          className="px-3 py-2 text-sm flex items-center justify-between gap-3"
                         >
-                          <MaterialIcon name="inventory_2" size="sm" className="text-muted-foreground" />
-                          <span className="font-medium">{item.item_code}</span>
-                          {item.description && (
-                            <span className="text-muted-foreground truncate">
-                              - {item.description}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <MaterialIcon name="inventory_2" size="sm" className="text-muted-foreground" />
+                            <span className="font-medium">{item.item_code}</span>
+                            {item.description && (
+                              <span className="text-muted-foreground truncate">
+                                - {item.description}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1}
+                              step={1}
+                              value={getRequestedQty(item.id)}
+                              disabled={!(typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 1)}
+                              onChange={(e) => {
+                                const available = typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
+                                const raw = parseInt(e.target.value || '0', 10);
+                                const next = Number.isFinite(raw) ? raw : 1;
+                                const clamped = Math.max(1, Math.min(available, next));
+                                setRequestedQtyByItemId((prev) => ({ ...prev, [item.id]: clamped }));
+                              }}
+                              className="h-8 w-20 text-right"
+                              aria-label={`Requested quantity for ${item.item_code}`}
+                            />
+                            {typeof item.quantity === 'number' && item.quantity > 1 && (
+                              <span className="text-xs text-muted-foreground">/ {item.quantity}</span>
+                            )}
+                          </div>
                         </div>
                       ))
                     ) : (
