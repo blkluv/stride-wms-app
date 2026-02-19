@@ -9,6 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -27,10 +34,33 @@ import {
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { useAccounts } from '@/hooks/useAccounts';
+import { useWarehouses } from '@/hooks/useWarehouses';
+import { useEmployeePay } from '@/hooks/useLaborSettings';
+import * as XLSX from 'xlsx';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
 type JobTypeFilter = 'all' | 'task' | 'shipment' | 'stocktake';
-type SortField = 'completed_at' | 'job_type' | 'estimated' | 'actual' | 'variance';
+type SortField =
+  | 'completed_at'
+  | 'job_type'
+  | 'estimated'
+  | 'actual'
+  | 'variance'
+  | 'billed'
+  | 'labor_cost'
+  | 'margin';
 type SortDirection = 'asc' | 'desc';
+type ViewTab = 'overview' | 'jobs' | 'employees';
 
 type ServiceTimeMeta = {
   estimated_minutes?: number;
@@ -45,11 +75,33 @@ type ServiceTimeRow = {
   jobId: string;
   label: string;
   completedAt: string | null;
+  accountId: string | null;
+  warehouseId: string | null;
+  subType: string | null;
   estimatedMinutes: number | null;
   actualMinutes: number | null;
   varianceMinutes: number | null;
   billedAmount: number | null;
+  laborCost: number | null;
+  margin: number | null;
   url: string;
+};
+
+type UserInfo = {
+  id: string;
+  name: string;
+  email: string | null;
+};
+
+type EmployeeSummaryRow = {
+  userId: string;
+  name: string;
+  jobs: number;
+  minutes: number;
+  laborCost: number | null;
+  billedShare: number | null;
+  marginShare: number | null;
+  avgMinutesPerJob: number | null;
 };
 
 function safeNumber(value: unknown): number | null {
@@ -89,14 +141,50 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+function jobKey(jobType: string, jobId: string) {
+  return `${jobType}:${jobId}`;
+}
+
+function displayNameFromUserRow(u: any): string {
+  const first = String(u?.first_name || '').trim();
+  const last = String(u?.last_name || '').trim();
+  const name = `${first} ${last}`.trim();
+  return name || (u?.email ? String(u.email) : 'Unknown');
+}
+
+function getHourlyRateFromPayRow(pay: any): number {
+  if (!pay) return 0;
+  const payType = String(pay.pay_type || '').toLowerCase();
+  const payRate = typeof pay.pay_rate === 'number' && Number.isFinite(pay.pay_rate) ? pay.pay_rate : 0;
+  const salaryEq = typeof pay.salary_hourly_equivalent === 'number' && Number.isFinite(pay.salary_hourly_equivalent)
+    ? pay.salary_hourly_equivalent
+    : null;
+
+  if (payType === 'hourly') return payRate;
+  // salary
+  return salaryEq ?? (payRate > 0 ? payRate / 2080 : 0);
+}
+
 export function ServiceTimeTab() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { accounts } = useAccounts();
+  const { warehouses } = useWarehouses();
+  const { employeePay } = useEmployeePay();
 
   const [loading, setLoading] = useState(false);
   const [jobType, setJobType] = useState<JobTypeFilter>('all');
   const [includeBillingTotals, setIncludeBillingTotals] = useState(false);
+  const [includeLaborCost, setIncludeLaborCost] = useState(false);
+  const [activeTab, setActiveTab] = useState<ViewTab>('overview');
+
+  const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [onlyWithEstimate, setOnlyWithEstimate] = useState(false);
+  const [onlyWithActual, setOnlyWithActual] = useState(false);
 
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
@@ -109,6 +197,34 @@ export function ServiceTimeTab() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const [rows, setRows] = useState<ServiceTimeRow[]>([]);
+  const [usersById, setUsersById] = useState<Record<string, UserInfo>>({});
+  const [jobUserMinutes, setJobUserMinutes] = useState<Record<string, Record<string, number>>>({});
+
+  const accountNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accounts || []) {
+      map.set(a.id, a.account_name || a.account_code || 'Account');
+    }
+    return map;
+  }, [accounts]);
+
+  const warehouseNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of warehouses || []) {
+      map.set(w.id, w.name || 'Warehouse');
+    }
+    return map;
+  }, [warehouses]);
+
+  const hourlyRateByUserId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of employeePay || []) {
+      const uid = String(p.user_id || '');
+      if (!uid) continue;
+      map.set(uid, getHourlyRateFromPayRow(p));
+    }
+    return map;
+  }, [employeePay]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -138,30 +254,45 @@ export function ServiceTimeTab() {
       const wantsStocktakes = jobType === 'all' || jobType === 'stocktake';
 
       const tasksPromise = wantsTasks
-        ? (supabase.from('tasks') as any)
-            .select('id, title, task_type, completed_at, duration_minutes, metadata')
-            .eq('tenant_id', profile.tenant_id)
-            .is('deleted_at', null)
-            .gte('completed_at', startIso)
-            .lte('completed_at', endIso)
+        ? (() => {
+            let q = (supabase.from('tasks') as any)
+              .select('id, title, task_type, completed_at, duration_minutes, account_id, warehouse_id, metadata')
+              .eq('tenant_id', profile.tenant_id)
+              .is('deleted_at', null)
+              .gte('completed_at', startIso)
+              .lte('completed_at', endIso);
+            if (accountFilter !== 'all') q = q.eq('account_id', accountFilter);
+            if (warehouseFilter !== 'all') q = q.eq('warehouse_id', warehouseFilter);
+            return q;
+          })()
         : Promise.resolve({ data: [] as any[], error: null as any });
 
       const shipmentsPromise = wantsShipments
-        ? (supabase.from('shipments') as any)
-            .select('id, shipment_number, shipment_type, status, completed_at, received_at, metadata')
-            .eq('tenant_id', profile.tenant_id)
-            .is('deleted_at', null)
-            // inbound uses received_at, outbound uses completed_at
-            .or(`and(completed_at.gte.${startIso},completed_at.lte.${endIso}),and(received_at.gte.${startIso},received_at.lte.${endIso})`)
+        ? (() => {
+            let q = (supabase.from('shipments') as any)
+              .select('id, shipment_number, shipment_type, status, completed_at, received_at, account_id, warehouse_id, metadata')
+              .eq('tenant_id', profile.tenant_id)
+              .is('deleted_at', null)
+              // inbound uses received_at, outbound uses completed_at
+              .or(`and(completed_at.gte.${startIso},completed_at.lte.${endIso}),and(received_at.gte.${startIso},received_at.lte.${endIso})`);
+            if (accountFilter !== 'all') q = q.eq('account_id', accountFilter);
+            if (warehouseFilter !== 'all') q = q.eq('warehouse_id', warehouseFilter);
+            return q;
+          })()
         : Promise.resolve({ data: [] as any[], error: null as any });
 
       const stocktakesPromise = wantsStocktakes
-        ? (supabase.from('stocktakes') as any)
-            .select('id, stocktake_number, name, status, closed_at, duration_minutes, metadata')
-            .eq('tenant_id', profile.tenant_id)
-            .is('deleted_at', null)
-            .gte('closed_at', startIso)
-            .lte('closed_at', endIso)
+        ? (() => {
+            let q = (supabase.from('stocktakes') as any)
+              .select('id, stocktake_number, name, status, closed_at, duration_minutes, account_id, warehouse_id, metadata')
+              .eq('tenant_id', profile.tenant_id)
+              .is('deleted_at', null)
+              .gte('closed_at', startIso)
+              .lte('closed_at', endIso);
+            if (accountFilter !== 'all') q = q.eq('account_id', accountFilter);
+            if (warehouseFilter !== 'all') q = q.eq('warehouse_id', warehouseFilter);
+            return q;
+          })()
         : Promise.resolve({ data: [] as any[], error: null as any });
 
       const [tasksRes, shipmentsRes, stocktakesRes] = await Promise.all([
@@ -188,10 +319,15 @@ export function ServiceTimeTab() {
           jobId: String(t.id),
           label: t.title || (t.task_type ? `${t.task_type} task` : 'Task'),
           completedAt: safeString(t.completed_at),
+          accountId: t.account_id ? String(t.account_id) : null,
+          warehouseId: t.warehouse_id ? String(t.warehouse_id) : null,
+          subType: safeString(t.task_type),
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
           billedAmount: null,
+          laborCost: null,
+          margin: null,
           url: `/tasks/${t.id}`,
         });
       }
@@ -213,10 +349,15 @@ export function ServiceTimeTab() {
           jobId: String(s.id),
           label: s.shipment_number ? `Shipment ${s.shipment_number}` : 'Shipment',
           completedAt,
+          accountId: s.account_id ? String(s.account_id) : null,
+          warehouseId: s.warehouse_id ? String(s.warehouse_id) : null,
+          subType: safeString(s.shipment_type),
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
           billedAmount: null,
+          laborCost: null,
+          margin: null,
           url: `/shipments/${s.id}`,
         });
       }
@@ -236,64 +377,178 @@ export function ServiceTimeTab() {
           jobId: String(st.id),
           label: st.name || (st.stocktake_number ? `Stocktake ${st.stocktake_number}` : 'Stocktake'),
           completedAt,
+          accountId: st.account_id ? String(st.account_id) : null,
+          warehouseId: st.warehouse_id ? String(st.warehouse_id) : null,
+          subType: null,
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
           billedAmount: null,
+          laborCost: null,
+          margin: null,
           url: `/stocktakes/${st.id}/report`,
         });
       }
 
-      if (!includeBillingTotals) {
-        setRows(next);
-        return;
+      let enrichedRows: ServiceTimeRow[] = next;
+
+      // Attach billing totals (best-effort). We sum billing_events linked to a task/shipment
+      // with occurred_at within the selected date range.
+      if (includeBillingTotals) {
+        const taskIds = enrichedRows.filter(r => r.jobType === 'task').map(r => r.jobId);
+        const shipmentIds = enrichedRows.filter(r => r.jobType === 'shipment').map(r => r.jobId);
+
+        const totalsByTask = new Map<string, number>();
+        const totalsByShipment = new Map<string, number>();
+
+        const addTotal = (map: Map<string, number>, id: string, amount: unknown) => {
+          const n = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+          map.set(id, (map.get(id) || 0) + n);
+        };
+
+        const idsChunkSize = 150;
+
+        for (const batch of chunk(taskIds, idsChunkSize)) {
+          const { data: billRows, error } = await (supabase.from('billing_events') as any)
+            .select('task_id, total_amount, status, occurred_at')
+            .eq('tenant_id', profile.tenant_id)
+            .in('task_id', batch)
+            .gte('occurred_at', startIso)
+            .lte('occurred_at', endIso)
+            .neq('status', 'void');
+          if (error) throw error;
+          for (const r of billRows || []) {
+            if (!r?.task_id) continue;
+            addTotal(totalsByTask, String(r.task_id), r.total_amount);
+          }
+        }
+
+        for (const batch of chunk(shipmentIds, idsChunkSize)) {
+          const { data: billRows, error } = await (supabase.from('billing_events') as any)
+            .select('shipment_id, total_amount, status, occurred_at')
+            .eq('tenant_id', profile.tenant_id)
+            .in('shipment_id', batch)
+            .gte('occurred_at', startIso)
+            .lte('occurred_at', endIso)
+            .neq('status', 'void');
+          if (error) throw error;
+          for (const r of billRows || []) {
+            if (!r?.shipment_id) continue;
+            addTotal(totalsByShipment, String(r.shipment_id), r.total_amount);
+          }
+        }
+
+        enrichedRows = enrichedRows.map((r) => {
+          if (r.jobType === 'task') return { ...r, billedAmount: totalsByTask.get(r.jobId) ?? 0 };
+          if (r.jobType === 'shipment') return { ...r, billedAmount: totalsByShipment.get(r.jobId) ?? 0 };
+          return r;
+        });
       }
 
-      // Attach billing totals (best-effort). We sum all billing_events linked to a task/shipment.
-      const taskIds = next.filter(r => r.jobType === 'task').map(r => r.jobId);
-      const shipmentIds = next.filter(r => r.jobType === 'shipment').map(r => r.jobId);
+      // Labor cost + employee performance need per-user minutes from job_time_intervals.
+      const needIntervals = includeLaborCost || activeTab === 'employees' || employeeFilter !== 'all';
+      const nextJobUserMinutes: Record<string, Record<string, number>> = {};
+      const nextUsers: Record<string, UserInfo> = {};
 
-      const totalsByTask = new Map<string, number>();
-      const totalsByShipment = new Map<string, number>();
+      if (needIntervals && profile?.tenant_id) {
+        const completedAtByJobKey = new Map<string, string>();
+        for (const r of enrichedRows) {
+          if (r.completedAt) completedAtByJobKey.set(jobKey(r.jobType, r.jobId), r.completedAt);
+        }
 
-      const addTotal = (map: Map<string, number>, id: string, amount: unknown) => {
-        const n = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
-        map.set(id, (map.get(id) || 0) + n);
-      };
+        const byKeyAdd = (jt: string, jid: string, uid: string, minutes: number) => {
+          const key = jobKey(jt, jid);
+          if (!nextJobUserMinutes[key]) nextJobUserMinutes[key] = {};
+          nextJobUserMinutes[key][uid] = (nextJobUserMinutes[key][uid] || 0) + minutes;
+        };
 
-      const idsChunkSize = 150;
+        const userIds = new Set<string>();
 
-      for (const batch of chunk(taskIds, idsChunkSize)) {
-        const { data: billRows, error } = await (supabase.from('billing_events') as any)
-          .select('task_id, total_amount, status')
-          .eq('tenant_id', profile.tenant_id)
-          .in('task_id', batch)
-          .neq('status', 'void');
-        if (error) throw error;
-        for (const r of billRows || []) {
-          if (!r?.task_id) continue;
-          addTotal(totalsByTask, String(r.task_id), r.total_amount);
+        const fetchIntervalsForType = async (type: 'task' | 'shipment' | 'stocktake', ids: string[]) => {
+          if (ids.length === 0) return;
+          const batchSize = 150;
+          for (const batch of chunk(ids, batchSize)) {
+            const { data: intervalRows, error } = await (supabase.from('job_time_intervals') as any)
+              .select('job_type, job_id, user_id, started_at, ended_at')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('job_type', type)
+              .in('job_id', batch);
+            if (error) throw error;
+
+            for (const it of intervalRows || []) {
+              const jt = String(it.job_type || '');
+              const jid = String(it.job_id || '');
+              const uid = String(it.user_id || '');
+              if (!jt || !jid || !uid) continue;
+
+              const fallbackEnd = completedAtByJobKey.get(jobKey(jt, jid)) || endIso;
+              const end = it.ended_at || fallbackEnd;
+              const mins = minutesBetweenIso(String(it.started_at), String(end));
+              if (mins <= 0) continue;
+              byKeyAdd(jt, jid, uid, mins);
+              userIds.add(uid);
+            }
+          }
+        };
+
+        await Promise.all([
+          fetchIntervalsForType('task', enrichedRows.filter(r => r.jobType === 'task').map(r => r.jobId)),
+          fetchIntervalsForType('shipment', enrichedRows.filter(r => r.jobType === 'shipment').map(r => r.jobId)),
+          fetchIntervalsForType('stocktake', enrichedRows.filter(r => r.jobType === 'stocktake').map(r => r.jobId)),
+        ]);
+
+        // Resolve user names (best-effort)
+        if (userIds.size > 0) {
+          const ids = Array.from(userIds);
+          const { data: userRows } = await (supabase.from('users') as any)
+            .select('id, first_name, last_name, email')
+            .in('id', ids);
+
+          for (const u of userRows || []) {
+            const uid = String(u.id || '');
+            if (!uid) continue;
+            nextUsers[uid] = {
+              id: uid,
+              name: displayNameFromUserRow(u),
+              email: u?.email ? String(u.email) : null,
+            };
+          }
         }
       }
 
-      for (const batch of chunk(shipmentIds, idsChunkSize)) {
-        const { data: billRows, error } = await (supabase.from('billing_events') as any)
-          .select('shipment_id, total_amount, status')
-          .eq('tenant_id', profile.tenant_id)
-          .in('shipment_id', batch)
-          .neq('status', 'void');
-        if (error) throw error;
-        for (const r of billRows || []) {
-          if (!r?.shipment_id) continue;
-          addTotal(totalsByShipment, String(r.shipment_id), r.total_amount);
+      // Attach labor cost + margin if requested and we have per-user minutes
+      if (needIntervals) {
+        const costByJobKey = new Map<string, number>();
+
+        for (const [key, byUser] of Object.entries(nextJobUserMinutes)) {
+          let cost = 0;
+          for (const [uid, mins] of Object.entries(byUser || {})) {
+            const rate = hourlyRateByUserId.get(uid) ?? 0;
+            cost += (mins / 60) * rate;
+          }
+          costByJobKey.set(key, cost);
         }
+
+        enrichedRows = enrichedRows.map((r) => {
+          const key = jobKey(r.jobType, r.jobId);
+          const cost = costByJobKey.get(key);
+          const laborCost = includeLaborCost && cost != null ? cost : null;
+          const margin =
+            includeLaborCost
+            && includeBillingTotals
+            && laborCost != null
+            && r.billedAmount != null
+              ? r.billedAmount - laborCost
+              : null;
+          return { ...r, laborCost, margin };
+        });
+      } else {
+        enrichedRows = enrichedRows.map((r) => ({ ...r, laborCost: null, margin: null }));
       }
 
-      setRows(next.map((r) => {
-        if (r.jobType === 'task') return { ...r, billedAmount: totalsByTask.get(r.jobId) ?? 0 };
-        if (r.jobType === 'shipment') return { ...r, billedAmount: totalsByShipment.get(r.jobId) ?? 0 };
-        return r;
-      }));
+      setRows(enrichedRows);
+      setJobUserMinutes(nextJobUserMinutes);
+      setUsersById(nextUsers);
     } catch (err: any) {
       console.error('[ServiceTimeTab] fetch error:', err);
       toast({
@@ -309,12 +564,35 @@ export function ServiceTimeTab() {
   useEffect(() => {
     void fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.tenant_id, jobType, dateFrom, dateTo]);
+  }, [
+    profile?.tenant_id,
+    jobType,
+    dateFrom,
+    dateTo,
+    accountFilter,
+    warehouseFilter,
+    includeBillingTotals,
+    includeLaborCost,
+    activeTab,
+    employeeFilter,
+  ]);
 
   const computed = useMemo(() => {
     const filtered = rows.filter((r) => {
-      if (jobType === 'all') return true;
-      return r.jobType === jobType;
+      if (jobType !== 'all' && r.jobType !== jobType) return false;
+      if (onlyWithEstimate && !((r.estimatedMinutes ?? 0) > 0)) return false;
+      if (onlyWithActual && !((r.actualMinutes ?? 0) > 0)) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const hay = `${r.label} ${r.subType || ''} ${r.jobId}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (employeeFilter !== 'all') {
+        const key = jobKey(r.jobType, r.jobId);
+        const mins = jobUserMinutes[key]?.[employeeFilter] || 0;
+        if (mins <= 0) return false;
+      }
+      return true;
     });
 
     const sorted = [...filtered].sort((a, b) => {
@@ -331,6 +609,12 @@ export function ServiceTimeTab() {
             return row.actualMinutes ?? -1;
           case 'variance':
             return row.varianceMinutes ?? -999999;
+          case 'billed':
+            return row.billedAmount ?? -1;
+          case 'labor_cost':
+            return row.laborCost ?? -1;
+          case 'margin':
+            return row.margin ?? -999999999;
         }
       };
 
@@ -344,6 +628,8 @@ export function ServiceTimeTab() {
     const totalEstimated = sorted.reduce((sum, r) => sum + (r.estimatedMinutes ?? 0), 0);
     const totalActual = sorted.reduce((sum, r) => sum + (r.actualMinutes ?? 0), 0);
     const totalBilled = sorted.reduce((sum, r) => sum + (r.billedAmount ?? 0), 0);
+    const totalLaborCost = sorted.reduce((sum, r) => sum + (r.laborCost ?? 0), 0);
+    const totalMargin = sorted.reduce((sum, r) => sum + (r.margin ?? 0), 0);
     const withEstimate = sorted.filter(r => (r.estimatedMinutes ?? 0) > 0).length;
     const withActual = sorted.filter(r => (r.actualMinutes ?? 0) > 0).length;
 
@@ -353,26 +639,276 @@ export function ServiceTimeTab() {
       totalEstimated,
       totalActual,
       totalBilled,
+      totalLaborCost,
+      totalMargin,
       withEstimate,
       withActual,
       delta: totalEstimated > 0 && totalActual > 0 ? Math.round(totalActual - totalEstimated) : null,
     };
-  }, [rows, jobType, sortDirection, sortField]);
+  }, [
+    rows,
+    jobType,
+    sortDirection,
+    sortField,
+    onlyWithEstimate,
+    onlyWithActual,
+    searchQuery,
+    employeeFilter,
+    jobUserMinutes,
+  ]);
+
+  const employeeOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const byUser of Object.values(jobUserMinutes)) {
+      for (const uid of Object.keys(byUser || {})) ids.add(uid);
+    }
+    return Array.from(ids)
+      .map((id) => ({ id, name: usersById[id]?.name || id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [jobUserMinutes, usersById]);
+
+  const employeesComputed = useMemo(() => {
+    const byUser: Record<string, { minutes: number; jobs: Set<string>; billedShare: number; laborCost: number }> = {};
+
+    for (const r of computed.rows) {
+      const key = jobKey(r.jobType, r.jobId);
+      const perUser = jobUserMinutes[key] || {};
+      const totalJobMinutes = Object.values(perUser).reduce((sum, m) => sum + (m || 0), 0) || 0;
+
+      for (const [uid, mins] of Object.entries(perUser)) {
+        if (!uid) continue;
+        if (!byUser[uid]) {
+          byUser[uid] = { minutes: 0, jobs: new Set<string>(), billedShare: 0, laborCost: 0 };
+        }
+        byUser[uid].minutes += mins || 0;
+        byUser[uid].jobs.add(key);
+
+        const rate = hourlyRateByUserId.get(uid) ?? 0;
+        byUser[uid].laborCost += (mins / 60) * rate;
+
+        if (includeBillingTotals && (r.billedAmount ?? 0) > 0 && totalJobMinutes > 0) {
+          byUser[uid].billedShare += (r.billedAmount ?? 0) * ((mins || 0) / totalJobMinutes);
+        }
+      }
+    }
+
+    const rows: EmployeeSummaryRow[] = Object.entries(byUser).map(([uid, agg]) => {
+      const jobs = agg.jobs.size;
+      const minutes = Math.round(agg.minutes);
+      const laborCost = includeLaborCost ? agg.laborCost : null;
+      const billedShare = includeBillingTotals ? agg.billedShare : null;
+      const marginShare =
+        includeBillingTotals && includeLaborCost && laborCost != null && billedShare != null
+          ? billedShare - laborCost
+          : null;
+
+      return {
+        userId: uid,
+        name: usersById[uid]?.name || uid,
+        jobs,
+        minutes,
+        laborCost,
+        billedShare,
+        marginShare,
+        avgMinutesPerJob: jobs > 0 ? Math.round(minutes / jobs) : null,
+      };
+    });
+
+    rows.sort((a, b) => (b.minutes || 0) - (a.minutes || 0));
+
+    const totalMinutes = rows.reduce((sum, r) => sum + (r.minutes || 0), 0);
+    const totalLaborCost = rows.reduce((sum, r) => sum + (r.laborCost ?? 0), 0);
+    const totalBilledShare = rows.reduce((sum, r) => sum + (r.billedShare ?? 0), 0);
+    const totalMarginShare = rows.reduce((sum, r) => sum + (r.marginShare ?? 0), 0);
+
+    return { rows, totalMinutes, totalLaborCost, totalBilledShare, totalMarginShare };
+  }, [computed.rows, jobUserMinutes, usersById, includeBillingTotals, includeLaborCost, hourlyRateByUserId]);
+
+  const typeBreakdowns = useMemo(() => {
+    type Agg = { type: string; jobs: number; minutes: number; billed: number; labor: number; margin: number };
+    const taskMap = new Map<string, Agg>();
+    const shipmentMap = new Map<string, Agg>();
+
+    const add = (map: Map<string, Agg>, type: string, mins: number, billed: number, labor: number, margin: number) => {
+      const key = type || 'Unspecified';
+      const cur = map.get(key) || { type: key, jobs: 0, minutes: 0, billed: 0, labor: 0, margin: 0 };
+      cur.jobs += 1;
+      cur.minutes += mins;
+      cur.billed += billed;
+      cur.labor += labor;
+      cur.margin += margin;
+      map.set(key, cur);
+    };
+
+    for (const r of computed.rows) {
+      const key = jobKey(r.jobType, r.jobId);
+      const perUser = jobUserMinutes[key] || {};
+      const totalJobMinutesFromIntervals = Object.values(perUser).reduce((sum, m) => sum + (m || 0), 0) || 0;
+
+      const minutesForBreakdown =
+        employeeFilter !== 'all'
+          ? (perUser[employeeFilter] || 0)
+          : (totalJobMinutesFromIntervals || (r.actualMinutes ?? 0));
+
+      if (minutesForBreakdown <= 0) continue;
+
+      const type = r.subType || 'Unspecified';
+
+      const billed =
+        includeBillingTotals && r.billedAmount != null
+          ? (employeeFilter !== 'all' && totalJobMinutesFromIntervals > 0
+              ? r.billedAmount * (minutesForBreakdown / totalJobMinutesFromIntervals)
+              : r.billedAmount)
+          : 0;
+
+      const labor =
+        includeLaborCost
+          ? (employeeFilter !== 'all'
+              ? ((minutesForBreakdown / 60) * (hourlyRateByUserId.get(employeeFilter) ?? 0))
+              : (r.laborCost ?? 0))
+          : 0;
+
+      const margin =
+        includeBillingTotals && includeLaborCost
+          ? billed - labor
+          : 0;
+
+      if (r.jobType === 'task') add(taskMap, type, minutesForBreakdown, billed, labor, margin);
+      if (r.jobType === 'shipment') add(shipmentMap, type, minutesForBreakdown, billed, labor, margin);
+    }
+
+    const toSorted = (map: Map<string, Agg>) =>
+      Array.from(map.values())
+        .map((a) => ({
+          ...a,
+          minutes: Math.round(a.minutes),
+          avgMinutes: a.jobs > 0 ? Math.round(a.minutes / a.jobs) : 0,
+        }))
+        .sort((a, b) => (b.minutes || 0) - (a.minutes || 0));
+
+    return {
+      taskTypes: toSorted(taskMap),
+      shipmentTypes: toSorted(shipmentMap),
+    };
+  }, [
+    computed.rows,
+    jobUserMinutes,
+    employeeFilter,
+    includeBillingTotals,
+    includeLaborCost,
+    hourlyRateByUserId,
+  ]);
+
+  const overviewByJobType = useMemo(() => {
+    const base: Record<string, { jobType: string; jobs: number; actual: number; estimated: number; billed: number; labor: number; margin: number }> = {};
+    for (const r of computed.rows) {
+      const jt = r.jobType;
+      if (!base[jt]) base[jt] = { jobType: jt, jobs: 0, actual: 0, estimated: 0, billed: 0, labor: 0, margin: 0 };
+      base[jt].jobs += 1;
+      base[jt].actual += r.actualMinutes ?? 0;
+      base[jt].estimated += r.estimatedMinutes ?? 0;
+      base[jt].billed += r.billedAmount ?? 0;
+      base[jt].labor += r.laborCost ?? 0;
+      base[jt].margin += r.margin ?? 0;
+    }
+    return Object.values(base).sort((a, b) => a.jobType.localeCompare(b.jobType));
+  }, [computed.rows]);
+
+  const exportXlsx = async () => {
+    try {
+      const summarySheet = XLSX.utils.json_to_sheet([{
+        date_from: dateFrom,
+        date_to: dateTo,
+        job_type: jobType,
+        jobs: computed.total,
+        estimated_minutes: computed.totalEstimated,
+        actual_minutes: computed.totalActual,
+        billed_total_usd: includeBillingTotals ? computed.totalBilled : null,
+        labor_cost_usd: includeLaborCost ? computed.totalLaborCost : null,
+        margin_usd: includeBillingTotals && includeLaborCost ? computed.totalMargin : null,
+      }]);
+
+      const jobsSheet = XLSX.utils.json_to_sheet(computed.rows.map(r => ({
+        job_type: r.jobType,
+        sub_type: r.subType,
+        label: r.label,
+        completed_at: r.completedAt,
+        account: r.accountId ? (accountNameById.get(r.accountId) || r.accountId) : null,
+        warehouse: r.warehouseId ? (warehouseNameById.get(r.warehouseId) || r.warehouseId) : null,
+        estimated_minutes: r.estimatedMinutes,
+        actual_minutes: r.actualMinutes,
+        variance_minutes: r.varianceMinutes,
+        billed_usd: includeBillingTotals ? r.billedAmount : null,
+        labor_cost_usd: includeLaborCost ? r.laborCost : null,
+        margin_usd: includeBillingTotals && includeLaborCost ? r.margin : null,
+        url: r.url,
+      })));
+
+      const employeesSheet = XLSX.utils.json_to_sheet(employeesComputed.rows.map(e => ({
+        employee: e.name,
+        jobs: e.jobs,
+        minutes: e.minutes,
+        avg_minutes_per_job: e.avgMinutesPerJob,
+        labor_cost_usd: includeLaborCost ? e.laborCost : null,
+        billed_share_usd: includeBillingTotals ? e.billedShare : null,
+        margin_share_usd: includeBillingTotals && includeLaborCost ? e.marginShare : null,
+      })));
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+      XLSX.utils.book_append_sheet(wb, jobsSheet, 'Jobs');
+      XLSX.utils.book_append_sheet(wb, employeesSheet, 'Employees');
+
+      const fileName = `service_time_${dateFrom}_to_${dateTo}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast({ title: 'Exported', description: fileName });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Export failed',
+        description: err?.message || 'Unable to export report',
+      });
+    }
+  };
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MaterialIcon name="schedule" size="sm" />
-            Service Time Report
-          </CardTitle>
-          <CardDescription>
-            Estimated vs actual service time across Tasks, Shipments, and Stocktakes.
-          </CardDescription>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <MaterialIcon name="schedule" size="sm" />
+                Service Time
+              </CardTitle>
+              <CardDescription>
+                Estimated vs actual time, labor cost, and billing totals for completed work.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={computed.rows.length === 0}>
+                    <MaterialIcon name="download" size="sm" className="mr-2" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void exportXlsx()}>
+                    Export Excel (.xlsx)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+                <MaterialIcon name="refresh" size="sm" className={loading ? 'animate-spin mr-2' : 'mr-2'} />
+                Refresh
+              </Button>
+            </div>
+          </div>
         </CardHeader>
+
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-6">
             <div className="space-y-1.5">
               <Label>Date from</Label>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
@@ -381,6 +917,7 @@ export function ServiceTimeTab() {
               <Label>Date to</Label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             </div>
+
             <div className="space-y-1.5">
               <Label>Job type</Label>
               <Select value={jobType} onValueChange={(v) => setJobType(v as JobTypeFilter)}>
@@ -395,15 +932,84 @@ export function ServiceTimeTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end gap-2 flex-wrap">
-              <div className="flex items-center gap-2 mr-2">
+
+            <div className="space-y-1.5">
+              <Label>Account</Label>
+              <Select value={accountFilter} onValueChange={setAccountFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All accounts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {(accounts || []).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.account_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Warehouse</Label>
+              <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All warehouses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {(warehouses || []).map((w) => (
+                    <SelectItem key={w.id} value={w.id}>
+                      {w.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Employee</Label>
+              <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={employeeOptions.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All employees" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {employeeOptions.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-3 space-y-1.5">
+              <Label>Search</Label>
+              <Input
+                placeholder="Search jobs (title / shipment # / id)…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="md:col-span-3 flex items-end gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
                 <Switch checked={includeBillingTotals} onCheckedChange={setIncludeBillingTotals} />
-                <span className="text-sm text-muted-foreground">Include billing totals</span>
+                <span className="text-sm text-muted-foreground">Billing totals</span>
               </div>
-              <Button variant="outline" onClick={fetchData} disabled={loading}>
-                <MaterialIcon name="refresh" size="sm" className={loading ? 'animate-spin mr-2' : 'mr-2'} />
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                <Switch checked={includeLaborCost} onCheckedChange={setIncludeLaborCost} />
+                <span className="text-sm text-muted-foreground">Labor cost</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={onlyWithEstimate} onCheckedChange={setOnlyWithEstimate} />
+                <span className="text-sm text-muted-foreground">Only w/ estimate</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={onlyWithActual} onCheckedChange={setOnlyWithActual} />
+                <span className="text-sm text-muted-foreground">Only w/ actual</span>
+              </div>
             </div>
           </div>
 
@@ -412,111 +1018,483 @@ export function ServiceTimeTab() {
               Jobs: {computed.total}
             </Badge>
             <Badge variant="secondary" className="tabular-nums">
-              Est Total: {formatMinutesShort(computed.totalEstimated)}
+              Est: {formatMinutesShort(computed.totalEstimated)}
             </Badge>
             <Badge variant="secondary" className="tabular-nums">
-              Actual Total: {formatMinutesShort(computed.totalActual)}
+              Actual: {formatMinutesShort(computed.totalActual)}
             </Badge>
             {includeBillingTotals && (
               <Badge variant="secondary" className="tabular-nums">
-                Billed Total: {formatUsd(computed.totalBilled)}
+                Billed: {formatUsd(computed.totalBilled)}
+              </Badge>
+            )}
+            {includeLaborCost && (
+              <Badge variant="secondary" className="tabular-nums">
+                Labor: {formatUsd(computed.totalLaborCost)}
+              </Badge>
+            )}
+            {includeBillingTotals && includeLaborCost && (
+              <Badge variant="outline" className="tabular-nums">
+                Margin: {formatUsd(computed.totalMargin)}
               </Badge>
             )}
             {computed.delta != null && (
               <Badge variant="outline" className="tabular-nums">
-                Delta: {computed.delta >= 0 ? '+' : '-'}{formatMinutesShort(Math.abs(computed.delta))}
+                Variance: {computed.delta >= 0 ? '+' : '-'}{formatMinutesShort(Math.abs(computed.delta))}
               </Badge>
             )}
-            <Badge variant="outline" className="tabular-nums">
-              With Est: {computed.withEstimate}
-            </Badge>
-            <Badge variant="outline" className="tabular-nums">
-              With Actual: {computed.withActual}
-            </Badge>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Jobs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead role="button" onClick={() => handleSort('job_type')} className="whitespace-nowrap">
-                  Type <SortIcon field="job_type" />
-                </TableHead>
-                <TableHead>Job</TableHead>
-                <TableHead role="button" onClick={() => handleSort('completed_at')} className="whitespace-nowrap">
-                  Completed <SortIcon field="completed_at" />
-                </TableHead>
-                <TableHead role="button" onClick={() => handleSort('estimated')} className="whitespace-nowrap">
-                  Est <SortIcon field="estimated" />
-                </TableHead>
-                <TableHead role="button" onClick={() => handleSort('actual')} className="whitespace-nowrap">
-                  Actual <SortIcon field="actual" />
-                </TableHead>
-                <TableHead role="button" onClick={() => handleSort('variance')} className="whitespace-nowrap">
-                  Variance <SortIcon field="variance" />
-                </TableHead>
-                {includeBillingTotals && (
-                  <TableHead className="whitespace-nowrap text-right">Billed</TableHead>
-                )}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {computed.rows.map((r) => (
-                <TableRow key={`${r.jobType}:${r.jobId}`} className="hover:bg-muted/40">
-                  <TableCell className="capitalize">{r.jobType}</TableCell>
-                  <TableCell className="min-w-0">
-                    <div className="truncate font-medium">{r.label}</div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {r.completedAt ? formatDateTimeShort(r.completedAt) : '-'}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums">
-                    {r.estimatedMinutes != null && r.estimatedMinutes > 0 ? formatMinutesShort(r.estimatedMinutes) : '-'}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums">
-                    {r.actualMinutes != null && r.actualMinutes > 0 ? formatMinutesShort(r.actualMinutes) : '-'}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums">
-                    {r.varianceMinutes != null ? (
-                      <span className={r.varianceMinutes > 0 ? 'text-red-500' : r.varianceMinutes < 0 ? 'text-green-500' : ''}>
-                        {r.varianceMinutes > 0 ? '+' : r.varianceMinutes < 0 ? '-' : ''}{formatMinutesShort(Math.abs(r.varianceMinutes))}
-                      </span>
-                    ) : (
-                      '-'
-                    )}
-                  </TableCell>
-                  {includeBillingTotals && (
-                    <TableCell className="whitespace-nowrap tabular-nums text-right">
-                      {formatUsd(r.billedAmount)}
-                    </TableCell>
-                  )}
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => navigate(r.url)}>
-                      Open
-                      <MaterialIcon name="chevron_right" size="sm" className="ml-1" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ViewTab)}>
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="overview" className="gap-2">
+            <MaterialIcon name="insights" size="sm" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="jobs" className="gap-2">
+            <MaterialIcon name="list" size="sm" />
+            Jobs
+          </TabsTrigger>
+          <TabsTrigger value="employees" className="gap-2">
+            <MaterialIcon name="group" size="sm" />
+            Employees
+          </TabsTrigger>
+        </TabsList>
 
-              {computed.rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={includeBillingTotals ? 8 : 7} className="text-center text-muted-foreground py-10">
-                    {loading ? 'Loading…' : 'No jobs found for this date range.'}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        <TabsContent value="overview" className="mt-4 space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Actual minutes by job type</CardTitle>
+                <CardDescription>Totals for the selected filters</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[280px]">
+                {overviewByJobType.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={overviewByJobType}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="jobType" tickFormatter={(v) => String(v).toUpperCase()} />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="actual" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    No data
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {includeBillingTotals && includeLaborCost ? 'Billed vs labor cost' : 'Estimated vs actual'}
+                </CardTitle>
+                <CardDescription>Grouped by job type</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[280px]">
+                {overviewByJobType.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={overviewByJobType}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="jobType" tickFormatter={(v) => String(v).toUpperCase()} />
+                      <YAxis />
+                      <Tooltip />
+                      {includeBillingTotals && includeLaborCost ? (
+                        <>
+                          <Bar dataKey="billed" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="labor" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} />
+                        </>
+                      ) : (
+                        <>
+                          <Bar dataKey="estimated" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="actual" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                        </>
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    No data
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="jobs" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Jobs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead role="button" onClick={() => handleSort('job_type')} className="whitespace-nowrap">
+                      Type <SortIcon field="job_type" />
+                    </TableHead>
+                    <TableHead>Job</TableHead>
+                    <TableHead className="whitespace-nowrap">Account</TableHead>
+                    <TableHead className="whitespace-nowrap">Warehouse</TableHead>
+                    <TableHead role="button" onClick={() => handleSort('completed_at')} className="whitespace-nowrap">
+                      Completed <SortIcon field="completed_at" />
+                    </TableHead>
+                    <TableHead role="button" onClick={() => handleSort('estimated')} className="whitespace-nowrap">
+                      Est <SortIcon field="estimated" />
+                    </TableHead>
+                    <TableHead role="button" onClick={() => handleSort('actual')} className="whitespace-nowrap">
+                      Actual <SortIcon field="actual" />
+                    </TableHead>
+                    <TableHead role="button" onClick={() => handleSort('variance')} className="whitespace-nowrap">
+                      Variance <SortIcon field="variance" />
+                    </TableHead>
+                    {includeBillingTotals && (
+                      <TableHead role="button" onClick={() => handleSort('billed')} className="whitespace-nowrap text-right">
+                        Billed <SortIcon field="billed" />
+                      </TableHead>
+                    )}
+                    {includeLaborCost && (
+                      <TableHead role="button" onClick={() => handleSort('labor_cost')} className="whitespace-nowrap text-right">
+                        Labor <SortIcon field="labor_cost" />
+                      </TableHead>
+                    )}
+                    {includeBillingTotals && includeLaborCost && (
+                      <TableHead role="button" onClick={() => handleSort('margin')} className="whitespace-nowrap text-right">
+                        Margin <SortIcon field="margin" />
+                      </TableHead>
+                    )}
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {computed.rows.map((r) => (
+                    <TableRow key={`${r.jobType}:${r.jobId}`} className="hover:bg-muted/40">
+                      <TableCell className="capitalize">{r.jobType}</TableCell>
+                      <TableCell className="min-w-0">
+                        <div className="truncate font-medium">{r.label}</div>
+                        {r.subType && (
+                          <div className="truncate text-xs text-muted-foreground">
+                            {r.subType}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {r.accountId ? (accountNameById.get(r.accountId) || '-') : '-'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {r.warehouseId ? (warehouseNameById.get(r.warehouseId) || '-') : '-'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {r.completedAt ? formatDateTimeShort(r.completedAt) : '-'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {r.estimatedMinutes != null && r.estimatedMinutes > 0 ? formatMinutesShort(r.estimatedMinutes) : '-'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {r.actualMinutes != null && r.actualMinutes > 0 ? formatMinutesShort(r.actualMinutes) : '-'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {r.varianceMinutes != null ? (
+                          <span className={r.varianceMinutes > 0 ? 'text-red-500' : r.varianceMinutes < 0 ? 'text-green-500' : ''}>
+                            {r.varianceMinutes > 0 ? '+' : ''}{formatMinutesShort(Math.abs(r.varianceMinutes))}
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      {includeBillingTotals && (
+                        <TableCell className="whitespace-nowrap tabular-nums text-right">
+                          {formatUsd(r.billedAmount)}
+                        </TableCell>
+                      )}
+                      {includeLaborCost && (
+                        <TableCell className="whitespace-nowrap tabular-nums text-right">
+                          {formatUsd(r.laborCost)}
+                        </TableCell>
+                      )}
+                      {includeBillingTotals && includeLaborCost && (
+                        <TableCell className="whitespace-nowrap tabular-nums text-right">
+                          {formatUsd(r.margin)}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => navigate(r.url)}>
+                          Open
+                          <MaterialIcon name="chevron_right" size="sm" className="ml-1" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                  {computed.rows.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={
+                          9
+                          + (includeBillingTotals ? 1 : 0)
+                          + (includeLaborCost ? 1 : 0)
+                          + (includeBillingTotals && includeLaborCost ? 1 : 0)
+                        }
+                        className="text-center text-muted-foreground py-10"
+                      >
+                        {loading ? 'Loading…' : 'No jobs found for this date range.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="employees" className="mt-4 space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Top employees (minutes)</CardTitle>
+                <CardDescription>Based on job_time_intervals for filtered jobs</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[280px]">
+                {employeesComputed.rows.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={employeesComputed.rows.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" hide />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="minutes" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    No interval data (enable Labor cost or select Employees after refresh)
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Summary</CardTitle>
+                <CardDescription>Employee totals for the current filter set</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary" className="tabular-nums">
+                    Minutes: {formatMinutesShort(employeesComputed.totalMinutes)}
+                  </Badge>
+                  {includeLaborCost && (
+                    <Badge variant="secondary" className="tabular-nums">
+                      Labor: {formatUsd(employeesComputed.totalLaborCost)}
+                    </Badge>
+                  )}
+                  {includeBillingTotals && (
+                    <Badge variant="secondary" className="tabular-nums">
+                      Billed (share): {formatUsd(employeesComputed.totalBilledShare)}
+                    </Badge>
+                  )}
+                  {includeBillingTotals && includeLaborCost && (
+                    <Badge variant="outline" className="tabular-nums">
+                      Margin (share): {formatUsd(employeesComputed.totalMarginShare)}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Billed share is prorated by minutes per job (approximation).
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Employees</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead className="text-right">Jobs</TableHead>
+                    <TableHead className="text-right">Minutes</TableHead>
+                    <TableHead className="text-right">Avg / Job</TableHead>
+                    {includeLaborCost && <TableHead className="text-right">Labor</TableHead>}
+                    {includeBillingTotals && <TableHead className="text-right">Billed (share)</TableHead>}
+                    {includeBillingTotals && includeLaborCost && <TableHead className="text-right">Margin (share)</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employeesComputed.rows.map((e) => (
+                    <TableRow key={e.userId} className="hover:bg-muted/40">
+                      <TableCell className="font-medium">{e.name}</TableCell>
+                      <TableCell className="text-right tabular-nums">{e.jobs}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMinutesShort(e.minutes)}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {e.avgMinutesPerJob != null ? formatMinutesShort(e.avgMinutesPerJob) : '-'}
+                      </TableCell>
+                      {includeLaborCost && (
+                        <TableCell className="text-right tabular-nums">{formatUsd(e.laborCost)}</TableCell>
+                      )}
+                      {includeBillingTotals && (
+                        <TableCell className="text-right tabular-nums">{formatUsd(e.billedShare)}</TableCell>
+                      )}
+                      {includeBillingTotals && includeLaborCost && (
+                        <TableCell className="text-right tabular-nums">{formatUsd(e.marginShare)}</TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+
+                  {employeesComputed.rows.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={
+                          4
+                          + (includeLaborCost ? 1 : 0)
+                          + (includeBillingTotals ? 1 : 0)
+                          + (includeBillingTotals && includeLaborCost ? 1 : 0)
+                        }
+                        className="text-center text-muted-foreground py-10"
+                      >
+                        {loading ? 'Loading…' : 'No employee data for this filter set.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Task types</CardTitle>
+                <CardDescription>
+                  {employeeFilter !== 'all'
+                    ? `Based on minutes worked by ${usersById[employeeFilter]?.name || 'selected employee'}.`
+                    : 'Based on total minutes across all employees.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Jobs</TableHead>
+                      <TableHead className="text-right">Minutes</TableHead>
+                      <TableHead className="text-right">Avg / Job</TableHead>
+                      {includeBillingTotals && <TableHead className="text-right">Billed</TableHead>}
+                      {includeLaborCost && <TableHead className="text-right">Labor</TableHead>}
+                      {includeBillingTotals && includeLaborCost && <TableHead className="text-right">Margin</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {typeBreakdowns.taskTypes.map((t) => (
+                      <TableRow key={`task:${t.type}`} className="hover:bg-muted/40">
+                        <TableCell className="font-medium">{t.type}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.jobs}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.minutes)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.avgMinutes)}</TableCell>
+                        {includeBillingTotals && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.billed)}</TableCell>
+                        )}
+                        {includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.labor)}</TableCell>
+                        )}
+                        {includeBillingTotals && includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.margin)}</TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+
+                    {typeBreakdowns.taskTypes.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={
+                            4
+                            + (includeBillingTotals ? 1 : 0)
+                            + (includeLaborCost ? 1 : 0)
+                            + (includeBillingTotals && includeLaborCost ? 1 : 0)
+                          }
+                          className="text-center text-muted-foreground py-10"
+                        >
+                          No task data in this filter set.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Shipment types</CardTitle>
+                <CardDescription>
+                  {employeeFilter !== 'all'
+                    ? `Based on minutes worked by ${usersById[employeeFilter]?.name || 'selected employee'}.`
+                    : 'Based on total minutes across all employees.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Jobs</TableHead>
+                      <TableHead className="text-right">Minutes</TableHead>
+                      <TableHead className="text-right">Avg / Job</TableHead>
+                      {includeBillingTotals && <TableHead className="text-right">Billed</TableHead>}
+                      {includeLaborCost && <TableHead className="text-right">Labor</TableHead>}
+                      {includeBillingTotals && includeLaborCost && <TableHead className="text-right">Margin</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {typeBreakdowns.shipmentTypes.map((t) => (
+                      <TableRow key={`shipment:${t.type}`} className="hover:bg-muted/40">
+                        <TableCell className="font-medium">{t.type}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.jobs}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.minutes)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.avgMinutes)}</TableCell>
+                        {includeBillingTotals && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.billed)}</TableCell>
+                        )}
+                        {includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.labor)}</TableCell>
+                        )}
+                        {includeBillingTotals && includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.margin)}</TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+
+                    {typeBreakdowns.shipmentTypes.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={
+                            4
+                            + (includeBillingTotals ? 1 : 0)
+                            + (includeLaborCost ? 1 : 0)
+                            + (includeBillingTotals && includeLaborCost ? 1 : 0)
+                          }
+                          className="text-center text-muted-foreground py-10"
+                        >
+                          No shipment data in this filter set.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

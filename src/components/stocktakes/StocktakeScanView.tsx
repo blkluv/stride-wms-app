@@ -405,6 +405,7 @@ export default function StocktakeScanView() {
   const lookupItem = async (input: string) => {
     const payload = parseScanPayload(input);
     if (!payload) return null;
+    if (payload.type === 'location') return null;
 
     let query = supabase
       .from('items')
@@ -464,6 +465,58 @@ export default function StocktakeScanView() {
     const input = data.trim();
 
     try {
+      const payload = parseScanPayload(input);
+      if (payload?.type === 'location') {
+        const code = (payload.code || payload.id || input).trim();
+
+        // Optional shortcut: open location detail (org setting)
+        if (orgPrefs.scan_shortcuts_open_location_enabled) {
+          const ok = window.confirm(
+            `Scanned location ${code}.\n\nOpen location details? (This will leave stocktake scanning.)`
+          );
+          if (ok) {
+            const inMemory = locations.find((l) => l.code.toLowerCase() === code.toLowerCase());
+            if (inMemory) {
+              navigate(`/locations/${inMemory.id}`);
+              return;
+            }
+
+            // Fallback: query DB by code (case-insensitive exact match)
+            const escaped = code.replace(/([\\%_])/g, '\\$1');
+            const { data: dbLoc } = await supabase
+              .from('locations')
+              .select('id')
+              .ilike('code', escaped)
+              .is('deleted_at', null)
+              .maybeSingle();
+
+            if (dbLoc?.id) {
+              navigate(`/locations/${dbLoc.id}`);
+              return;
+            }
+
+            hapticError();
+            setLastScan({
+              itemCode: code,
+              result: 'not_found',
+              message: 'Location not found in system.',
+              autoFixed: false,
+            });
+            return;
+          }
+        }
+
+        // Default behavior: explain this is not an item scan
+        hapticError();
+        setLastScan({
+          itemCode: code,
+          result: 'not_found',
+          message: 'This is a location barcode. Scan an item QR/barcode for this stocktake.',
+          autoFixed: false,
+        });
+        return;
+      }
+
       if (orgPrefs.scan_shortcuts_open_container_enabled) {
         const scannedContainer = await lookupContainer(input);
         if (scannedContainer) {
@@ -534,7 +587,16 @@ export default function StocktakeScanView() {
     } finally {
       setProcessing(false);
     }
-  }, [processing, activeLocationId, id, recordScan, navigate, orgPrefs.scan_shortcuts_open_container_enabled]);
+  }, [
+    processing,
+    activeLocationId,
+    id,
+    recordScan,
+    navigate,
+    locations,
+    orgPrefs.scan_shortcuts_open_container_enabled,
+    orgPrefs.scan_shortcuts_open_location_enabled,
+  ]);
 
   const handleManualSubmit = async () => {
     if (!manualItemCode.trim()) return;

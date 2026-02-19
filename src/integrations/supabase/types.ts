@@ -14380,6 +14380,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          group_label: string | null
           height: number
           id: string
           label: string | null
@@ -14395,6 +14396,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          group_label?: string | null
           height?: number
           id?: string
           label?: string | null
@@ -14410,6 +14412,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          group_label?: string | null
           height?: number
           id?: string
           label?: string | null
