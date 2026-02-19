@@ -6471,6 +6471,57 @@ export type Database = {
           },
         ]
       }
+      job_time_intervals: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          ended_reason: string | null
+          id: string
+          job_id: string
+          job_type: string
+          started_at: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          ended_reason?: string | null
+          id?: string
+          job_id: string
+          job_type: string
+          started_at?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          ended_reason?: string | null
+          id?: string
+          job_id?: string
+          job_type?: string
+          started_at?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_time_intervals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_time_intervals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labor_settings: {
         Row: {
           created_at: string
@@ -15897,6 +15948,18 @@ export type Database = {
       }
       rpc_set_my_inbound_email_settings: {
         Args: { p_forward_to_email: string; p_is_enabled?: boolean }
+        Returns: Json
+      }
+      rpc_timer_end_job: {
+        Args: { p_job_id: string; p_job_type: string; p_reason?: string }
+        Returns: Json
+      }
+      rpc_timer_start_job: {
+        Args: {
+          p_job_id: string
+          p_job_type: string
+          p_pause_existing?: boolean
+        }
         Returns: Json
       }
       rpc_upsert_subscription_invoice_from_stripe: {
