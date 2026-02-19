@@ -55,6 +55,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useTasks } from '@/hooks/useTasks';
 import { useJobTimer } from '@/hooks/useJobTimer';
 import { JobTimerWidgetFromState } from '@/components/time/JobTimerWidget';
+import { ServiceTimeAdjustmentDialog } from '@/components/time/ServiceTimeAdjustmentDialog';
 import { format } from 'date-fns';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
@@ -234,6 +235,8 @@ export default function TaskDetailPage() {
   const [selectedResumeTaskId, setSelectedResumeTaskId] = useState<string>('');
   const [resumeLoading, setResumeLoading] = useState(false);
 
+  const [adjustTimeOpen, setAdjustTimeOpen] = useState(false);
+
   const loadPausedTasksForResume = useCallback(async (excludeTaskId?: string) => {
     if (!profile?.tenant_id || !profile?.id) return [];
 
@@ -300,6 +303,7 @@ export default function TaskDetailPage() {
 
   // Only managers and admins can see billing
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager') || hasRole('admin_dev');
+  const canAdjustServiceTime = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
   // Only admins can add credits
   const canAddCredit = hasRole('admin') || hasRole('tenant_admin');
 
@@ -1288,41 +1292,66 @@ export default function TaskDetailPage() {
               if (!show) return null;
 
               return (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <MaterialIcon name="schedule" size="sm" />
-                      Service Time
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {estimatedMinutes != null && estimatedMinutes > 0 && (
-                        <Badge variant="secondary" className="text-xs">
-                          Est: {formatMinutesShort(estimatedMinutes)}
-                        </Badge>
-                      )}
-                      {actualLaborMinutes != null && actualLaborMinutes > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          Actual: {formatMinutesShort(actualLaborMinutes)}
-                        </Badge>
-                      )}
-                      {actualCycleMinutes != null &&
-                        actualLaborMinutes != null &&
-                        actualCycleMinutes > 0 &&
-                        actualCycleMinutes !== actualLaborMinutes && (
-                          <Badge variant="outline" className="text-xs">
-                            Cycle: {formatMinutesShort(actualCycleMinutes)}
+                <>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <MaterialIcon name="schedule" size="sm" />
+                          Service Time
+                        </CardTitle>
+                        {canAdjustServiceTime && task.status !== 'in_progress' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setAdjustTimeOpen(true)}
+                          >
+                            Adjust
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {estimatedMinutes != null && estimatedMinutes > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            Est: {formatMinutesShort(estimatedMinutes)}
                           </Badge>
                         )}
-                      {task.status === 'in_progress' && !taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
-                        <Badge variant="outline" className="text-xs">
-                          Paused
-                        </Badge>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                        {actualLaborMinutes != null && actualLaborMinutes > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            Actual: {formatMinutesShort(actualLaborMinutes)}
+                          </Badge>
+                        )}
+                        {actualCycleMinutes != null &&
+                          actualLaborMinutes != null &&
+                          actualCycleMinutes > 0 &&
+                          actualCycleMinutes !== actualLaborMinutes && (
+                            <Badge variant="outline" className="text-xs">
+                              Cycle: {formatMinutesShort(actualCycleMinutes)}
+                            </Badge>
+                          )}
+                        {task.status === 'in_progress' && !taskTimer.isActiveForMe && taskTimer.isPausedForMe && (
+                          <Badge variant="outline" className="text-xs">
+                            Paused
+                          </Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <ServiceTimeAdjustmentDialog
+                    open={adjustTimeOpen}
+                    onOpenChange={setAdjustTimeOpen}
+                    jobType="task"
+                    jobId={id}
+                    currentMinutes={actualLaborMinutes ?? null}
+                    onSaved={() => {
+                      fetchTask();
+                    }}
+                  />
+                </>
               );
             })()}
 

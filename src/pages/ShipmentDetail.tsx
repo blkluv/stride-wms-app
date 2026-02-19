@@ -74,6 +74,7 @@ import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
+import { ServiceTimeAdjustmentDialog } from '@/components/time/ServiceTimeAdjustmentDialog';
 
 // ============================================
 // TYPES
@@ -222,6 +223,7 @@ export default function ShipmentDetail() {
 
   // Only managers and admins can see billing fields
   const canSeeBilling = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
+  const canAdjustServiceTime = hasRole('admin') || hasRole('tenant_admin') || hasRole('manager');
   // Only admins can add credits
   const canAddCredit = hasRole('admin') || hasRole('tenant_admin');
 
@@ -237,6 +239,7 @@ export default function ShipmentDetail() {
   const [createdItemIds, setCreatedItemIds] = useState<string[]>([]);
   const [createdItemsForLabels, setCreatedItemsForLabels] = useState<ItemLabelData[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [adjustTimeOpen, setAdjustTimeOpen] = useState(false);
   const [editCarrier, setEditCarrier] = useState('');
   const [editTrackingNumber, setEditTrackingNumber] = useState('');
   const [editPoNumber, setEditPoNumber] = useState('');
@@ -2104,6 +2107,18 @@ export default function ShipmentDetail() {
               <span className="hidden sm:inline">{isEditing ? 'Cancel Edit' : 'Edit'}</span>
               <span className="sm:hidden">{isEditing ? 'Cancel' : 'Edit'}</span>
             </Button>
+            {canAdjustServiceTime && actualLaborMinutes > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAdjustTimeOpen(true)}
+                title="Adjust actual service time (manager/admin)"
+              >
+                <MaterialIcon name="schedule" size="sm" className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Adjust Time</span>
+                <span className="sm:hidden">Time</span>
+              </Button>
+            )}
             {canReceive && !isReceiving && hasPermission(PERMISSIONS.SHIPMENTS_RECEIVE) && (
               <Button size="sm" onClick={startSession} disabled={sessionLoading}>
                 <MaterialIcon name="play_arrow" size="sm" className="mr-1 sm:mr-2" />
@@ -3552,6 +3567,18 @@ export default function ShipmentDetail() {
         tenantId={profile?.tenant_id}
         classes={classes}
         onSuccess={() => {
+          fetchShipment();
+        }}
+      />
+
+      {/* Service time adjustment (manager/admin) */}
+      <ServiceTimeAdjustmentDialog
+        open={adjustTimeOpen}
+        onOpenChange={setAdjustTimeOpen}
+        jobType="shipment"
+        jobId={shipment.id}
+        currentMinutes={actualLaborMinutes > 0 ? actualLaborMinutes : null}
+        onSaved={() => {
           fetchShipment();
         }}
       />

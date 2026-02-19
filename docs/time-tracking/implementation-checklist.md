@@ -88,9 +88,9 @@ Legend:
 
 ## Manager/admin adjustments
 
-- [ ] Managers/admins can edit actual service time (Q35/Q36) (with audit safety)
-  - [ ] Ensure “total service time” remains accurate after edits
-  - [ ] Store edit in job activity history / audit trail
+- [x] Managers/admins can edit actual service time (Q35/Q36) (with audit safety)
+  - [x] Ensure “total service time” remains accurate after edits (updates `duration_minutes` / `metadata.service_time.actual_*`)
+  - [x] Store edit in job activity history / audit trail (`*_activity` via `logActivity`)
 
 ---
 
