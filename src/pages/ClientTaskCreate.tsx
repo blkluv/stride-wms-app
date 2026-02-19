@@ -5,6 +5,7 @@ import { useClientPortalContext, useClientItems } from '@/hooks/useClientPortal'
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { queueSplitManualReviewAlert, queueSplitRequiredAlert } from '@/lib/alertQueue';
+import { markdownToEmailHtml } from '@/lib/emailTemplates/brandedEmailBuilder';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -389,10 +390,30 @@ export default function ClientTaskCreate() {
           if (metaErr) console.warn('[ClientTaskCreate] split metadata update failed:', metaErr);
         } else {
           // Manual review flow: no split task, mark the job Pending review + alert internal staff
-          const first = splitCandidates[0];
-          const itemRow = (selectedItems as any[]).find((it: any) => it.id === first.item_id);
-          const itemCode = itemRow?.item_code || first.item_id;
-          const reviewReason = `Client requested ${first.requested} of ${first.available} units from grouped item ${itemCode}.`;
+          const splitItemsForMeta = splitCandidates.map((c) => {
+            const itemRow = (selectedItems as any[]).find((it: any) => it.id === c.item_id);
+            const itemCode = itemRow?.item_code || c.item_id;
+            return {
+              parent_item_id: c.item_id,
+              parent_item_code: itemCode,
+              grouped_qty: c.available,
+              keep_qty: c.requested,
+              leftover_qty: c.leftover,
+              request_notes: requestNotes,
+              requested_by_name: userName,
+              requested_by_email: portalUser.email,
+            };
+          });
+
+          const first = splitItemsForMeta[0];
+          const itemCode = first?.parent_item_code || first?.parent_item_id || splitCandidates[0]?.item_id;
+
+          const reviewReason =
+            splitItemsForMeta.length <= 1
+              ? `Client requested ${first.keep_qty} of ${first.grouped_qty} units from grouped item ${itemCode}.`
+              : `Client requested partial quantities from ${splitItemsForMeta.length} grouped items: ${splitItemsForMeta
+                  .map((c) => `${c.parent_item_code} (${c.keep_qty} of ${c.grouped_qty})`)
+                  .join('; ')}.`;
 
           const existingMeta = task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
           const { error: metaErr } = await (supabase.from('tasks') as any)
@@ -405,22 +426,41 @@ export default function ClientTaskCreate() {
                   origin_entity_type: 'task',
                   origin_entity_id: task.id,
                   origin_entity_number: title,
-                  parent_item_id: first.item_id,
-                  parent_item_code: itemCode,
-                  grouped_qty: first.available,
-                  keep_qty: first.requested,
-                  leftover_qty: first.leftover,
-                  request_notes: requestNotes,
-                  requested_by_name: userName,
-                  requested_by_email: portalUser.email,
+                  ...(first as any),
                 },
+                split_workflow_items: splitItemsForMeta,
               },
             })
             .eq('id', task.id)
             .eq('tenant_id', portalUser.tenant_id);
           if (metaErr) console.warn('[ClientTaskCreate] pending review metadata update failed:', metaErr);
 
-          void queueSplitManualReviewAlert(portalUser.tenant_id, 'task', task.id, itemCode);
+          const manualReviewBodyText = [
+            'A client requested a partial quantity from one or more grouped items, but automated split tasks are disabled for this tenant.',
+            'This task is marked Pending review.',
+            '',
+            'Requested grouped items:',
+            ...splitItemsForMeta.map(
+              (c) =>
+                `- ${c.parent_item_code}: requested ${c.keep_qty} of ${c.grouped_qty} (leftover ${c.leftover_qty})`
+            ),
+            '',
+            `Origin Job: Task ${title || task.id}`,
+            requestNotes ? `Notes: ${requestNotes}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          const manualReviewBodyHtml = `<div style="font-family: ui-sans-serif, system-ui; font-size: 14px;">${markdownToEmailHtml(manualReviewBodyText)}</div>`;
+
+          void queueSplitManualReviewAlert(
+            portalUser.tenant_id,
+            'task',
+            task.id,
+            itemCode,
+            manualReviewBodyText,
+            manualReviewBodyHtml
+          );
         }
       }
 
