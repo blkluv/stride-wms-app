@@ -23,6 +23,21 @@ import { AppleBanner } from '@/components/ui/AppleBanner';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DndContext,
   closestCenter,
@@ -175,6 +190,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { getUserStatus } = usePresence();
   const location = useLocation();
   const navigate = useNavigate();
+  const {
+    warehouses: availableWarehouses,
+    selectedWarehouseId,
+    setSelectedWarehouseId,
+    loading: warehousesLoading,
+    needsWarehouseSelection,
+  } = useSelectedWarehouse();
 
   // Swipe to close sidebar on mobile - with finger-following physics
   const touchStartX = useRef<number | null>(null);
@@ -425,8 +447,54 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     });
   }, [filteredNavItems, navOrder]);
 
+  const showWarehousePicker =
+    needsWarehouseSelection &&
+    !warehousesLoading &&
+    !selectedWarehouseId &&
+    availableWarehouses.length > 1;
+
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col">
+      <Dialog open={showWarehousePicker} onOpenChange={() => { /* controlled */ }}>
+        <DialogContent
+          className="[&_.stoplight-close]:hidden"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Select your default warehouse</DialogTitle>
+            <DialogDescription>
+              Choose a warehouse to continue. This will be saved as your default across devices.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Select
+              value={selectedWarehouseId ?? ''}
+              onValueChange={(v) => {
+                if (!v) return;
+                setSelectedWarehouseId(v);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableWarehouses.map((wh) => (
+                  <SelectItem key={wh.id} value={wh.id}>
+                    {wh.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="text-xs text-muted-foreground">
+              Tip: You can switch warehouses later using the selector on supported pages.
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
