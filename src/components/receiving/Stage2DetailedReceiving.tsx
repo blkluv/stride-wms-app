@@ -47,6 +47,9 @@ import { queueUnidentifiedIntakeCompletedAlert } from '@/lib/alertQueue';
 import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
 import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
 import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
+import { timerEndJob } from '@/lib/time/timerClient';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
@@ -1057,10 +1060,12 @@ export function Stage2DetailedReceiving({
 
       // Stop Stage 2 timer interval (best-effort)
       try {
-        await supabase.rpc('rpc_timer_end_job', {
-          p_job_type: 'shipment',
-          p_job_id: shipmentId,
-          p_reason: 'complete',
+        await timerEndJob({
+          tenantId: profile?.tenant_id,
+          userId: profile?.id,
+          jobType: 'shipment',
+          jobId: shipmentId,
+          reason: 'complete',
         });
       } catch (timerErr) {
         console.warn('[Stage2] Failed to end timer interval:', timerErr);
@@ -1075,13 +1080,6 @@ export function Stage2DetailedReceiving({
           .eq('tenant_id', profile.tenant_id)
           .eq('job_type', 'shipment')
           .eq('job_id', shipmentId);
-
-        const minutesBetweenIso = (startIso: string, endIso: string) => {
-          const start = new Date(startIso).getTime();
-          const end = new Date(endIso).getTime();
-          if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-          return (end - start) / 60000;
-        };
 
         const laborMinutes = Math.round(
           (rows || []).reduce((sum: number, r: any) => {
@@ -1171,6 +1169,7 @@ export function Stage2DetailedReceiving({
       });
       setShowCompleteDialog(false);
       setShowAdminOverride(false);
+      promptResumePausedTask();
       onComplete();
     } catch (err: any) {
       console.error('[Stage2] complete error:', err);

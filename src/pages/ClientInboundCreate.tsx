@@ -356,27 +356,25 @@ export default function ClientInboundCreate() {
               </div>
 
               {/* Warehouse */}
-              {warehouses.length > 1 && (
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">
-                    Warehouse <span className="text-destructive">*</span>
-                  </label>
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={warehouseId}
-                    onChange={e => {
-                      setWarehouseId(e.target.value);
-                      if (errors.warehouse) setErrors({ ...errors, warehouse: undefined });
-                    }}
-                  >
-                    <option value="">Select warehouse...</option>
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                  {errors.warehouse && <p className="text-sm text-destructive">{errors.warehouse}</p>}
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Warehouse <span className="text-destructive">*</span>
+                </label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={warehouseId}
+                  onChange={e => {
+                    setWarehouseId(e.target.value);
+                    if (errors.warehouse) setErrors({ ...errors, warehouse: undefined });
+                  }}
+                >
+                  <option value="">Select warehouse...</option>
+                  {warehouses.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+                {errors.warehouse && <p className="text-sm text-destructive">{errors.warehouse}</p>}
+              </div>
 
               {/* Sidemark */}
               <div className="space-y-1.5">

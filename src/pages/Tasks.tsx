@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/page-header';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -43,8 +43,9 @@ import { useWarehouses } from '@/hooks/useWarehouses';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import { UnableToCompleteDialog } from '@/components/tasks/UnableToCompleteDialog';
 import { WillCallCompletionDialog } from '@/components/tasks/WillCallCompletionDialog';
@@ -100,6 +101,7 @@ export default function Tasks() {
   const { toast } = useToast();
   const { hasRole, isAdmin } = usePermissions();
   const { warehouses } = useWarehouses();
+  const { selectedWarehouseId } = useSelectedWarehouse();
   const { taskTypes } = useTaskTypes();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -111,6 +113,18 @@ export default function Tasks() {
     taskType: searchParams.get('type') || 'all',
     warehouseId: 'all',
   }));
+
+  // If this tenant only has one warehouse, default the filter to it once.
+  // (Keep the selector visible; user can still switch back to "All" if desired.)
+  const didAutoDefaultWarehouseFilter = useRef(false);
+  useEffect(() => {
+    if (didAutoDefaultWarehouseFilter.current) return;
+    if (warehouses.length !== 1) return;
+    if (filters.warehouseId !== 'all') return;
+
+    didAutoDefaultWarehouseFilter.current = true;
+    setFilters((f) => ({ ...f, warehouseId: selectedWarehouseId || warehouses[0].id }));
+  }, [warehouses, selectedWarehouseId, filters.warehouseId]);
 
   // Sync filters from URL params when they change (e.g. Dashboard tile click)
   // Also auto-open dialog when new=true param is present
@@ -203,23 +217,6 @@ export default function Tasks() {
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [startSwitchLoading, setStartSwitchLoading] = useState(false);
 
-  const resolveActiveJobLabel = async (jobType: string | null | undefined, jobId: string | null | undefined) => {
-    if (!profile?.tenant_id || !jobType || !jobId) return 'another job';
-    if (jobType !== 'task') return `${jobType} job`;
-    try {
-      const { data } = await (supabase.from('tasks') as any)
-        .select('title, task_type')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('id', jobId)
-        .maybeSingle();
-      if (data?.title) return data.title;
-      if (data?.task_type) return `${data.task_type} task`;
-      return 'another task';
-    } catch {
-      return 'another task';
-    }
-  };
-
   const handleStartTaskClick = async (task: Task) => {
     if (!profile?.tenant_id) return;
     setStartSwitchLoading(true);
@@ -232,7 +229,7 @@ export default function Tasks() {
 
       if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
         setStartSwitchTask(task);
-        setActiveJobLabel(await resolveActiveJobLabel(result.active_job_type, result.active_job_id));
+        setActiveJobLabel(await resolveActiveJobLabel(profile?.tenant_id, result.active_job_type, result.active_job_id));
         setStartSwitchOpen(true);
         return;
       }
@@ -455,18 +452,30 @@ export default function Tasks() {
             accentText={isTechnician ? "Tasks" : "Queue"}
             description={isTechnician ? "View and complete your assigned tasks" : "Manage inspections, assemblies, repairs, and other tasks"}
           />
-          {!isTechnician && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate('/billing')}>
-                <span className="mr-2">💲</span>
-                Add Charge
-              </Button>
-              <Button onClick={() => handleCreate()} className="w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refetch}
+              disabled={isRefetching}
+              className="w-full sm:w-auto justify-center"
+              title="Refresh tasks"
+            >
+              <MaterialIcon
+                name={isRefetching ? "sync" : "refresh"}
+                size="sm"
+                className={isRefetching ? "mr-2 animate-spin" : "mr-2"}
+              />
+              Refresh
+            </Button>
+
+            {!isTechnician && (
+              <Button onClick={() => handleCreate()} className="w-full sm:w-auto justify-center">
                 <span className="mr-2">➕</span>
                 Create Task
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -579,9 +588,7 @@ export default function Tasks() {
             </Select>
           </div>
 
-          <Button variant="ghost" size="icon" className="col-span-2 sm:col-span-auto justify-self-start" onClick={refetch} disabled={isRefetching}>
-            <span className={isRefetching ? 'animate-spin inline-block' : ''}>🔄</span>
-          </Button>
+          {/* Refresh moved to header to match Dashboard */}
         </div>
 
         {/* Tasks Table */}

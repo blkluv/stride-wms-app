@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,7 @@ import {
 import { CreateManifestDialog } from '@/components/manifests/CreateManifestDialog';
 import { useManifests, ManifestStatus, CreateManifestData } from '@/hooks/useManifests';
 import { useWarehouses } from '@/hooks/useWarehouses';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
@@ -74,6 +75,19 @@ export default function Manifests() {
 
   const isMobile = useIsMobile();
   const { warehouses } = useWarehouses();
+  const { selectedWarehouseId } = useSelectedWarehouse();
+
+  // If this tenant only has one warehouse, default filters to it once.
+  // (Keep the selector visible; user can still switch back to "All" if desired.)
+  const didAutoDefaultWarehouseFilter = useRef(false);
+  useEffect(() => {
+    if (didAutoDefaultWarehouseFilter.current) return;
+    if (warehouses.length !== 1) return;
+    if (warehouseFilter !== 'all') return;
+
+    didAutoDefaultWarehouseFilter.current = true;
+    setWarehouseFilter(selectedWarehouseId || warehouses[0].id);
+  }, [warehouses, warehouseFilter, selectedWarehouseId]);
   const {
     manifests,
     loading,

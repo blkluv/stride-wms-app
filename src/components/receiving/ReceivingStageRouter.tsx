@@ -33,6 +33,7 @@ import { queueReceivingDiscrepancyAlert, queueShipmentReceivedAlert } from '@/li
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge';
 import { ShipmentNotesSection } from '@/components/shipments/ShipmentNotesSection';
+import { timerEndJob, timerStartJob } from '@/lib/time/timerClient';
 
 interface ShipmentData {
   id: string;
@@ -223,15 +224,16 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
     if (startingStage2) return;
     setStartingStage2(true);
     try {
-      // Start Stage 2 timer interval first (prevents "inbound_status=receiving" with no timer)
-      const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'shipment',
-        p_job_id: shipmentId,
-        p_pause_existing: false,
-      });
-      if (timerErr) throw timerErr;
+      let timerStarted = false;
 
-      const timerResult = (timerRes || {}) as any;
+      // Start Stage 2 timer interval first (prevents "inbound_status=receiving" with no timer)
+      const timerResult = await timerStartJob({
+        tenantId: profile?.tenant_id,
+        userId: profile?.id,
+        jobType: 'shipment',
+        jobId: shipmentId,
+        pauseExisting: false,
+      });
       if (timerResult?.ok === false) {
         if (timerResult.error_code === 'ACTIVE_TIMER_EXISTS') {
           // Best-effort label
@@ -264,13 +266,30 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
         }
         throw new Error(timerResult.error_message || 'Failed to start timer');
       }
+      timerStarted = true;
 
       const { error } = await supabase
         .from('shipments')
         .update({ inbound_status: 'receiving' } as any)
         .eq('id', shipmentId);
 
-      if (error) throw error;
+      if (error) {
+        // Best-effort rollback: end the interval we just started
+        if (timerStarted) {
+          try {
+            await timerEndJob({
+              tenantId: profile?.tenant_id,
+              userId: profile?.id,
+              jobType: 'shipment',
+              jobId: shipmentId,
+              reason: 'rollback',
+            });
+          } catch {
+            // ignore
+          }
+        }
+        throw error;
+      }
 
       try {
         localStorage.setItem(stage2ExpandedKey, 'true');
@@ -1004,13 +1023,15 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
               e.preventDefault();
               setStage2ConfirmLoading(true);
               try {
-                const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
-                  p_job_type: 'shipment',
-                  p_job_id: shipmentId,
-                  p_pause_existing: true,
+                let timerStarted = false;
+
+                const timerResult = await timerStartJob({
+                  tenantId: profile?.tenant_id,
+                  userId: profile?.id,
+                  jobType: 'shipment',
+                  jobId: shipmentId,
+                  pauseExisting: true,
                 });
-                if (timerErr) throw timerErr;
-                const timerResult = (timerRes || {}) as any;
                 if (timerResult?.ok === false) {
                   toast({
                     variant: 'destructive',
@@ -1019,13 +1040,30 @@ export function ReceivingStageRouter({ shipmentId }: ReceivingStageRouterProps) 
                   });
                   return;
                 }
+                timerStarted = true;
 
                 const { error } = await supabase
                   .from('shipments')
                   .update({ inbound_status: 'receiving' } as any)
                   .eq('id', shipmentId);
 
-                if (error) throw error;
+                if (error) {
+                  // Best-effort rollback: end the interval we just started
+                  if (timerStarted) {
+                    try {
+                      await timerEndJob({
+                        tenantId: profile?.tenant_id,
+                        userId: profile?.id,
+                        jobType: 'shipment',
+                        jobId: shipmentId,
+                        reason: 'rollback',
+                      });
+                    } catch {
+                      // ignore
+                    }
+                  }
+                  throw error;
+                }
 
                 try {
                   localStorage.setItem(stage2ExpandedKey, 'true');

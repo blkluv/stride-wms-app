@@ -35,6 +35,7 @@ import { ShipmentNumberBadge } from '@/components/shipments/ShipmentNumberBadge'
 import { IncomingContent } from '@/components/shipments/IncomingContent';
 import { OutboundContent } from '@/components/shipments/OutboundContent';
 import { format } from 'date-fns';
+import { timerStartJob } from '@/lib/time/timerClient';
 
 interface ShipmentCounts {
   expectedToday: number;
@@ -263,16 +264,19 @@ export default function Shipments() {
       if (error) throw error;
 
       // Start timer for this intake
-      const { data: timerRes, error: timerErr } = await supabase.rpc('rpc_timer_start_job', {
-        p_job_type: 'shipment',
-        p_job_id: data.id,
-        p_pause_existing: pauseExisting,
-      });
-
-      if (timerErr) {
-        console.warn('[Shipments] dock intake timer start failed:', timerErr.message);
-      } else if (timerRes && (timerRes as any).ok === false) {
-        console.warn('[Shipments] dock intake timer start failed:', (timerRes as any).error_message);
+      try {
+        const timerRes = await timerStartJob({
+          tenantId: profile.tenant_id,
+          userId: profile.id,
+          jobType: 'shipment',
+          jobId: data.id,
+          pauseExisting,
+        });
+        if (timerRes && (timerRes as any).ok === false) {
+          console.warn('[Shipments] dock intake timer start failed:', (timerRes as any).error_message);
+        }
+      } catch (timerErr: any) {
+        console.warn('[Shipments] dock intake timer start failed:', timerErr?.message || timerErr);
       }
 
       navigate(`/incoming/dock-intake/${data.id}`);
@@ -494,7 +498,8 @@ export default function Shipments() {
           setActiveTab(v as HubTab);
           if (v !== 'incoming') setIncomingSubTab(undefined);
         }}>
-          <TabsList>
+          {/* Mobile: centered, equal-width tabs matching the content card width */}
+          <TabsList className="w-full grid grid-cols-3 h-auto gap-1">
             <TabsTrigger value="hub" className="gap-2">
               <MaterialIcon name="dashboard" size="sm" />
               Hub

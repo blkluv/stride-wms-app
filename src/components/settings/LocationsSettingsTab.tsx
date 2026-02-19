@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { Location } from '@/hooks/useLocations';
@@ -46,6 +46,7 @@ import { HelpTip } from '@/components/ui/help-tip';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useWarehouseZones } from '@/hooks/useWarehouseZones';
 import {
   DISPLAY_LOCATION_TYPE_BADGE_COLORS,
   getLocationTypeLabel,
@@ -97,6 +98,21 @@ export function LocationsSettingsTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+
+  // Zones (for zone assignment + filtering). Only enabled when a specific warehouse is selected.
+  const zonesEnabled = selectedWarehouse && selectedWarehouse !== 'all';
+  const { zones, loading: zonesLoading, refetch: refetchZones } = useWarehouseZones(
+    zonesEnabled ? selectedWarehouse : undefined
+  );
+  const zoneIdToCode = useMemo(() => new Map(zones.map((z) => [z.id, z.zone_code])), [zones]);
+
+  const [zoneFilterId, setZoneFilterId] = useState<string>('all'); // 'all' | 'unassigned' | <zoneId>
+  const [savingZoneLocationId, setSavingZoneLocationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Reset zone filter when warehouse scope changes.
+    setZoneFilterId('all');
+  }, [selectedWarehouse]);
 
   // Default shipment location state
   const [defaultRecvLocationId, setDefaultRecvLocationId] = useState<string>('');
@@ -217,6 +233,15 @@ export function LocationsSettingsTab({
     const isActive = (loc as any).is_active !== false;
     if (!showArchived && !isActive) return false;
     if (showArchived && isActive) return false;
+
+    // Zone filter (only when scoped to a specific warehouse)
+    if (zonesEnabled) {
+      if (zoneFilterId === 'unassigned') {
+        if (loc.zone_id) return false;
+      } else if (zoneFilterId !== 'all') {
+        if (loc.zone_id !== zoneFilterId) return false;
+      }
+    }
     
     return true;
   });
@@ -301,6 +326,65 @@ export function LocationsSettingsTab({
         variant: 'destructive',
         title: 'Error',
         description: 'Failed to restore location.',
+      });
+    }
+  };
+
+  const handleUpdateLocationZone = async (locationId: string, zoneId: string | null) => {
+    try {
+      setSavingZoneLocationId(locationId);
+      const { error } = await supabase
+        .from('locations')
+        .update({ zone_id: zoneId } as any)
+        .eq('id', locationId);
+
+      if (error) throw error;
+      onRefresh();
+    } catch (error) {
+      console.error('Error updating location zone:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to update zone assignment.',
+      });
+    } finally {
+      setSavingZoneLocationId(null);
+    }
+  };
+
+  const handleBulkAssignZone = async (zoneId: string | null) => {
+    if (!zonesEnabled) {
+      toast({
+        variant: 'destructive',
+        title: 'Select a warehouse',
+        description: 'Filter to a specific warehouse before assigning zones.',
+      });
+      return;
+    }
+    if (selectedIds.size === 0) return;
+
+    try {
+      const ids = Array.from(selectedIds);
+      const { error } = await supabase
+        .from('locations')
+        .update({ zone_id: zoneId } as any)
+        .in('id', ids);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Zones updated',
+        description: `Updated ${ids.length} location${ids.length === 1 ? '' : 's'}.`,
+      });
+      setSelectedIds(new Set());
+      onRefresh();
+      refetchZones();
+    } catch (error) {
+      console.error('Error bulk assigning zone:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to bulk-assign zone.',
       });
     }
   };
@@ -409,6 +493,8 @@ export function LocationsSettingsTab({
     switch (columnKey) {
       case 'code':
         return 'font-mono text-sm font-medium';
+      case 'zone_code':
+        return 'text-sm';
       case 'warehouse':
       case 'capacity':
         return 'text-sm text-muted-foreground';
@@ -433,6 +519,35 @@ export function LocationsSettingsTab({
         return location.name || '—';
       case 'type':
         return getTypeBadge(getDisplayType(location));
+      case 'zone_code': {
+        if (!zonesEnabled) {
+          return '—';
+        }
+        return (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="min-w-[150px]"
+          >
+            <Select
+              value={location.zone_id ?? '_none_'}
+              onValueChange={(val) => handleUpdateLocationZone(location.id, val === '_none_' ? null : val)}
+              disabled={zonesLoading || savingZoneLocationId === location.id}
+            >
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none_">Unassigned</SelectItem>
+                {zones.map((z) => (
+                  <SelectItem key={z.id} value={z.id}>
+                    {z.zone_code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      }
       case 'warehouse':
         return warehouseName;
       case 'capacity': {
@@ -465,6 +580,11 @@ export function LocationsSettingsTab({
         return location.name || '';
       case 'type':
         return normalizeLocationType(getDisplayType(location));
+      case 'zone_code': {
+        if (!zonesEnabled) return '';
+        if (!location.zone_id) return '';
+        return zoneIdToCode.get(location.zone_id) || '';
+      }
       case 'warehouse':
         return warehouseName;
       case 'capacity': {
@@ -612,6 +732,28 @@ export function LocationsSettingsTab({
                   className="hidden"
                   onChange={handleFileChange}
                 />
+                {selectedIds.size > 0 && zonesEnabled && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" disabled={zonesLoading}>
+                        <MaterialIcon name="grid_on" size="sm" className="mr-2" />
+                        Zone
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleBulkAssignZone(null)}>
+                        <MaterialIcon name="link_off" size="sm" className="mr-2" />
+                        Unassign zone
+                      </DropdownMenuItem>
+                      {zones.map((z) => (
+                        <DropdownMenuItem key={z.id} onClick={() => handleBulkAssignZone(z.id)}>
+                          <MaterialIcon name="link" size="sm" className="mr-2" />
+                          {z.zone_code}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 {selectedIds.size > 0 && (
                   <Button variant="outline" size="sm" onClick={handlePrintSelected}>
                     <MaterialIcon name="print" size="sm" className="mr-2" />
@@ -650,6 +792,22 @@ export function LocationsSettingsTab({
                   ))}
                 </SelectContent>
               </Select>
+              {zonesEnabled && (
+                <Select value={zoneFilterId} onValueChange={setZoneFilterId} disabled={zonesLoading}>
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder="Filter by zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Zones</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {zones.map((z) => (
+                      <SelectItem key={z.id} value={z.id}>
+                        {z.zone_code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Button 
                 variant={showArchived ? "default" : "outline"} 
                 size="sm"

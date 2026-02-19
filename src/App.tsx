@@ -80,6 +80,11 @@ import ScanItemRedirect from "./pages/ScanItemRedirect";
 import ScanLocationRedirect from "./pages/ScanLocationRedirect";
 import ScanContainerRedirect from "./pages/ScanContainerRedirect";
 import ScanShipmentRedirect from "./pages/ScanShipmentRedirect";
+import WarehouseMapRedirect from "./pages/WarehouseMapRedirect";
+import WarehouseMapBuilder from "./pages/WarehouseMapBuilder";
+import WarehouseZones from "./pages/WarehouseZones";
+import WarehouseHeatMapRedirect from "./pages/WarehouseHeatMapRedirect";
+import WarehouseHeatMap from "./pages/WarehouseHeatMap";
 import PrintPreview from "./pages/PrintPreview";
 import Diagnostics from "./pages/Diagnostics";
 import BotQA from "./pages/admin/BotQA";
@@ -124,11 +129,16 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/subscription/update-payment" element={<ProtectedRoute><SubscriptionUpdatePayment /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Dashboard /></RequireRole></ProtectedRoute>} />
+            <Route path="/warehouse-map" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><WarehouseMapRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/heatmap" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff']}><WarehouseHeatMapRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/inventory" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Inventory /></RequireRole></ProtectedRoute>} />
             <Route path="/inventory/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ItemDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><LocationDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/containers" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Containers /></RequireRole></ProtectedRoute>} />
             <Route path="/containers/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ContainerDetail /></RequireRole></ProtectedRoute>} />
+            <Route path="/warehouses/:warehouseId/map" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><WarehouseMapBuilder /></RequireRole></ProtectedRoute>} />
+            <Route path="/warehouses/:warehouseId/zones" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><WarehouseZones /></RequireRole></ProtectedRoute>} />
+            <Route path="/warehouses/:warehouseId/heatmap" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff']}><WarehouseHeatMap /></RequireRole></ProtectedRoute>} />
             {/* Incoming Manager (new inbound workflows) */}
             <Route path="/incoming/manager" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><IncomingManager /></RequireRole></ProtectedRoute>} />
             <Route path="/incoming" element={<Navigate to="/incoming/manager" replace />} />

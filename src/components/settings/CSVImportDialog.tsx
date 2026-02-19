@@ -26,6 +26,7 @@ import {
   LOCATION_LIST_COLUMNS,
   type LocationListColumnKey,
 } from '@/lib/locationListColumns';
+import type { Database } from '@/integrations/supabase/types';
 
 interface CSVImportDialogProps {
   open: boolean;
@@ -39,6 +40,7 @@ interface ParsedLocation {
   code: string;
   name: string;
   type: string;
+  zoneCode: string | null; // zone_code column (optional). Use "CLEAR" to unassign.
   warehouseName: string;
   status: 'active' | 'inactive' | 'full';
   isActive: boolean;
@@ -52,10 +54,13 @@ interface ImportResult {
   errors: string[];
 }
 
+type LocationInsert = Database['public']['Tables']['locations']['Insert'];
+
 const LIST_COLUMN_KEY_TO_IMPORT_FIELD: Record<LocationListColumnKey, string> = {
   code: 'code',
   name: 'name',
   type: 'type',
+  zone_code: 'zone_code',
   warehouse: 'warehouse_name',
   capacity: 'capacity',
   status: 'status',
@@ -75,6 +80,8 @@ const LOCATION_HEADER_ALIASES: Record<string, string> = {
   location_code: 'code',
   location: 'code',
   location_type: 'type',
+  zone_code: 'zone_code',
+  zone: 'zone_code',
   warehouse_name: 'warehouse_name',
   capacity_cuft: 'capacity_cu_ft',
   capacity_cu_ft: 'capacity_cu_ft',
@@ -147,6 +154,7 @@ async function parseFile(file: File): Promise<ParsedLocation[]> {
     let codeIdx = mappedHeaders.indexOf('code');
     const nameIdx = mappedHeaders.indexOf('name');
     const typeIdx = mappedHeaders.indexOf('type');
+    const zoneCodeIdx = mappedHeaders.indexOf('zone_code');
     const warehouseNameIdx = mappedHeaders.indexOf('warehouse_name');
     const statusIdx = mappedHeaders.indexOf('status');
     const capacityIdx = mappedHeaders.indexOf('capacity');
@@ -168,6 +176,9 @@ async function parseFile(file: File): Promise<ParsedLocation[]> {
       const typeValue = typeIdx >= 0 ? String(row[typeIdx] ?? '').trim().toLowerCase() : '';
       const parsedType = parseDisplayLocationType(typeValue);
       const type = parsedType || detectLocationType(code);
+
+      const rawZoneCode = zoneCodeIdx >= 0 ? String(row[zoneCodeIdx] ?? '').trim() : '';
+      const zoneCode = rawZoneCode ? rawZoneCode.toUpperCase() : null;
 
       const rawWarehouseName = warehouseNameIdx >= 0 ? String(row[warehouseNameIdx] ?? '').trim() : '';
       const rawStatus = statusIdx >= 0 ? String(row[statusIdx] ?? '').trim().toLowerCase() : '';
@@ -191,6 +202,7 @@ async function parseFile(file: File): Promise<ParsedLocation[]> {
         code,
         name,
         type,
+        zoneCode,
         warehouseName: rawWarehouseName,
         status,
         isActive,
@@ -283,19 +295,41 @@ export function CSVImportDialog({
     );
 
     try {
+      // Pre-fetch zones for any warehouses referenced by this import (only if zone codes are present).
+      // This enables "zone_code" imports and the CLEAR token without per-row queries.
+      const zoneIdByWarehouseAndCode = new Map<string, Map<string, string>>();
+      const zoneWarehouseIds = new Set<string>();
+
+      parsedLocations.forEach((loc) => {
+        if (!loc.zoneCode) return;
+        if (loc.zoneCode.toUpperCase() === 'CLEAR') return;
+        const resolvedWarehouseId = loc.warehouseName
+          ? warehouseIdByName.get(loc.warehouseName.trim().toLowerCase())
+          : selectedWarehouse;
+        if (resolvedWarehouseId) zoneWarehouseIds.add(resolvedWarehouseId);
+      });
+
+      if (zoneWarehouseIds.size > 0) {
+        const { data: zoneRows, error: zoneError } = await supabase
+          .from('warehouse_zones')
+          .select('id, zone_code, warehouse_id')
+          .in('warehouse_id', Array.from(zoneWarehouseIds));
+
+        if (zoneError) throw zoneError;
+
+        (zoneRows || []).forEach((z) => {
+          const whId = (z as any).warehouse_id as string;
+          const code = String((z as any).zone_code || '').trim().toUpperCase();
+          if (!whId || !code) return;
+          const inner = zoneIdByWarehouseAndCode.get(whId) ?? new Map<string, string>();
+          inner.set(code, String((z as any).id));
+          zoneIdByWarehouseAndCode.set(whId, inner);
+        });
+      }
+
       for (let i = 0; i < parsedLocations.length; i += batchSize) {
         const batch = parsedLocations.slice(i, i + batchSize);
-        const insertData: Array<{
-          code: string;
-          name: string | null;
-          type: string;
-          warehouse_id: string;
-          status: 'active' | 'inactive' | 'full';
-          is_active: boolean;
-          capacity_sq_ft: number | null;
-          capacity_cu_ft: number | null;
-          capacity_cuft: number | null;
-        }> = [];
+        const insertData: LocationInsert[] = [];
 
         batch.forEach((loc, indexInBatch) => {
           const resolvedWarehouseId = loc.warehouseName
@@ -310,17 +344,44 @@ export function CSVImportDialog({
             return;
           }
 
-          insertData.push({
+          const row: LocationInsert = {
             code: loc.code,
-            name: loc.name || null,
             type: toStoredLocationType(loc.type),
             warehouse_id: resolvedWarehouseId,
             status: loc.status,
             is_active: loc.isActive,
-            capacity_sq_ft: loc.capacitySqFt,
-            capacity_cu_ft: loc.capacityCuFt,
-            capacity_cuft: loc.capacityCuFt,
-          });
+          };
+
+          // Only set optional fields when provided (so blank cells do not overwrite existing values).
+          if (loc.name && loc.name.trim()) {
+            row.name = loc.name.trim();
+          }
+          if (loc.capacitySqFt != null) {
+            row.capacity_sq_ft = loc.capacitySqFt;
+          }
+          if (loc.capacityCuFt != null) {
+            row.capacity_cu_ft = loc.capacityCuFt;
+            row.capacity_cuft = loc.capacityCuFt;
+          }
+
+          if (loc.zoneCode) {
+            const zoneToken = loc.zoneCode.trim().toUpperCase();
+            if (zoneToken === 'CLEAR') {
+              row.zone_id = null;
+            } else {
+              const zoneId = zoneIdByWarehouseAndCode.get(resolvedWarehouseId)?.get(zoneToken);
+              if (!zoneId) {
+                failedCount += 1;
+                errors.push(
+                  `Row ${i + indexInBatch + 2}: Zone "${loc.zoneCode}" was not found for this warehouse.`
+                );
+                return;
+              }
+              row.zone_id = zoneId;
+            }
+          }
+
+          insertData.push(row);
         });
 
         if (insertData.length === 0) {

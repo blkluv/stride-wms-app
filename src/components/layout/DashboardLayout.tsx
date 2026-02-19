@@ -23,6 +23,23 @@ import { AppleBanner } from '@/components/ui/AppleBanner';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
+import { ResumePausedTaskPrompt } from '@/components/time/ResumePausedTaskPrompt';
+import { TimerOfflineSyncManager } from '@/components/time/TimerOfflineSyncManager';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DndContext,
   closestCenter,
@@ -55,6 +72,8 @@ const navItems: NavItem[] = [
   { label: 'Shipments', href: '/shipments', icon: 'local_shipping' },
   { label: 'Inventory', href: '/inventory', icon: 'inventory_2' },
   { label: 'Containers', href: '/containers', icon: 'all_inbox' },
+  { label: 'Map Builder', href: '/warehouse-map', icon: 'map', requiredRole: ['admin', 'tenant_admin', 'manager'] },
+  { label: 'Heat Map', href: '/heatmap', icon: 'whatshot', requiredRole: ['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff'] },
   { label: 'Tasks', href: '/tasks', icon: 'task_alt' },
   { label: 'Stocktake', href: '/stocktakes', icon: 'fact_check' },
   { label: 'Scan', href: '/scan', icon: 'qr_code_scanner', requiredRole: ['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff', 'repair_tech'] },
@@ -140,7 +159,14 @@ function SortableNavItem({ item, isActive, sidebarCollapsed, onNavigate }: Sorta
         <button
           {...attributes}
           {...listeners}
-          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-100 dark:hover:bg-white/10 transition-opacity cursor-grab active:cursor-grabbing hidden lg:block"
+          className={cn(
+            "absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded transition-opacity cursor-grab active:cursor-grabbing",
+            "hover:bg-gray-100 dark:hover:bg-white/10",
+            // Mobile/tablet (no hover): keep handle visible so the menu is actually reorderable.
+            "opacity-100",
+            // Desktop: only show on hover to keep the sidebar clean.
+            "lg:opacity-0 lg:group-hover:opacity-100",
+          )}
           title="Drag to reorder"
         >
           <MaterialIcon name="drag_indicator" size="sm" className="text-gray-400 dark:text-white/40" />
@@ -174,6 +200,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { getUserStatus } = usePresence();
   const location = useLocation();
   const navigate = useNavigate();
+  const {
+    warehouses: availableWarehouses,
+    selectedWarehouseId,
+    setSelectedWarehouseId,
+    loading: warehousesLoading,
+    needsWarehouseSelection,
+  } = useSelectedWarehouse();
 
   // Swipe to close sidebar on mobile - with finger-following physics
   const touchStartX = useRef<number | null>(null);
@@ -212,6 +245,83 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     setIsGesturing(false);
     touchStartX.current = null;
   }, [sidebarTranslateX]);
+
+  // Global edge-swipe (right edge → left) to open Scan Hub quickly.
+  // Guarded to avoid fighting iOS Safari's forward-swipe gesture unless installed (PWA) or native.
+  const edgeSwipeRef = useRef<{
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    startTime: number;
+    tracking: boolean;
+  } | null>(null);
+
+  const canUseEdgeSwipe = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+    const isStandalone =
+      !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      !!(navigator as any).standalone;
+    const isCapacitor = !!(window as any).Capacitor;
+
+    if (isIOS && !isStandalone && !isCapacitor) return false;
+    return true;
+  }, []);
+
+  const handleEdgeSwipeTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!canUseEdgeSwipe()) return;
+    if (e.touches.length !== 1) return;
+    if (typeof window === 'undefined') return;
+
+    const t = e.touches[0];
+    const edgePx = 24;
+    const winW = window.innerWidth || 0;
+    if (winW > 0 && t.clientX < winW - edgePx) return;
+
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable=\"true\"]')) return;
+
+    edgeSwipeRef.current = {
+      tracking: true,
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastY: t.clientY,
+      startTime: Date.now(),
+    };
+  }, [canUseEdgeSwipe]);
+
+  const handleEdgeSwipeTouchMove = useCallback((e: React.TouchEvent) => {
+    const state = edgeSwipeRef.current;
+    if (!state?.tracking) return;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    state.lastX = t.clientX;
+    state.lastY = t.clientY;
+  }, []);
+
+  const handleEdgeSwipeTouchEnd = useCallback(() => {
+    const state = edgeSwipeRef.current;
+    edgeSwipeRef.current = null;
+    if (!state?.tracking) return;
+
+    const dx = state.lastX - state.startX;
+    const dy = state.lastY - state.startY;
+    const dt = Date.now() - state.startTime;
+
+    const minDx = -90;
+    const maxDy = 50;
+    const maxDt = 900;
+    if (dx <= minDx && Math.abs(dy) <= maxDy && dt <= maxDt) {
+      if (location.pathname !== '/scan') {
+        navigate('/scan');
+      }
+    }
+  }, [location.pathname, navigate]);
 
   // Apply theme
   useEffect(() => {
@@ -424,8 +534,54 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     });
   }, [filteredNavItems, navOrder]);
 
+  const showWarehousePicker =
+    needsWarehouseSelection &&
+    !warehousesLoading &&
+    !selectedWarehouseId &&
+    availableWarehouses.length > 1;
+
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col">
+      <Dialog open={showWarehousePicker} onOpenChange={() => { /* controlled */ }}>
+        <DialogContent
+          className="[&_.stoplight-close]:hidden"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Select your default warehouse</DialogTitle>
+            <DialogDescription>
+              Choose a warehouse to continue. This will be saved as your default across devices.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Select
+              value={selectedWarehouseId ?? ''}
+              onValueChange={(v) => {
+                if (!v) return;
+                setSelectedWarehouseId(v);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableWarehouses.map((wh) => (
+                  <SelectItem key={wh.id} value={wh.id}>
+                    {wh.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="text-xs text-muted-foreground">
+              Tip: You can switch warehouses later using the selector on supported pages.
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -652,7 +808,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <UpgradeNotificationBanner />
 
         {/* Page content - scrollable with extra bottom padding for full scrolling */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 animate-fade-in">{children}</main>
+        <main
+          className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 animate-fade-in"
+          onTouchStart={handleEdgeSwipeTouchStart}
+          onTouchMove={handleEdgeSwipeTouchMove}
+          onTouchEnd={handleEdgeSwipeTouchEnd}
+          onTouchCancel={handleEdgeSwipeTouchEnd}
+        >
+          {children}
+        </main>
+
+        {/* Global (internal) prompt: resume paused task after job switch */}
+        <ResumePausedTaskPrompt />
+
+        {/* Offline timer queue + background sync */}
+        <TimerOfflineSyncManager />
       </div>
     </div>
   );

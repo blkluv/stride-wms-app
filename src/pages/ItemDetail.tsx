@@ -974,10 +974,6 @@ export default function ItemDetail() {
                   </Badge>
                 ))}
               </div>
-
-              <p className="text-muted-foreground">
-                {item.description || 'No description'}
-              </p>
             </div>
           </div>
           
@@ -1043,6 +1039,14 @@ export default function ItemDetail() {
                     {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length > 0 && (
                       <Badge variant="secondary" className="ml-auto">
                         {tasks.filter(t => t.task_type === 'Disposal' && t.status !== 'completed').length}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openTaskMenu('SPLIT')}>
+                    ✂️ Split
+                    {tasks.filter(t => t.task_type === 'SPLIT' && t.status !== 'completed').length > 0 && (
+                      <Badge variant="secondary" className="ml-auto">
+                        {tasks.filter(t => t.task_type === 'SPLIT' && t.status !== 'completed').length}
                       </Badge>
                     )}
                   </DropdownMenuItem>

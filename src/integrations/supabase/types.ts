@@ -6471,6 +6471,57 @@ export type Database = {
           },
         ]
       }
+      job_time_intervals: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          ended_reason: string | null
+          id: string
+          job_id: string
+          job_type: string
+          started_at: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          ended_reason?: string | null
+          id?: string
+          job_id: string
+          job_type: string
+          started_at?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          ended_reason?: string | null
+          id?: string
+          job_id?: string
+          job_type?: string
+          started_at?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_time_intervals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_time_intervals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labor_settings: {
         Row: {
           created_at: string
@@ -6613,6 +6664,7 @@ export type Database = {
           usable_height_in: number | null
           warehouse_id: string
           width_in: number | null
+          zone_id: string | null
         }
         Insert: {
           capacity?: number | null
@@ -6637,6 +6689,7 @@ export type Database = {
           usable_height_in?: number | null
           warehouse_id: string
           width_in?: number | null
+          zone_id?: string | null
         }
         Update: {
           capacity?: number | null
@@ -6661,6 +6714,7 @@ export type Database = {
           usable_height_in?: number | null
           warehouse_id?: string
           width_in?: number | null
+          zone_id?: string | null
         }
         Relationships: [
           {
@@ -6675,6 +6729,13 @@ export type Database = {
             columns: ["warehouse_id"]
             isOneToOne: false
             referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "locations_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "warehouse_zones"
             referencedColumns: ["id"]
           },
         ]
@@ -14315,6 +14376,225 @@ export type Database = {
           },
         ]
       }
+      warehouse_map_nodes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          height: number
+          id: string
+          label: string | null
+          sort_order: number | null
+          updated_at: string
+          updated_by: string | null
+          warehouse_map_id: string
+          width: number
+          x: number
+          y: number
+          zone_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          height?: number
+          id?: string
+          label?: string | null
+          sort_order?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          warehouse_map_id: string
+          width?: number
+          x?: number
+          y?: number
+          zone_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          height?: number
+          id?: string
+          label?: string | null
+          sort_order?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          warehouse_map_id?: string
+          width?: number
+          x?: number
+          y?: number
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_map_nodes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_map_nodes_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_map_nodes_warehouse_map_id_fkey"
+            columns: ["warehouse_map_id"]
+            isOneToOne: false
+            referencedRelation: "warehouse_maps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_map_nodes_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "warehouse_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warehouse_maps: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          grid_size: number
+          height: number
+          id: string
+          is_default: boolean
+          name: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          warehouse_id: string
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          grid_size?: number
+          height?: number
+          id?: string
+          is_default?: boolean
+          name: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          warehouse_id: string
+          width?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          grid_size?: number
+          height?: number
+          id?: string
+          is_default?: boolean
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          warehouse_id?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_maps_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_maps_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_maps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_maps_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warehouse_zones: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          sort_order: number | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          warehouse_id: string
+          zone_code: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          sort_order?: number | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          warehouse_id: string
+          zone_code: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          sort_order?: number | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          warehouse_id?: string
+          zone_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_zones_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_zones_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_zones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_zones_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       will_call_items: {
         Row: {
           created_at: string | null
@@ -15897,6 +16177,18 @@ export type Database = {
       }
       rpc_set_my_inbound_email_settings: {
         Args: { p_forward_to_email: string; p_is_enabled?: boolean }
+        Returns: Json
+      }
+      rpc_timer_end_job: {
+        Args: { p_job_id: string; p_job_type: string; p_reason?: string }
+        Returns: Json
+      }
+      rpc_timer_start_job: {
+        Args: {
+          p_job_id: string
+          p_job_type: string
+          p_pause_existing?: boolean
+        }
         Returns: Json
       }
       rpc_upsert_subscription_invoice_from_stripe: {
