@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PageHeader } from '@/components/ui/page-header';
@@ -103,6 +103,11 @@ export default function WarehouseMapBuilder() {
 
   const [draft, setDraft] = useState<NodeDraft | null>(null);
 
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const autoSaveErrorToastRef = useRef(false);
+
   useEffect(() => {
     if (!selectedNode) {
       setDraft(null);
@@ -166,9 +171,25 @@ export default function WarehouseMapBuilder() {
     }
   };
 
-  const saveDraft = async () => {
+  const isDraftDirty = useMemo(() => {
+    if (!selectedNode || !draft) return false;
+    const normalizedDraftLabel = draft.label?.trim() ? draft.label.trim() : null;
+    const normalizedSelectedLabel = selectedNode.label?.trim() ? selectedNode.label.trim() : null;
+    return (
+      normalizedDraftLabel !== normalizedSelectedLabel ||
+      draft.zone_id !== selectedNode.zone_id ||
+      draft.x !== selectedNode.x ||
+      draft.y !== selectedNode.y ||
+      draft.width !== selectedNode.width ||
+      draft.height !== selectedNode.height
+    );
+  }, [draft, selectedNode]);
+
+  const saveDraft = async ({ silent }: { silent?: boolean } = {}) => {
     if (!selectedNode || !draft) return;
     try {
+      setAutoSaveError(null);
+      setAutoSaving(true);
       await updateNode(selectedNode.id, {
         label: draft.label?.trim() ? draft.label.trim() : null,
         zone_id: draft.zone_id,
@@ -177,11 +198,43 @@ export default function WarehouseMapBuilder() {
         width: draft.width,
         height: draft.height,
       });
-      toast({ title: 'Saved', description: 'Node updated.' });
+      setLastSavedAt(Date.now());
+      autoSaveErrorToastRef.current = false;
+      if (!silent) {
+        toast({ title: 'Saved', description: 'Rectangle updated.' });
+      }
     } catch (err) {
       console.error(err);
-      toast({ variant: 'destructive', title: 'Save failed', description: 'Failed to update node.' });
+      setAutoSaveError('Autosave failed');
+      if (!silent || !autoSaveErrorToastRef.current) {
+        autoSaveErrorToastRef.current = true;
+        toast({ variant: 'destructive', title: 'Save failed', description: 'Failed to update rectangle.' });
+      }
+    } finally {
+      setAutoSaving(false);
     }
+  };
+
+  // Autosave node changes after 500ms idle.
+  useEffect(() => {
+    if (!selectedNode || !draft) return;
+    if (!isDraftDirty) return;
+    if (autoSaving) return;
+
+    const t = window.setTimeout(() => {
+      void saveDraft({ silent: true });
+    }, 500);
+
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSaving, draft, isDraftDirty, selectedNode?.id]);
+
+  const handleSelectNode = (nextNodeId: string | null) => {
+    // Best-effort: flush pending edits before switching selections.
+    if (selectedNode && draft && isDraftDirty) {
+      void saveDraft({ silent: true });
+    }
+    setSelectedNodeId(nextNodeId);
   };
 
   const handleSetDefault = async () => {
@@ -321,7 +374,7 @@ export default function WarehouseMapBuilder() {
                   <svg
                     viewBox={`0 0 ${mapWidth} ${mapHeight}`}
                     className="min-h-[420px] w-[1000px]"
-                    onClick={() => setSelectedNodeId(null)}
+                    onClick={() => handleSelectNode(null)}
                   >
                     <defs>
                       <pattern id="hmv-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
@@ -351,7 +404,7 @@ export default function WarehouseMapBuilder() {
                             stroke={isSelected ? 'rgba(59,130,246,0.9)' : 'rgba(100,116,139,0.7)'}
                             strokeWidth={isSelected ? 2 : 1}
                             className={cn('cursor-pointer')}
-                            onClick={() => setSelectedNodeId(n.id)}
+                            onClick={() => handleSelectNode(n.id)}
                           />
                           {label && (
                             <text
@@ -373,11 +426,44 @@ export default function WarehouseMapBuilder() {
 
             {/* Sidebar */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Properties</CardTitle>
-                <CardDescription>
-                  {selectedNode ? 'Edit the selected rectangle.' : 'Select a rectangle to edit.'}
-                </CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">Properties</CardTitle>
+                  <CardDescription>
+                    {selectedNode ? 'Edit the selected rectangle.' : 'Select a rectangle to edit.'}
+                  </CardDescription>
+                </div>
+                {selectedNode && (
+                  <div
+                    className={cn(
+                      'text-xs flex items-center gap-1.5',
+                      autoSaveError ? 'text-destructive' : 'text-muted-foreground'
+                    )}
+                    title={autoSaveError || undefined}
+                  >
+                    {autoSaving ? (
+                      <>
+                        <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : autoSaveError ? (
+                      <>
+                        <MaterialIcon name="error" size="sm" />
+                        Autosave failed
+                      </>
+                    ) : isDraftDirty ? (
+                      <>
+                        <MaterialIcon name="edit" size="sm" />
+                        Unsaved
+                      </>
+                    ) : lastSavedAt ? (
+                      <>
+                        <MaterialIcon name="check_circle" size="sm" />
+                        Saved
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 {!selectedNode || !draft ? (
@@ -453,8 +539,19 @@ export default function WarehouseMapBuilder() {
                     </div>
 
                     <div className="flex items-center gap-2 pt-2">
-                      <Button onClick={saveDraft} className="flex-1">
-                        Save
+                      <Button
+                        onClick={() => void saveDraft()}
+                        className="flex-1"
+                        disabled={!isDraftDirty || autoSaving}
+                      >
+                        {autoSaving ? (
+                          <>
+                            <MaterialIcon name="progress_activity" size="sm" className="mr-2 animate-spin" />
+                            Saving…
+                          </>
+                        ) : (
+                          'Save now'
+                        )}
                       </Button>
                       <Button
                         variant="outline"
