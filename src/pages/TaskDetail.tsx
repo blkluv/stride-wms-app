@@ -534,6 +534,15 @@ export default function TaskDetailPage() {
         return;
       }
 
+      if (result.error_code === 'SPLIT_REQUIRED') {
+        toast({
+          variant: 'destructive',
+          title: 'Split required',
+          description: result.error_message || 'This task is blocked until the required Split task is completed.',
+        });
+        return;
+      }
+
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -1287,6 +1296,74 @@ export default function TaskDetailPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left Column - Details */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
+            {/* Split/manual-review workflow banners (origin tasks) */}
+            {(() => {
+              if (!task || task.task_type === 'Split') return null;
+              const meta = task.metadata && typeof task.metadata === 'object' ? task.metadata : null;
+              const pendingReview = !!(meta && (meta as any).pending_review === true);
+              const pendingReviewReason = pendingReview ? String((meta as any).pending_review_reason || '') : '';
+              const splitRequired = !!(meta && (meta as any).split_required === true);
+              const splitTaskIds: string[] = splitRequired && Array.isArray((meta as any).split_required_task_ids)
+                ? (meta as any).split_required_task_ids.map(String)
+                : [];
+
+              if (!pendingReview && !splitRequired) return null;
+
+              return (
+                <Card className="border-amber-200 bg-amber-50/40 dark:bg-amber-900/10">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MaterialIcon name={pendingReview ? 'search' : 'call_split'} size="sm" />
+                      {pendingReview ? 'Pending review' : 'Waiting for split'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 text-sm text-muted-foreground space-y-2">
+                    {pendingReview && (
+                      <div className="space-y-1">
+                        <div className="font-medium text-amber-800 dark:text-amber-200">
+                          This task request requires manual review.
+                        </div>
+                        {pendingReviewReason && (
+                          <div className="text-xs">
+                            Reason: {pendingReviewReason}
+                          </div>
+                        )}
+                        <div className="text-xs">
+                          Starting the task will clear the Pending review marker.
+                        </div>
+                      </div>
+                    )}
+                    {splitRequired && (
+                      <div className="space-y-1">
+                        <div className="font-medium text-amber-800 dark:text-amber-200">
+                          Split required before starting.
+                        </div>
+                        <div className="text-xs">
+                          This task is blocked until the required Split task(s) are completed.
+                        </div>
+                        {splitTaskIds.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/tasks/${splitTaskIds[0]}`)}
+                            >
+                              Open split task
+                            </Button>
+                            {splitTaskIds.length > 1 && (
+                              <span className="text-xs text-muted-foreground">
+                                +{splitTaskIds.length - 1} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {/* Split workflow (special task type) */}
             {task.task_type === 'Split' && (
               <SplitTaskPanel
@@ -1955,6 +2032,14 @@ export default function TaskDetailPage() {
                 try {
                   const result = await startTaskDetailed(id, { pauseExisting: true });
                   if (!result.ok) {
+                    if (result.error_code === 'SPLIT_REQUIRED') {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Split required',
+                        description: result.error_message || 'This task is blocked until the required Split task is completed.',
+                      });
+                      return;
+                    }
                     toast({
                       variant: 'destructive',
                       title: 'Unable to start task',
