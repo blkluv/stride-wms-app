@@ -5,22 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { cn } from '@/lib/utils';
+import { formatTime, getHeatFill } from '@/lib/heatMapUtils';
 import { useWarehouseMaps } from '@/hooks/useWarehouseMaps';
 import { useWarehouseMapZoneCapacity } from '@/hooks/useWarehouseMapZoneCapacity';
 import { usePermissions } from '@/hooks/usePermissions';
-
-function getHeatFill(utilizationPct: number | null): string {
-  if (utilizationPct === null || !Number.isFinite(utilizationPct)) return '#e5e7eb';
-  if (utilizationPct > 100) return '#7f1d1d';
-  if (utilizationPct >= 80) return '#ef4444';
-  if (utilizationPct >= 50) return '#f59e0b';
-  return '#22c55e';
-}
-
-function formatTime(dt: Date | null): string {
-  if (!dt) return '—';
-  return dt.toLocaleString();
-}
 
 export function HeatMapHeroTile({ warehouseId, className }: { warehouseId: string; className?: string }) {
   const navigate = useNavigate();
