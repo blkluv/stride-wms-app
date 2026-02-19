@@ -77,6 +77,7 @@ type ServiceTimeRow = {
   completedAt: string | null;
   accountId: string | null;
   warehouseId: string | null;
+  subType: string | null;
   estimatedMinutes: number | null;
   actualMinutes: number | null;
   varianceMinutes: number | null;
@@ -320,6 +321,7 @@ export function ServiceTimeTab() {
           completedAt: safeString(t.completed_at),
           accountId: t.account_id ? String(t.account_id) : null,
           warehouseId: t.warehouse_id ? String(t.warehouse_id) : null,
+          subType: safeString(t.task_type),
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
@@ -349,6 +351,7 @@ export function ServiceTimeTab() {
           completedAt,
           accountId: s.account_id ? String(s.account_id) : null,
           warehouseId: s.warehouse_id ? String(s.warehouse_id) : null,
+          subType: safeString(s.shipment_type),
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
@@ -376,6 +379,7 @@ export function ServiceTimeTab() {
           completedAt,
           accountId: st.account_id ? String(st.account_id) : null,
           warehouseId: st.warehouse_id ? String(st.warehouse_id) : null,
+          subType: null,
           estimatedMinutes: est != null ? Math.round(est) : null,
           actualMinutes: actual != null ? Math.round(actual) : null,
           varianceMinutes: variance,
@@ -580,7 +584,7 @@ export function ServiceTimeTab() {
       if (onlyWithActual && !((r.actualMinutes ?? 0) > 0)) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
-        const hay = `${r.label} ${r.jobId}`.toLowerCase();
+        const hay = `${r.label} ${r.subType || ''} ${r.jobId}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (employeeFilter !== 'all') {
@@ -720,6 +724,81 @@ export function ServiceTimeTab() {
     return { rows, totalMinutes, totalLaborCost, totalBilledShare, totalMarginShare };
   }, [computed.rows, jobUserMinutes, usersById, includeBillingTotals, includeLaborCost, hourlyRateByUserId]);
 
+  const typeBreakdowns = useMemo(() => {
+    type Agg = { type: string; jobs: number; minutes: number; billed: number; labor: number; margin: number };
+    const taskMap = new Map<string, Agg>();
+    const shipmentMap = new Map<string, Agg>();
+
+    const add = (map: Map<string, Agg>, type: string, mins: number, billed: number, labor: number, margin: number) => {
+      const key = type || 'Unspecified';
+      const cur = map.get(key) || { type: key, jobs: 0, minutes: 0, billed: 0, labor: 0, margin: 0 };
+      cur.jobs += 1;
+      cur.minutes += mins;
+      cur.billed += billed;
+      cur.labor += labor;
+      cur.margin += margin;
+      map.set(key, cur);
+    };
+
+    for (const r of computed.rows) {
+      const key = jobKey(r.jobType, r.jobId);
+      const perUser = jobUserMinutes[key] || {};
+      const totalJobMinutesFromIntervals = Object.values(perUser).reduce((sum, m) => sum + (m || 0), 0) || 0;
+
+      const minutesForBreakdown =
+        employeeFilter !== 'all'
+          ? (perUser[employeeFilter] || 0)
+          : (totalJobMinutesFromIntervals || (r.actualMinutes ?? 0));
+
+      if (minutesForBreakdown <= 0) continue;
+
+      const type = r.subType || 'Unspecified';
+
+      const billed =
+        includeBillingTotals && r.billedAmount != null
+          ? (employeeFilter !== 'all' && totalJobMinutesFromIntervals > 0
+              ? r.billedAmount * (minutesForBreakdown / totalJobMinutesFromIntervals)
+              : r.billedAmount)
+          : 0;
+
+      const labor =
+        includeLaborCost
+          ? (employeeFilter !== 'all'
+              ? ((minutesForBreakdown / 60) * (hourlyRateByUserId.get(employeeFilter) ?? 0))
+              : (r.laborCost ?? 0))
+          : 0;
+
+      const margin =
+        includeBillingTotals && includeLaborCost
+          ? billed - labor
+          : 0;
+
+      if (r.jobType === 'task') add(taskMap, type, minutesForBreakdown, billed, labor, margin);
+      if (r.jobType === 'shipment') add(shipmentMap, type, minutesForBreakdown, billed, labor, margin);
+    }
+
+    const toSorted = (map: Map<string, Agg>) =>
+      Array.from(map.values())
+        .map((a) => ({
+          ...a,
+          minutes: Math.round(a.minutes),
+          avgMinutes: a.jobs > 0 ? Math.round(a.minutes / a.jobs) : 0,
+        }))
+        .sort((a, b) => (b.minutes || 0) - (a.minutes || 0));
+
+    return {
+      taskTypes: toSorted(taskMap),
+      shipmentTypes: toSorted(shipmentMap),
+    };
+  }, [
+    computed.rows,
+    jobUserMinutes,
+    employeeFilter,
+    includeBillingTotals,
+    includeLaborCost,
+    hourlyRateByUserId,
+  ]);
+
   const overviewByJobType = useMemo(() => {
     const base: Record<string, { jobType: string; jobs: number; actual: number; estimated: number; billed: number; labor: number; margin: number }> = {};
     for (const r of computed.rows) {
@@ -751,6 +830,7 @@ export function ServiceTimeTab() {
 
       const jobsSheet = XLSX.utils.json_to_sheet(computed.rows.map(r => ({
         job_type: r.jobType,
+        sub_type: r.subType,
         label: r.label,
         completed_at: r.completedAt,
         account: r.accountId ? (accountNameById.get(r.accountId) || r.accountId) : null,
@@ -1098,6 +1178,11 @@ export function ServiceTimeTab() {
                       <TableCell className="capitalize">{r.jobType}</TableCell>
                       <TableCell className="min-w-0">
                         <div className="truncate font-medium">{r.label}</div>
+                        {r.subType && (
+                          <div className="truncate text-xs text-muted-foreground">
+                            {r.subType}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {r.accountId ? (accountNameById.get(r.accountId) || '-') : '-'}
@@ -1284,6 +1369,130 @@ export function ServiceTimeTab() {
               </Table>
             </CardContent>
           </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Task types</CardTitle>
+                <CardDescription>
+                  {employeeFilter !== 'all'
+                    ? `Based on minutes worked by ${usersById[employeeFilter]?.name || 'selected employee'}.`
+                    : 'Based on total minutes across all employees.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Jobs</TableHead>
+                      <TableHead className="text-right">Minutes</TableHead>
+                      <TableHead className="text-right">Avg / Job</TableHead>
+                      {includeBillingTotals && <TableHead className="text-right">Billed</TableHead>}
+                      {includeLaborCost && <TableHead className="text-right">Labor</TableHead>}
+                      {includeBillingTotals && includeLaborCost && <TableHead className="text-right">Margin</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {typeBreakdowns.taskTypes.map((t) => (
+                      <TableRow key={`task:${t.type}`} className="hover:bg-muted/40">
+                        <TableCell className="font-medium">{t.type}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.jobs}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.minutes)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.avgMinutes)}</TableCell>
+                        {includeBillingTotals && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.billed)}</TableCell>
+                        )}
+                        {includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.labor)}</TableCell>
+                        )}
+                        {includeBillingTotals && includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.margin)}</TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+
+                    {typeBreakdowns.taskTypes.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={
+                            4
+                            + (includeBillingTotals ? 1 : 0)
+                            + (includeLaborCost ? 1 : 0)
+                            + (includeBillingTotals && includeLaborCost ? 1 : 0)
+                          }
+                          className="text-center text-muted-foreground py-10"
+                        >
+                          No task data in this filter set.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Shipment types</CardTitle>
+                <CardDescription>
+                  {employeeFilter !== 'all'
+                    ? `Based on minutes worked by ${usersById[employeeFilter]?.name || 'selected employee'}.`
+                    : 'Based on total minutes across all employees.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Jobs</TableHead>
+                      <TableHead className="text-right">Minutes</TableHead>
+                      <TableHead className="text-right">Avg / Job</TableHead>
+                      {includeBillingTotals && <TableHead className="text-right">Billed</TableHead>}
+                      {includeLaborCost && <TableHead className="text-right">Labor</TableHead>}
+                      {includeBillingTotals && includeLaborCost && <TableHead className="text-right">Margin</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {typeBreakdowns.shipmentTypes.map((t) => (
+                      <TableRow key={`shipment:${t.type}`} className="hover:bg-muted/40">
+                        <TableCell className="font-medium">{t.type}</TableCell>
+                        <TableCell className="text-right tabular-nums">{t.jobs}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.minutes)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMinutesShort(t.avgMinutes)}</TableCell>
+                        {includeBillingTotals && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.billed)}</TableCell>
+                        )}
+                        {includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.labor)}</TableCell>
+                        )}
+                        {includeBillingTotals && includeLaborCost && (
+                          <TableCell className="text-right tabular-nums">{formatUsd(t.margin)}</TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+
+                    {typeBreakdowns.shipmentTypes.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={
+                            4
+                            + (includeBillingTotals ? 1 : 0)
+                            + (includeLaborCost ? 1 : 0)
+                            + (includeBillingTotals && includeLaborCost ? 1 : 0)
+                          }
+                          className="text-center text-muted-foreground py-10"
+                        >
+                          No shipment data in this filter set.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
