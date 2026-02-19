@@ -65,6 +65,7 @@ import { DocumentList } from '@/components/scanner/DocumentList';
 import { TaskHistoryTab } from '@/components/tasks/TaskHistoryTab';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { TaskCompletionBlockedDialog } from '@/components/tasks/TaskCompletionBlockedDialog';
+import { SplitTaskPanel } from '@/components/tasks/SplitTaskPanel';
 import { HelpButton } from '@/components/prompts';
 import { PromptWorkflow } from '@/types/guidedPrompts';
 import { validateTaskCompletion, TaskCompletionValidationResult } from '@/lib/billing/taskCompletionValidation';
@@ -97,10 +98,7 @@ interface TaskDetail {
   unable_to_complete_note: string | null;
   task_notes: string | null;
   inspection_status: string | null;
-  metadata: {
-    photos?: (string | TaggablePhoto)[];
-    billing_quantity?: number;
-  } | null;
+  metadata: Record<string, any> | null;
   created_at: string;
   updated_at: string;
   // Billing rate fields
@@ -121,6 +119,7 @@ interface TaskItemRow {
   item?: {
     id: string;
     item_code: string;
+    quantity?: number | null;
     sku: string | null;
     size: number | null;
     size_unit: string | null;
@@ -376,7 +375,7 @@ export default function TaskDetailPage() {
       const { data: items, error: itemsError } = await (supabase
         .from('items') as any)
         .select(`
-          id, item_code, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
+          id, item_code, quantity, sku, size, size_unit, description, vendor, sidemark, room, primary_photo_url, metadata, inspection_status,
           current_location_id,
           location:locations!items_current_location_id_fkey(code),
           account:accounts!items_account_id_fkey(account_name)
@@ -540,6 +539,17 @@ export default function TaskDetailPage() {
 
   const handleCompleteTask = async () => {
     if (!id || !profile?.id || !task || !profile?.tenant_id) return;
+
+    // Split tasks have a dedicated workflow (print + scan child labels) and must not
+    // use the generic completion flow (which can generate billing events).
+    if (task.task_type === 'Split') {
+      toast({
+        variant: 'destructive',
+        title: 'Use Split Workflow',
+        description: 'Complete this task from the Split Workflow panel (print + scan new labels).',
+      });
+      return;
+    }
 
     // Inspection tasks require all items to have pass/fail status
     if (task.task_type === 'Inspection' && taskItems.length > 0) {
@@ -1268,6 +1278,19 @@ export default function TaskDetailPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left Column - Details */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
+            {/* Split workflow (special task type) */}
+            {task.task_type === 'Split' && (
+              <SplitTaskPanel
+                taskId={task.id}
+                task={task as any}
+                taskItems={taskItems as any}
+                onRefetch={() => {
+                  void fetchTask();
+                  void fetchTaskItems();
+                }}
+              />
+            )}
+
             {/* Service Time Summary (Estimated vs Actual) */}
             {(() => {
               const st = (task.metadata as any)?.service_time as any | undefined;

@@ -63,11 +63,9 @@ Outputs to capture (for final execution summary later):
 - Represents zone rectangles on the map canvas (SVG)
 - Unique `(warehouse_map_id, zone_id)` where `zone_id is not null` (prevents a zone being placed twice on the same map)
 
-### 1.5 Create `zone_alert_state`
+### 1.5 (Out of scope) `zone_alert_state`
 
-- Table: `public.zone_alert_state`
-- PK: `(tenant_id, map_id, zone_id)`
-- Fields: `last_state` (`NORMAL|WARNING|CRITICAL`), `last_utilization_pct`, `last_evaluated_at`
+Zone-level (heat map) notification alerts are out of scope (DL-2026-02-18-010), so do not create a `zone_alert_state` persistence table in this phase.
 
 ### 1.6 RLS policies (tenant isolation)
 
@@ -83,7 +81,7 @@ Outputs to capture (for final execution summary later):
 
 ---
 
-## 2) RPCs (single-call aggregation + alert evaluation)
+## 2) RPCs (single-call aggregation for visualization)
 
 ### 2.1 `rpc_get_warehouse_map_zone_capacity(p_map_id uuid)`
 
@@ -100,21 +98,11 @@ Outputs to capture (for final execution summary later):
 - used rollup: `SUM(location_capacity_cache.used_cuft)` joined by `location_id` (preferred to avoid per-location RPC calls)
 - utilization: `SUM(used)/SUM(capacity) * 100`
 - if capacity sum = 0 → `utilization_pct = NULL`
-- state thresholds: `>=100 CRITICAL`, `>=85 WARNING`, else `NORMAL`; capacity=0 → `NO_CAPACITY`
+- state thresholds (for UI coloring only): `>=100 CRITICAL`, `>=80 WARNING`, else `NORMAL`; capacity=0 → `NO_CAPACITY`
 
-### 2.2 `rpc_evaluate_zone_alerts(p_map_id uuid)`
+### 2.2 (Out of scope) `rpc_evaluate_zone_alerts(p_map_id uuid)`
 
-Responsibilities:
-- compute current states from `rpc_get_warehouse_map_zone_capacity(p_map_id)`
-- compare to `zone_alert_state.last_state`
-- fire only on upward transitions:
-  - `NORMAL -> WARNING`
-  - `* -> CRITICAL` (excluding already-CRITICAL)
-- upsert `zone_alert_state` for all zones on the map
-
-Alert emission integration (recommended approach in this repo):
-- insert rows into `public.alert_queue` for transitions using `alert_type` keys that match `communication_alerts.trigger_event`
-- also add catalog + default triggers for all tenants via migration (see Section 6)
+Zone-level/heat-map alert evaluation + notification emission is intentionally not planned in this phase (DL-2026-02-18-010). If this is revisited later, this is where the evaluation RPC would be specified.
 
 ---
 
@@ -159,13 +147,15 @@ Changes:
 
 ---
 
-## 5) Map Builder (Admin only)
+## 5) Map Builder (Admin/Manager)
 
 Route:
 - `/warehouses/:warehouseId/map?mapId=<uuid>`
+  - If `mapId` is omitted, load the warehouse Default Map (if present).
 
 Behavior (contract):
 - Map selector (create/rename/set default)
+  - If this is the first map for the warehouse, it auto-becomes the Default Map (DL-2026-02-18-012)
 - Toolbar: select, add zone rectangle, grid snap (default on), auto-label toggle, duplicate (Ctrl/Cmd+D)
 - Canvas: SVG grid background, zoom/pan, drag-select multi-select, resize handles
 - Right sidebar for selected rectangle: label, zone dropdown, delete rectangle, optional numeric x/y/w/h
@@ -184,17 +174,19 @@ Implementation approach (no new heavy dependencies):
   - use batched `upsert` for nodes on save to avoid excessive network chatter
 
 Role gating:
-- require `tenant_admin` (and/or `admin`) to access route and to write maps/nodes
+- require `admin` + `manager` to access route and to write maps/nodes (DL-2026-02-15-201)
 
 ---
 
 ## 6) Heat Map Viewer (Read-only)
 
 Route:
-- `/warehouses/:warehouseId/heatmap?mapId=<uuid>`
+- `/warehouses/:warehouseId/heatmap`
+  - Viewer always renders the warehouse Default Map (DL-2026-02-18-011)
 
 Data:
-- **single** call: `rpc_get_warehouse_map_zone_capacity(mapId)`
+- Resolve `default_map_id` for the warehouse (query `warehouse_maps` where `is_default=true`)
+- **single** call: `rpc_get_warehouse_map_zone_capacity(default_map_id)`
 
 Rendering:
 - draw the same rectangles as map nodes, but fill with gradient based on utilization thresholds:
@@ -206,37 +198,13 @@ Rendering:
 - legend + refresh button
 
 Access:
-- clarify whether all `warehouse_user` can view, or admin-only (contract says read-only but not explicitly admin-only).
+- `admin` + `manager` + `warehouse` access (DL-2026-02-15-201)
 
 ---
 
-## 7) Alerts wiring (85% warning / 100% critical)
+## 7) Zone-level alerts (out of scope)
 
-### 7.1 Trigger keys
-
-Define two trigger events (matching `communication_alerts.trigger_event`):
-- `zone.warning_85`
-- `zone.critical_100`
-
-### 7.2 Trigger catalog + default alert configuration
-
-Add a migration to:
-- insert these keys into `communication_trigger_catalog` (module_group like `Warehouse Capacity`, severity `warn/critical`, audience `internal`)
-- upsert default `communication_alerts` rows for every tenant (pattern used by `supabase/migrations/20260207000100_v4_alert_triggers_upsert.sql`)
-- create default templates (email + sms + in_app) with minimal tokens
-
-### 7.3 Emitting alerts
-
-Preferred (fully server-side, no extra client calls):
-- `rpc_evaluate_zone_alerts` inserts into `alert_queue` on transitions with:
-  - `tenant_id = user_tenant_id()`
-  - `alert_type = zone.warning_85 | zone.critical_100`
-  - `entity_type = 'warehouse_zone'`
-  - `entity_id = <zone_id>` (or composite via metadata in body)
-  - optional: set `subject/body_*` directly to avoid needing template variables
-
-Optional improvement:
-- extend `supabase/functions/send-alerts/index.ts` variable builder to understand `entity_type='warehouse_zone'` so templates can use tokens like `[[warehouse_name]]`, `[[zone_code]]`, `[[utilization_pct]]`.
+Zone utilization alerts/notifications are out of scope for this phase (DL-2026-02-18-010). The heat map remains a visual indicator; alerting remains per-location via the existing capacity alert system.
 
 ---
 
@@ -250,8 +218,7 @@ Must pass:
 - **V5** map builder persistence verified (create/rename/default/nodes)
 - **V6** duplicate works (Ctrl/Cmd+D)
 - **V7** heat loads <2s at 300 zones (single RPC)
-- **V8** warning alert fires once at 85% upward crossing only
-- **V9** critical alert fires once at 100% upward crossing only
+- **V8** heat map does not emit notification alerts from zone thresholds (by design)
 - **V10** no billing regression
 
 ---

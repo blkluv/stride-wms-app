@@ -37,6 +37,7 @@ import { HelpButton } from '@/components/prompts';
 import { coerceOutboundShipmentNumber } from '@/lib/shipmentNumberUtils';
 import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundReleaseTypeUtils';
 import { logActivity } from '@/lib/activity/logActivity';
+import { queueSplitRequiredAlert } from '@/lib/alertQueue';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
 import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
@@ -210,6 +211,8 @@ export default function OutboundCreate() {
   // Item selection
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set(preSelectedItemIds));
   const [searchQuery, setSearchQuery] = useState('');
+  // Requested quantity per selected item (defaults to full available qty)
+  const [requestedQtyByItemId, setRequestedQtyByItemId] = useState<Record<string, number>>({});
 
   // Fetch account items
   const { items: accountItems, loading: itemsLoading } = useAccountItems(accountId || undefined);
@@ -503,7 +506,7 @@ export default function OutboundCreate() {
     );
   }, [accountItems, searchQuery]);
 
-  const itemQuantityById = useMemo(() => {
+  const availableQtyById = useMemo(() => {
     const map = new Map<string, number>();
     for (const item of accountItems as any[]) {
       const qty = typeof item?.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : 1;
@@ -514,6 +517,28 @@ export default function OutboundCreate() {
     return map;
   }, [accountItems]);
 
+  const getRequestedQty = useCallback((itemId: string): number => {
+    const available = availableQtyById.get(itemId) ?? 1;
+    const raw = requestedQtyByItemId[itemId];
+    const qty = typeof raw === 'number' && Number.isFinite(raw) ? raw : available;
+    // Clamp within [1, available]
+    return Math.max(1, Math.min(available, qty));
+  }, [availableQtyById, requestedQtyByItemId]);
+
+  // Keep requested qty map hydrated for selected items (including pre-selected)
+  useEffect(() => {
+    if (selectedItemIds.size === 0) return;
+    let changed = false;
+    const next: Record<string, number> = { ...requestedQtyByItemId };
+    for (const itemId of selectedItemIds) {
+      if (next[itemId] == null) {
+        next[itemId] = availableQtyById.get(itemId) ?? 1;
+        changed = true;
+      }
+    }
+    if (changed) setRequestedQtyByItemId(next);
+  }, [availableQtyById, requestedQtyByItemId, selectedItemIds]);
+
   // ------------------------------------------
   // Item selection handlers
   // ------------------------------------------
@@ -521,8 +546,22 @@ export default function OutboundCreate() {
     const newSet = new Set(selectedItemIds);
     if (newSet.has(itemId)) {
       newSet.delete(itemId);
+      // Optional cleanup: keep the map small (safe to rehydrate later)
+      setRequestedQtyByItemId((prev) => {
+        if (prev[itemId] == null) return prev;
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } else {
       newSet.add(itemId);
+      // Default requested qty to the full available qty
+      setRequestedQtyByItemId((prev) => {
+        if (prev[itemId] != null) return prev;
+        const next = { ...prev };
+        next[itemId] = availableQtyById.get(itemId) ?? 1;
+        return next;
+      });
     }
     setSelectedItemIds(newSet);
     if (errors.items) {
@@ -645,7 +684,7 @@ export default function OutboundCreate() {
       const toInsert = itemIds.map((item_id) => ({
         shipment_id: draftShipmentId,
         item_id,
-        expected_quantity: itemQuantityById.get(item_id) ?? 1,
+        expected_quantity: getRequestedQty(item_id),
         status: 'pending',
       }));
 
@@ -742,6 +781,169 @@ export default function OutboundCreate() {
         );
       } catch {
         // Non-blocking: activity logging must not break shipment creation
+      }
+
+      // 5c) If any selected items are grouped (qty > 1) AND the requested qty is partial,
+      // create a blocking Split task per item and queue an internal alert.
+      //
+      // Internal users always follow the split-required workflow (no toggle).
+      const splitCandidates = itemIds
+        .map((item_id) => {
+          const available = availableQtyById.get(item_id) ?? 1;
+          const requested = getRequestedQty(item_id);
+          return {
+            item_id,
+            available,
+            requested,
+            leftover: Math.max(0, available - requested),
+          };
+        })
+        .filter((r) => r.available > 1 && r.requested < r.available);
+
+      if (splitCandidates.length > 0) {
+        const requestNotes = [
+          notes.trim() ? `Customer notes:\n${notes.trim()}` : '',
+          internalNotes.trim() ? `Internal notes:\n${internalNotes.trim()}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+        const splitTaskIds: string[] = [];
+        const splitItemsForMeta: any[] = [];
+
+        for (const c of splitCandidates) {
+          const { data: itemRow, error: itemErr } = await (supabase.from('items') as any)
+            .select('id, item_code, quantity, current_location')
+            .eq('id', c.item_id)
+            .maybeSingle();
+          if (itemErr || !itemRow?.id) throw itemErr || new Error('Item not found');
+
+          const groupedQty = typeof itemRow.quantity === 'number' && Number.isFinite(itemRow.quantity) ? itemRow.quantity : c.available;
+          const keepQty = c.requested;
+          const leftoverQty = Math.max(0, groupedQty - keepQty);
+
+          // Idempotency: if a split task already exists for this shipment+item, reuse it.
+          const { data: existingSplitTask } = await (supabase.from('tasks') as any)
+            .select('id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('task_type', 'Split')
+            .contains('metadata', {
+              split_workflow: {
+                origin_entity_type: 'shipment',
+                origin_entity_id: draftShipmentId,
+                parent_item_id: c.item_id,
+              },
+            })
+            .in('status', ['pending', 'in_progress'])
+            .limit(1)
+            .maybeSingle();
+
+          let splitTaskId: string | null = existingSplitTask?.id || null;
+
+          if (!splitTaskId) {
+            const nowIso = new Date().toISOString();
+            const title = draftShipmentNumber
+              ? `Split - ${itemRow.item_code} (for ${draftShipmentNumber})`
+              : `Split - ${itemRow.item_code}`;
+
+            const description = [
+              `Split required for grouped item ${itemRow.item_code}.`,
+              `Keep qty on parent label: ${keepQty} (of ${groupedQty}).`,
+              `Leftover qty to relabel: ${leftoverQty}.`,
+              '',
+              'Instructions:',
+              `- Scan the parent item code (${itemRow.item_code}) before splitting.`,
+              `- Parent label stays on the job; parent quantity will be set to ${keepQty}.`,
+              `- Leftover items get NEW child labels and should be placed in the default receiving location (unless overridden).`,
+              '- Print and attach ALL new labels, then scan each new child label to confirm application.',
+              requestNotes ? `\n${requestNotes}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n');
+
+            const { data: newTask, error: taskErr } = await (supabase.from('tasks') as any)
+              .insert({
+                tenant_id: profile.tenant_id,
+                account_id: accountId || null,
+                warehouse_id: warehouseId || null,
+                related_item_id: c.item_id,
+                task_type: 'Split',
+                title,
+                description,
+                priority: 'high',
+                status: 'pending',
+                assigned_department: 'warehouse',
+                metadata: {
+                  split_workflow: {
+                    origin_entity_type: 'shipment',
+                    origin_entity_id: draftShipmentId,
+                    origin_entity_number: draftShipmentNumber,
+                    parent_item_id: c.item_id,
+                    parent_item_code: itemRow.item_code,
+                    grouped_qty: groupedQty,
+                    keep_qty: keepQty,
+                    leftover_qty: leftoverQty,
+                    requested_by_user_id: profile.id,
+                    requested_by_name: 'Internal user',
+                    requested_by_email: null,
+                    request_notes: requestNotes || null,
+                    created_at: nowIso,
+                  },
+                } as Json,
+              })
+              .select('id')
+              .single();
+
+            if (taskErr) throw taskErr;
+            splitTaskId = newTask.id;
+
+            const { error: linkErr } = await (supabase.from('task_items') as any).insert({
+              task_id: splitTaskId,
+              item_id: c.item_id,
+            });
+            if (linkErr) throw linkErr;
+          }
+
+          if (splitTaskId) {
+            splitTaskIds.push(splitTaskId);
+            splitItemsForMeta.push({
+              parent_item_id: c.item_id,
+              parent_item_code: itemRow.item_code,
+              grouped_qty: groupedQty,
+              keep_qty: keepQty,
+              leftover_qty: leftoverQty,
+              current_location: itemRow.current_location || null,
+              split_task_id: splitTaskId,
+            });
+
+            // Notify office/warehouse (email + optional in-app configured by tenant)
+            void queueSplitRequiredAlert(profile.tenant_id, splitTaskId, itemRow.item_code);
+          }
+        }
+
+        // Mark the shipment as blocked by split-required tasks
+        const { data: existingShipmentRow, error: shipmentMetaErr } = await (supabase.from('shipments') as any)
+          .select('metadata')
+          .eq('id', draftShipmentId)
+          .maybeSingle();
+        if (shipmentMetaErr) throw shipmentMetaErr;
+
+        const existingMeta = existingShipmentRow?.metadata && typeof existingShipmentRow.metadata === 'object'
+          ? existingShipmentRow.metadata
+          : {};
+
+        const nextMeta = {
+          ...(existingMeta as any),
+          split_required: true,
+          split_required_task_ids: splitTaskIds,
+          split_required_items: splitItemsForMeta,
+          split_required_created_at: new Date().toISOString(),
+        };
+
+        const { error: splitMetaUpdateErr } = await (supabase.from('shipments') as any)
+          .update({ metadata: nextMeta as Json })
+          .eq('id', draftShipmentId);
+        if (splitMetaUpdateErr) throw splitMetaUpdateErr;
       }
 
       // 6) Mark selected items as allocated (after the shipment is visible)
@@ -1318,8 +1520,54 @@ export default function OutboundCreate() {
                                     return <TableCell key={col} className="font-medium">{item.item_code}</TableCell>;
                                   case 'sku':
                                     return <TableCell key={col}>{(item as any).sku || '-'}</TableCell>;
-                                  case 'quantity':
-                                    return <TableCell key={col} className="text-right tabular-nums">{typeof (item as any).quantity === 'number' ? (item as any).quantity : '-'}</TableCell>;
+                                  case 'quantity': {
+                                    const available =
+                                      typeof (item as any).quantity === 'number' && Number.isFinite((item as any).quantity)
+                                        ? (item as any).quantity
+                                        : 1;
+                                    const selected = selectedItemIds.has(item.id);
+
+                                    if (!selected) {
+                                      return (
+                                        <TableCell key={col} className="text-right tabular-nums">
+                                          {typeof available === 'number' ? available : '-'}
+                                        </TableCell>
+                                      );
+                                    }
+
+                                    const requested = getRequestedQty(item.id);
+                                    const showMax = typeof available === 'number' && available > 1;
+
+                                    return (
+                                      <TableCell
+                                        key={col}
+                                        className="text-right tabular-nums"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex items-center justify-end gap-2">
+                                          <Input
+                                            type="number"
+                                            min={1}
+                                            max={available}
+                                            step={1}
+                                            value={requested}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={(e) => {
+                                              const raw = parseInt(e.target.value || '0', 10);
+                                              const next = Number.isFinite(raw) ? raw : 1;
+                                              const clamped = Math.max(1, Math.min(available, next));
+                                              setRequestedQtyByItemId((prev) => ({ ...prev, [item.id]: clamped }));
+                                            }}
+                                            className="h-8 w-20 text-right"
+                                            aria-label={`Requested quantity for ${item.item_code}`}
+                                          />
+                                          {showMax && (
+                                            <span className="text-xs text-muted-foreground">/ {available}</span>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    );
+                                  }
                                   case 'size':
                                     return <TableCell key={col} className="text-right tabular-nums">{formatItemSize((item as any).size ?? null, (item as any).size_unit ?? null)}</TableCell>;
                                   case 'vendor':

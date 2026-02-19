@@ -22,6 +22,7 @@ import type { SpaceTrackingMode, ContainerVolumeMode } from '@/hooks/useOrgPrefe
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { ClientGroupedItemSplitSection } from './ClientGroupedItemSplitSection';
 import {
   DndContext,
   closestCenter,
@@ -43,6 +44,7 @@ const DEFAULT_CARD_ORDER = [
   'space-tracking',
   'storage-inspection',
   'time-tracking',
+  'client-grouped-split',
   'item-display-settings',
   'display-settings',
   'label-customization',
@@ -218,6 +220,14 @@ export function PreferencesContent() {
           onAllowConcurrentTasksChange={(value) => setFormData(prev => ({ ...prev, time_tracking_allow_concurrent_tasks: value }))}
           onAllowConcurrentShipmentsChange={(value) => setFormData(prev => ({ ...prev, time_tracking_allow_concurrent_shipments: value }))}
           onAllowConcurrentStocktakesChange={(value) => setFormData(prev => ({ ...prev, time_tracking_allow_concurrent_stocktakes: value }))}
+        />
+      </SortableCard>
+    ),
+    'client-grouped-split': (
+      <SortableCard id="client-grouped-split" key="client-grouped-split">
+        <ClientGroupedItemSplitSection
+          enabled={orgPrefs.client_partial_grouped_enabled}
+          onEnabledChange={(next) => updateOrgPref('client_partial_grouped_enabled', next)}
         />
       </SortableCard>
     ),
