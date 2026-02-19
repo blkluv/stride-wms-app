@@ -54,6 +54,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Prefer IPv4 connections
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+
       - name: Verify required secrets
         run: |
           MISSING=""
@@ -66,44 +71,159 @@ jobs:
             exit 1
           fi
 
+      - name: Install Supabase CLI
+        run: npm install -g supabase@latest
+
       - name: Link Supabase project
-        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
-      - name: Detect migration changes
-        id: detect_migrations
-        if: github.event_name == 'push'
+      # ── Migration handling ─────────────────────────────────────────────
+      # Instead of relying on git diff, we compare local migration files
+      # against the remote database state via the Management API. This
+      # self-heals from previous failed runs and catches any un-applied
+      # migrations regardless of which commit introduced them.
+
+      - name: Check pending migrations
+        id: check_migrations
         run: |
-          BEFORE_SHA="${{ github.event.before }}"
-          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            BEFORE_SHA="$(git rev-parse HEAD~1)"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_db_push }}" != "true" ]; then
+            echo "should_migrate=false" >> "$GITHUB_OUTPUT"
+            echo "Migration push skipped (run_db_push=false)"
+            exit 0
           fi
 
-          if git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | grep -q '^supabase/migrations/'; then
-            echo "has_migrations=true" >> "$GITHUB_OUTPUT"
+          # Fetch applied migration versions from the Management API (HTTPS, no direct DB)
+          HTTP_RESPONSE=$(curl -sf -w "\n%{http_code}" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/migrations" 2>/dev/null) || true
+
+          HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -1)
+          RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::warning::Could not fetch remote migration list (HTTP $HTTP_CODE). Will attempt db push anyway."
+            echo "should_migrate=true" >> "$GITHUB_OUTPUT"
+            echo "api_available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "api_available=true" >> "$GITHUB_OUTPUT"
+
+          # Parse remote versions
+          REMOTE_VERSIONS=$(echo "$RESPONSE_BODY" | node -e "
+            let d='';
+            process.stdin.on('data', c => d += c);
+            process.stdin.on('end', () => {
+              try {
+                const rows = JSON.parse(d);
+                rows.forEach(r => console.log(r.version));
+              } catch(e) {
+                process.stderr.write('Failed to parse API response\n');
+                process.exit(1);
+              }
+            });
+          ") || true
+
+          # Collect local migration versions (timestamp prefix before first underscore)
+          LOCAL_VERSIONS=$(ls -1 supabase/migrations/*.sql 2>/dev/null \
+            | xargs -I{} basename {} \
+            | sed 's/_.*//' \
+            | sort -u)
+
+          # Create stub files for remote-only migrations so db push doesn't
+          # complain about missing local files. This replaces the old
+          # "migration fetch --db-url" step that required a direct PostgreSQL
+          # connection and was failing on IPv6-only GitHub runners.
+          STUBS_CREATED=0
+          while IFS= read -r ver; do
+            [ -z "$ver" ] && continue
+            if ! ls supabase/migrations/${ver}_* 1>/dev/null 2>&1; then
+              echo "-- fetched from remote via API" > "supabase/migrations/${ver}_remote.sql"
+              STUBS_CREATED=$((STUBS_CREATED + 1))
+              echo "  stub: ${ver}_remote.sql"
+            fi
+          done <<< "$REMOTE_VERSIONS"
+
+          if [ "$STUBS_CREATED" -gt 0 ]; then
+            echo "Created $STUBS_CREATED stub(s) for remote-only migrations"
+          fi
+
+          # Find local migrations not yet applied to remote
+          PENDING_COUNT=0
+          while IFS= read -r ver; do
+            [ -z "$ver" ] && continue
+            if ! echo "$REMOTE_VERSIONS" | grep -q "^${ver}$"; then
+              PENDING_COUNT=$((PENDING_COUNT + 1))
+              echo "  pending: $ver"
+            fi
+          done <<< "$LOCAL_VERSIONS"
+
+          if [ "$PENDING_COUNT" -gt 0 ]; then
+            echo "should_migrate=true" >> "$GITHUB_OUTPUT"
+            echo "Found $PENDING_COUNT pending migration(s)"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_migrate=true" >> "$GITHUB_OUTPUT"
+            echo "No pending migrations detected, but running db push as requested"
           else
-            echo "has_migrations=false" >> "$GITHUB_OUTPUT"
+            echo "should_migrate=false" >> "$GITHUB_OUTPUT"
+            echo "All local migrations are already applied"
           fi
-
-      - name: Prepare encoded database URL (for migration fetch)
-        if: (github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_db_push == 'true')
-        run: |
-          # Supabase CLI db push can fail if the remote migration history includes versions
-          # not present locally. Fetching the remote history creates local stub files so
-          # the CLI can proceed safely.
-          DB_URL_ENC="$(node -e "const ref=process.env.SUPABASE_PROJECT_REF; const pw=process.env.SUPABASE_DB_PASSWORD; const pwEnc=encodeURIComponent(pw); const conn=\`postgresql://postgres:\${pwEnc}@db.\${ref}.supabase.co:5432/postgres\`; process.stdout.write(conn);")"
-          echo "SUPABASE_DB_URL_ENCODED=$DB_URL_ENC" >> "$GITHUB_ENV"
-
-      - name: Fetch remote migration history stubs
-        if: (github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_db_push == 'true')
-        run: npx supabase migration fetch --db-url "$SUPABASE_DB_URL_ENCODED"
 
       - name: Apply database migrations
-        if: (github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations == 'true') || (github.event_name == 'workflow_dispatch' && inputs.run_db_push == 'true')
-        run: npx supabase db push --linked --yes -p "$SUPABASE_DB_PASSWORD"
+        if: steps.check_migrations.outputs.should_migrate == 'true'
+        run: |
+          MAX_RETRIES=3
+          RETRY_DELAY=5
 
-      - name: No database migrations detected
-        if: github.event_name == 'push' && steps.detect_migrations.outputs.has_migrations != 'true'
-        run: echo "No migration changes detected in this push. Skipping db push."
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "── db push attempt $attempt of $MAX_RETRIES ──"
+            if supabase db push --linked --yes -p "$SUPABASE_DB_PASSWORD" 2>&1; then
+              echo "Migrations applied successfully"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "::warning::db push failed on attempt $attempt. Retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+              RETRY_DELAY=$((RETRY_DELAY * 2))
+            fi
+          done
+
+          echo "::error::db push failed after $MAX_RETRIES attempts"
+          exit 1
+
+      - name: Verify migration status
+        if: steps.check_migrations.outputs.should_migrate == 'true'
+        run: |
+          echo "## Migration Status" >> "$GITHUB_STEP_SUMMARY"
+
+          # Re-fetch from API to confirm applied state
+          RESPONSE=$(curl -sf \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/migrations" 2>/dev/null) || true
+
+          if [ -n "$RESPONSE" ]; then
+            APPLIED=$(echo "$RESPONSE" | node -e "
+              let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{
+                try { console.log(JSON.parse(d).length); } catch(e) { console.log('?'); }
+              });
+            ")
+            echo "Remote has **${APPLIED}** applied migrations after this run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Also show CLI-based migration list for detailed view
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          supabase migration list --linked -p "$SUPABASE_DB_PASSWORD" 2>&1 \
+            | tail -20 >> "$GITHUB_STEP_SUMMARY" || echo "(migration list unavailable)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No database migrations needed
+        if: steps.check_migrations.outputs.should_migrate != 'true'
+        run: |
+          echo "No pending migrations to apply."
+          echo "## Migrations" >> "$GITHUB_STEP_SUMMARY"
+          echo "All migrations already applied. Nothing to do." >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Function deployment ────────────────────────────────────────────
 
       - name: Detect functions to deploy
         id: detect_functions
@@ -127,8 +247,6 @@ jobs:
             fi
             CHANGED_FILES="$(git diff --name-only "$BEFORE_SHA" "${{ github.sha }}")"
 
-            # If shared function code changed, deploy ALL functions.
-            # Otherwise the changed functions won't pick up the new shared module.
             if echo "$CHANGED_FILES" | grep -q '^supabase/functions/_shared/'; then
               shopt -s nullglob
               mapfile -t FUNCTIONS < <(
@@ -164,10 +282,22 @@ jobs:
         run: |
           echo "Deploying functions:"
           echo "$FUNCTION_LIST"
+          echo "## Functions Deployed" >> "$GITHUB_STEP_SUMMARY"
+          FAILED=""
           while IFS= read -r FUNCTION_NAME; do
             [ -z "$FUNCTION_NAME" ] && continue
-            npx supabase functions deploy "$FUNCTION_NAME" --project-ref "$SUPABASE_PROJECT_REF"
+            if supabase functions deploy "$FUNCTION_NAME" --project-ref "$SUPABASE_PROJECT_REF"; then
+              echo "- $FUNCTION_NAME" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::warning::Failed to deploy function: $FUNCTION_NAME"
+              echo "- ~~$FUNCTION_NAME~~ (failed)" >> "$GITHUB_STEP_SUMMARY"
+              FAILED="$FAILED $FUNCTION_NAME"
+            fi
           done <<< "$FUNCTION_LIST"
+          if [ -n "$FAILED" ]; then
+            echo "::error::Some functions failed to deploy:$FAILED"
+            exit 1
+          fi
 
       - name: No function deployment needed
         if: (github.event_name == 'push' || inputs.deploy_functions == 'true') && steps.detect_functions.outputs.function_list == ''
