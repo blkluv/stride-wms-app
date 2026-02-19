@@ -900,7 +900,16 @@ export default function Inventory() {
       </div>
 
       <TaskDialog open={taskDialogOpen} onOpenChange={(open) => { setTaskDialogOpen(open); if (!open) setPreSelectedTaskType(''); }} selectedItemIds={Array.from(selectedItems)} preSelectedTaskType={preSelectedTaskType} onSuccess={handleTaskSuccess} />
-      <InventoryImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} file={importFile} warehouses={warehouses} locations={locations} onSuccess={handleImportSuccess} />
+      <InventoryImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        file={importFile}
+        warehouses={warehouses}
+        locations={locations}
+        itemDisplaySettings={itemDisplaySettings}
+        itemDisplayViewId={activeViewId || defaultItemViewId || 'default'}
+        onSuccess={handleImportSuccess}
+      />
       <PrintLabelsDialog open={printLabelsDialogOpen} onOpenChange={setPrintLabelsDialogOpen} items={getSelectedItemsForLabels()} />
       <QuickReleaseDialog open={releaseDialogOpen} onOpenChange={setReleaseDialogOpen} selectedItems={getSelectedItemsData()} onSuccess={handleReleaseSuccess} />
       <ClaimCreateDialog open={claimDialogOpen} onOpenChange={(open) => { setClaimDialogOpen(open); if (!open) setSelectedItems(new Set()); }} itemIds={Array.from(selectedItems)} />

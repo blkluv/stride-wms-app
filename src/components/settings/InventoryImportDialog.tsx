@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,13 +22,24 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import * as XLSX from 'xlsx';
 import { 
   parseFileToRows, 
   canonicalizeHeader, 
   parseNumber, 
+  parseBoolean,
   parseDate as parseDateUtil,
   extractUrl 
 } from '@/lib/importUtils';
+import {
+  type ItemCustomFieldDefinition,
+  type ItemColumnKey,
+  type ItemDisplaySettingsV1,
+  getColumnLabel,
+  getViewById,
+  getVisibleColumnsForView,
+  parseCustomFieldColumnKey,
+} from '@/lib/items/itemDisplaySettings';
 
 interface InventoryImportDialogProps {
   open: boolean;
@@ -36,6 +47,8 @@ interface InventoryImportDialogProps {
   file: File | null;
   warehouses: Warehouse[];
   locations: Location[];
+  itemDisplaySettings: ItemDisplaySettingsV1;
+  itemDisplayViewId: string;
   onSuccess: () => void;
 }
 
@@ -58,6 +71,7 @@ interface ParsedItem {
   dateReceived: string;
   dateReleased: string;
   size: number;
+  customFields?: Record<string, unknown>;
 }
 
 interface ImportResult {
@@ -163,7 +177,23 @@ function parseRepairStatus(value: string): string | null {
   return null;
 }
 
-async function parseFile(file: File): Promise<{ items: ParsedItem[]; headers: string[] }> {
+function buildCustomFieldHeaderMap(customFields: ItemCustomFieldDefinition[]) {
+  const map = new Map<string, ItemCustomFieldDefinition>();
+  for (const f of customFields) {
+    if (!f.enabled) continue;
+    // Allow headers by label or key (both canonicalized).
+    map.set(canonicalizeHeader(f.label), f);
+    map.set(canonicalizeHeader(f.key), f);
+    // Common convention: "cf_<key>"
+    map.set(`cf_${canonicalizeHeader(f.key)}`, f);
+  }
+  return map;
+}
+
+async function parseFile(
+  file: File,
+  customFields: ItemCustomFieldDefinition[],
+): Promise<{ items: ParsedItem[]; headers: string[] }> {
   const items: ParsedItem[] = [];
   
   try {
@@ -173,14 +203,29 @@ async function parseFile(file: File): Promise<{ items: ParsedItem[]; headers: st
       return { items: [], headers: [] };
     }
     
-    // Map headers to field names
+    const customFieldMap = buildCustomFieldHeaderMap(customFields);
+
+    // Map headers to known fields (and separately track custom field columns).
     const mappedHeaders: (keyof ParsedItem | null)[] = headers.map((h) => {
       const canonical = canonicalizeHeader(h);
       return INVENTORY_HEADER_ALIASES[canonical] || null;
     });
+
+    const mappedCustomFieldDefs: (ItemCustomFieldDefinition | null)[] = headers.map((h) => {
+      const canonical = canonicalizeHeader(h);
+      // Don't double-map: if it's a known header alias, treat it as that field.
+      if (INVENTORY_HEADER_ALIASES[canonical]) return null;
+      return customFieldMap.get(canonical) || null;
+    });
     
     // Create column indices
     const getIndex = (field: keyof ParsedItem): number => mappedHeaders.indexOf(field);
+    const customFieldIndices: Array<{ key: string; type: ItemCustomFieldDefinition['type']; idx: number }> = [];
+    for (let i = 0; i < mappedCustomFieldDefs.length; i++) {
+      const def = mappedCustomFieldDefs[i];
+      if (!def) continue;
+      customFieldIndices.push({ key: def.key, type: def.type, idx: i });
+    }
     
     // Parse each row
     for (const row of rows) {
@@ -201,6 +246,24 @@ async function parseFile(file: File): Promise<{ items: ParsedItem[]; headers: st
       
       // Skip empty rows or rows without item code
       if (!itemCode && quantity === 0) continue;
+
+      // Custom fields (metadata.custom_fields)
+      const customFields: Record<string, unknown> = {};
+      for (const { key, type, idx } of customFieldIndices) {
+        const raw = row[idx];
+        if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+        let next: unknown = String(raw).trim();
+        if (type === 'number') {
+          const n = parseNumber(raw);
+          next = n === null ? null : n;
+        } else if (type === 'date') {
+          next = parseDateUtil(raw as any);
+        } else if (type === 'checkbox') {
+          next = parseBoolean(raw);
+        }
+        if (next === null || next === undefined || next === '') continue;
+        customFields[key] = next;
+      }
       
       items.push({
         quantity: quantity || 1,
@@ -221,6 +284,7 @@ async function parseFile(file: File): Promise<{ items: ParsedItem[]; headers: st
         dateReceived: getValue('dateReceived'),
         dateReleased: getValue('dateReleased'),
         size: getNumValue('size'),
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
       });
     }
     
@@ -237,6 +301,8 @@ export function InventoryImportDialog({
   file,
   warehouses,
   locations,
+  itemDisplaySettings,
+  itemDisplayViewId,
   onSuccess,
 }: InventoryImportDialogProps) {
   const [importing, setImporting] = useState(false);
@@ -248,6 +314,74 @@ export function InventoryImportDialog({
   const [step, setStep] = useState<'preview' | 'importing' | 'complete'>('preview');
   const [parsing, setParsing] = useState(false);
   const { toast } = useToast();
+
+  const templateHeaders = useMemo(() => {
+    const view = getViewById(itemDisplaySettings, itemDisplayViewId) || itemDisplaySettings.views[0];
+    const cols: ItemColumnKey[] = view ? getVisibleColumnsForView(view) : [];
+
+    const headers: string[] = [];
+    for (const col of cols) {
+      const cfKey = parseCustomFieldColumnKey(col);
+      if (cfKey) {
+        headers.push(getColumnLabel(itemDisplaySettings, col));
+        continue;
+      }
+      if (col === 'photo') {
+        headers.push('Photo URL');
+        continue;
+      }
+      headers.push(getColumnLabel(itemDisplaySettings, col));
+    }
+
+    // Ensure a minimally useful template even if settings are missing.
+    if (headers.length === 0) {
+      return ['Item Code', 'Description', 'Vendor', 'Location', 'Qty'];
+    }
+
+    // Make sure Item Code is first so header aliases like "SKU" can't accidentally
+    // take precedence over it during parsing.
+    const itemCodeIdx = headers.findIndex((h) => canonicalizeHeader(h) === 'item_code');
+    if (itemCodeIdx === -1) {
+      headers.unshift('Item Code');
+    } else if (itemCodeIdx > 0) {
+      const [h] = headers.splice(itemCodeIdx, 1);
+      headers.unshift(h);
+    }
+
+    // De-dupe while preserving order
+    const seen = new Set<string>();
+    return headers.filter((h) => {
+      const key = canonicalizeHeader(h);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [itemDisplaySettings, itemDisplayViewId]);
+
+  const downloadCsvTemplate = () => {
+    const escape = (v: string) => {
+      const s = String(v ?? '');
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const csv = `${templateHeaders.map(escape).join(',')}\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory-import-template-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadExcelTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([templateHeaders]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.writeFile(wb, `inventory-import-template-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   // Create a location lookup map
   const locationMap = new Map<string, string>();
@@ -272,7 +406,7 @@ export function InventoryImportDialog({
     
     setParsing(true);
     try {
-      const { items, headers: parsedHeaders } = await parseFile(file);
+      const { items, headers: parsedHeaders } = await parseFile(file, itemDisplaySettings.custom_fields);
       setParsedItems(items);
       setHeaders(parsedHeaders);
       
@@ -350,6 +484,8 @@ export function InventoryImportDialog({
           .map((item) => {
             const locationId = locationMap.get(item.locationCode);
             const photoUrl = extractUrl(item.photoUrl);
+            const custom_fields =
+              item.customFields && Object.keys(item.customFields).length > 0 ? item.customFields : null;
             
             return {
               tenant_id: profile.tenant_id,
@@ -375,6 +511,7 @@ export function InventoryImportDialog({
                 tech: item.tech || null,
                 date_repaired: item.dateRepaired || null,
                 date_released: item.dateReleased || null,
+                ...(custom_fields ? { custom_fields } : {}),
                 imported_from: file?.name || 'excel_import',
               },
             };
@@ -450,10 +587,6 @@ export function InventoryImportDialog({
     onOpenChange(false);
   };
 
-  const handleDownloadTemplate = () => {
-    window.open('/inventory-template.csv', '_blank');
-  };
-
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
@@ -469,7 +602,7 @@ export function InventoryImportDialog({
         <div className="flex-1 overflow-hidden">
           {step === 'preview' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
                 <div className="flex-1">
                   <label className="text-sm font-medium">Target Warehouse</label>
                   <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
@@ -485,10 +618,16 @@ export function InventoryImportDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <Button variant="outline" size="sm" className="ml-4 mt-6" onClick={handleDownloadTemplate}>
-                  <MaterialIcon name="download" size="sm" className="mr-2" />
-                  Template
-                </Button>
+                <div className="flex items-center gap-2 sm:pb-0">
+                  <Button variant="outline" size="sm" onClick={downloadCsvTemplate}>
+                    <MaterialIcon name="download" size="sm" className="mr-2" />
+                    CSV Template
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={downloadExcelTemplate}>
+                    <MaterialIcon name="grid_on" size="sm" className="mr-2" />
+                    Excel Template
+                  </Button>
+                </div>
               </div>
 
               <div className="bg-muted rounded-lg p-4">
