@@ -879,43 +879,6 @@ export function useTasks(filters?: {
       };
     }
   };
-
-  const startTask = async (taskId: string, options?: { pauseExisting?: boolean }) => {
-    const result = await startTaskDetailed(taskId, options);
-    if (result.ok) {
-      const paused = !!(options?.pauseExisting && result.paused_interval_id);
-      toast({
-        title: 'Task Started',
-        description: paused ? 'Paused your previous job and started this task.' : 'Task is now in progress.',
-      });
-      return true;
-    }
-
-    if (result.error_code === 'ACTIVE_TIMER_EXISTS') {
-      toast({
-        variant: 'destructive',
-        title: 'Another job is already in progress',
-        description: 'Pause your active job before starting this task.',
-      });
-      return false;
-    }
-
-    if (result.error_code === 'SPLIT_REQUIRED') {
-      toast({
-        variant: 'destructive',
-        title: 'Split required',
-        description: result.error_message || 'This task is blocked until the required Split task is completed.',
-      });
-      return false;
-    }
-
-    toast({
-      variant: 'destructive',
-      title: 'Error',
-      description: result.error_message || 'Failed to start task',
-    });
-    return false;
-  };
   // -------------------------------------------------------------------------
   // Estimated Service Time snapshot (for historical reporting)
   // -------------------------------------------------------------------------
