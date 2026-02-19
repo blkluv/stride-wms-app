@@ -30,10 +30,10 @@ Legend:
   - [x] Outbound Pull / Release
   - [x] Stocktake start
 - [x] **Pause/Resume buttons allowed** — manual controls exist via `JobTimerWidget`
-- [ ] **After completing Job B, prompt to resume paused Job A** (Q22/Q23)
-  - [ ] Prompt shows which job is paused (label)
-  - [ ] User can choose which paused job to resume (keep up to 3)
-  - [ ] If user declines, confirm that it won’t auto-resume
+- [x] **After completing Job B, prompt to resume paused Job A** (Q22/Q23)
+  - [x] Prompt shows which task is paused (title)
+  - [x] User can choose which paused task to resume (keeps up to 3)
+  - [x] If user declines, confirm that it won’t auto-resume
 
 ---
 

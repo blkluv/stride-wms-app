@@ -23,6 +23,7 @@ import { AppleBanner } from '@/components/ui/AppleBanner';
 import { useMessageNotifications } from '@/hooks/useMessageNotifications';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { ResumePausedTaskPrompt } from '@/components/time/ResumePausedTaskPrompt';
 import {
   DndContext,
   closestCenter,
@@ -652,6 +653,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Page content - scrollable with extra bottom padding for full scrolling */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 animate-fade-in">{children}</main>
+
+        {/* Global (internal) prompt: resume paused task after job switch */}
+        <ResumePausedTaskPrompt />
       </div>
     </div>
   );

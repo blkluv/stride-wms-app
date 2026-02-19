@@ -72,6 +72,7 @@ import { mergeServiceTimeActualSnapshot, mergeServiceTimeSnapshot } from '@/lib/
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
 import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 // ============================================
@@ -358,6 +359,7 @@ export default function ShipmentDetail() {
       });
     }
     const result = await rawFinishSession(verificationData, createItems);
+    promptResumePausedTask();
     // Track competency after completion
     if (promptContext?.trackCompetencyEvent) {
       promptContext.trackCompetencyEvent('receiving', 'task_completed');
@@ -1785,6 +1787,7 @@ export default function ShipmentDetail() {
       }
 
       toast({ title: 'Shipment Shipped', description: 'Items have been released and release document generated.' });
+      promptResumePausedTask();
       setShowOutboundCompleteDialog(false);
       setShowSignatureDialog(false);
       setPendingOverrideWarnings(undefined);

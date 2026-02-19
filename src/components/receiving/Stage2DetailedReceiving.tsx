@@ -48,6 +48,7 @@ import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFl
 import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
 import { mergeServiceTimeSnapshot, mergeServiceTimeActualSnapshot } from '@/lib/time/serviceTimeSnapshot';
 import { minutesBetweenIso } from '@/lib/time/minutesBetweenIso';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 import { AddFromManifestSelector } from './AddFromManifestSelector';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
@@ -1165,6 +1166,7 @@ export function Stage2DetailedReceiving({
       });
       setShowCompleteDialog(false);
       setShowAdminOverride(false);
+      promptResumePausedTask();
       onComplete();
     } catch (err: any) {
       console.error('[Stage2] complete error:', err);

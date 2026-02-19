@@ -50,6 +50,7 @@ import { useToast } from '@/hooks/use-toast';
 import { StatusIndicator } from '@/components/ui/StatusIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 
 const statusLabels: Record<StocktakeStatus, string> = {
   draft: 'Draft',
@@ -195,6 +196,7 @@ export default function Stocktakes() {
         }
         case 'close':
           await closeStocktake(confirmAction.id);
+          promptResumePausedTask();
           break;
         case 'cancel':
           await cancelStocktake(confirmAction.id);

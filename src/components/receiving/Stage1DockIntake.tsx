@@ -33,6 +33,7 @@ import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import { BillingCalculator } from '@/components/billing/BillingCalculator';
 import { AddAddonDialog } from '@/components/billing/AddAddonDialog';
 import { AddCreditDialog } from '@/components/billing/AddCreditDialog';
+import { promptResumePausedTask } from '@/lib/time/promptResumePausedTask';
 import {
   Dialog,
   DialogContent,
@@ -668,6 +669,7 @@ export function Stage1DockIntake({
       }
 
       toast({ title: 'Stage 1 Complete', description: 'Dock intake has been recorded.' });
+      promptResumePausedTask();
       onComplete();
     } catch (err: any) {
       console.error('[Stage1] complete error:', err);
