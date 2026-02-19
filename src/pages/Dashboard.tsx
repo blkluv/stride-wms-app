@@ -20,6 +20,7 @@ import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { useDashboardStats, PutAwayItem, TaskItem, ShipmentItem } from '@/hooks/useDashboardStats';
 import { useCountUp } from '@/hooks/useCountUp';
 import { CapacityCard } from '@/components/dashboard/CapacityCard';
+import { HeatMapHeroTile } from '@/components/dashboard/HeatMapHeroTile';
 
 /** Animated count display for dashboard tiles */
 function AnimatedCount({ value, delay = 0, className }: { value: number; delay?: number; className?: string }) {
@@ -298,6 +299,12 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {selectedWarehouseId && (
+              <HeatMapHeroTile
+                warehouseId={selectedWarehouseId}
+                className="md:col-span-2 lg:col-span-3"
+              />
+            )}
             <CapacityCard warehouseId={selectedWarehouseId ?? undefined} />
             {tiles.map((t, tileIndex) => {
               const isExpanded = expandedCard === t.key;
