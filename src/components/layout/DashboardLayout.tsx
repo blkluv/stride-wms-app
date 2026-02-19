@@ -212,6 +212,83 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     touchStartX.current = null;
   }, [sidebarTranslateX]);
 
+  // Global edge-swipe (right edge → left) to open Scan Hub quickly.
+  // Guarded to avoid fighting iOS Safari's forward-swipe gesture unless installed (PWA) or native.
+  const edgeSwipeRef = useRef<{
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    startTime: number;
+    tracking: boolean;
+  } | null>(null);
+
+  const canUseEdgeSwipe = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+    const isStandalone =
+      !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      !!(navigator as any).standalone;
+    const isCapacitor = !!(window as any).Capacitor;
+
+    if (isIOS && !isStandalone && !isCapacitor) return false;
+    return true;
+  }, []);
+
+  const handleEdgeSwipeTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!canUseEdgeSwipe()) return;
+    if (e.touches.length !== 1) return;
+    if (typeof window === 'undefined') return;
+
+    const t = e.touches[0];
+    const edgePx = 24;
+    const winW = window.innerWidth || 0;
+    if (winW > 0 && t.clientX < winW - edgePx) return;
+
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable=\"true\"]')) return;
+
+    edgeSwipeRef.current = {
+      tracking: true,
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastY: t.clientY,
+      startTime: Date.now(),
+    };
+  }, [canUseEdgeSwipe]);
+
+  const handleEdgeSwipeTouchMove = useCallback((e: React.TouchEvent) => {
+    const state = edgeSwipeRef.current;
+    if (!state?.tracking) return;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    state.lastX = t.clientX;
+    state.lastY = t.clientY;
+  }, []);
+
+  const handleEdgeSwipeTouchEnd = useCallback(() => {
+    const state = edgeSwipeRef.current;
+    edgeSwipeRef.current = null;
+    if (!state?.tracking) return;
+
+    const dx = state.lastX - state.startX;
+    const dy = state.lastY - state.startY;
+    const dt = Date.now() - state.startTime;
+
+    const minDx = -90;
+    const maxDy = 50;
+    const maxDt = 900;
+    if (dx <= minDx && Math.abs(dy) <= maxDy && dt <= maxDt) {
+      if (location.pathname !== '/scan') {
+        navigate('/scan');
+      }
+    }
+  }, [location.pathname, navigate]);
+
   // Apply theme
   useEffect(() => {
     if (isDark) {
@@ -651,7 +728,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <UpgradeNotificationBanner />
 
         {/* Page content - scrollable with extra bottom padding for full scrolling */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 animate-fade-in">{children}</main>
+        <main
+          className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 animate-fade-in"
+          onTouchStart={handleEdgeSwipeTouchStart}
+          onTouchMove={handleEdgeSwipeTouchMove}
+          onTouchEnd={handleEdgeSwipeTouchEnd}
+          onTouchCancel={handleEdgeSwipeTouchEnd}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );
