@@ -38,7 +38,7 @@ import { InventoryImportDialog } from '@/components/settings/InventoryImportDial
 import { QuickReleaseDialog } from '@/components/inventory/QuickReleaseDialog';
 import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { ClaimCreateDialog } from '@/components/claims/ClaimCreateDialog';
-import { InventoryFiltersSheet, InventoryFilters } from '@/components/inventory/InventoryFiltersSheet';
+import type { InventoryFilters } from '@/components/inventory/InventoryFiltersSheet';
 import { CreateManifestFromItemsDialog } from '@/components/inventory/CreateManifestFromItemsDialog';
 import { AddItemDialog } from '@/components/inventory/AddItemDialog';
 import { useWarehouses } from '@/hooks/useWarehouses';
@@ -72,6 +72,7 @@ import {
   MobileDataCardDescription,
   MobileDataCardContent,
 } from '@/components/ui/mobile-data-card';
+import { MultiSelect } from '@/components/ui/multi-select';
 
 interface Item {
   id: string;
@@ -125,6 +126,7 @@ export default function Inventory() {
     locationId: '',
     warehouseId: '',
   });
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -148,6 +150,13 @@ export default function Inventory() {
   const { profile } = useAuth();
   const { preferences } = useTenantPreferences();
   const showWarehouseInLocation = preferences?.show_warehouse_in_location ?? true;
+
+  const locationOptions = useMemo(() => {
+    return (locations || []).map((l) => ({
+      value: l.id,
+      label: `${l.code}${l.name ? ` (${l.name})` : ''}`,
+    }));
+  }, [locations]);
 
   const {
     settings: itemDisplaySettings,
@@ -325,7 +334,9 @@ export default function Inventory() {
       const matchesVendor = !filters.vendor || item.vendor === filters.vendor;
       const matchesAccount = !filters.accountId || item.account_id === filters.accountId;
       const matchesSidemark = !filters.sidemark || item.sidemark === filters.sidemark;
-      const matchesLocation = !filters.locationId || item.location_id === filters.locationId;
+      const matchesLocation =
+        selectedLocationIds.length === 0 ||
+        (!!item.location_id && selectedLocationIds.includes(item.location_id));
       const matchesWarehouse = !filters.warehouseId || item.warehouse_id === filters.warehouseId;
 
       return matchesSearch && matchesStatus && matchesVendor && matchesAccount && matchesSidemark && matchesLocation && matchesWarehouse;
@@ -342,7 +353,7 @@ export default function Inventory() {
     }
 
     return result;
-  }, [items, searchQuery, statusFilter, filters, sortField, sortDirection]);
+  }, [items, searchQuery, statusFilter, filters, selectedLocationIds, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -745,25 +756,15 @@ export default function Inventory() {
                 <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search item code, SKU, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
               </div>
-              <Select 
-                value={filters.locationId || '__all__'} 
-                onValueChange={(value) => setFilters({ ...filters, locationId: value === '__all__' ? '' : value })}
-              >
-                <SelectTrigger className="w-full sm:w-48">
-                  <div className="flex items-center gap-2">
-                    <MaterialIcon name="location_on" size="sm" className="text-muted-foreground" />
-                    <SelectValue placeholder="All Locations" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All Locations</SelectItem>
-                  {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.code}{location.name ? ` (${location.name})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="col-span-2 sm:col-span-auto sm:w-64">
+                <MultiSelect
+                  options={locationOptions}
+                  selected={selectedLocationIds}
+                  onChange={setSelectedLocationIds}
+                  placeholder="All locations"
+                  emptyMessage="No locations found."
+                />
+              </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-40">
                   <SelectValue placeholder="Status" />
@@ -776,26 +777,29 @@ export default function Inventory() {
                 </SelectContent>
               </Select>
               <div className="col-span-2 flex w-full gap-2 sm:col-span-auto sm:w-auto">
-                <Select
-                  value={activeViewId || defaultItemViewId || 'default'}
-                  onValueChange={setActiveViewId}
-                  disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
-                >
-                  <SelectTrigger className="flex-1 sm:w-44">
-                    <div className="flex items-center gap-2">
-                      <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
-                      <SelectValue placeholder="View" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {itemDisplaySettings.views.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.name}
-                        {v.is_default ? ' (default)' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Hide the "Default" view selector when there's only one view */}
+                {itemDisplaySettings.views.length > 1 && (
+                  <Select
+                    value={activeViewId || defaultItemViewId || 'default'}
+                    onValueChange={setActiveViewId}
+                    disabled={itemDisplayLoading || itemDisplaySettings.views.length === 0}
+                  >
+                    <SelectTrigger className="flex-1 sm:w-44">
+                      <div className="flex items-center gap-2">
+                        <MaterialIcon name="view_list" size="sm" className="text-muted-foreground" />
+                        <SelectValue placeholder="View" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {itemDisplaySettings.views.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.name}
+                          {v.is_default ? ' (default)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 <ItemColumnsPopover
                   settings={itemDisplaySettings}
@@ -803,10 +807,6 @@ export default function Inventory() {
                   disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                   onSave={saveItemDisplaySettings}
                 />
-              </div>
-
-              <div className="col-span-2 sm:col-span-auto">
-                <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
               </div>
             </div>
 
