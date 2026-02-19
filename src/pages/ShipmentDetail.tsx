@@ -1110,6 +1110,7 @@ export default function ShipmentDetail() {
     const splitTaskIds = splitRequired && Array.isArray((meta as any).split_required_task_ids)
       ? ((meta as any).split_required_task_ids as any[]).map(String)
       : [];
+    const pendingReview = !!(meta && (meta as any).pending_review === true);
 
     if (splitRequired) {
       toast({
@@ -1120,6 +1121,26 @@ export default function ShipmentDetail() {
           : 'This outbound is blocked until the required Split task is completed.',
       });
       return;
+    }
+
+    // Manual review workflow: allow start, but clear the "Pending review" marker.
+    if (pendingReview) {
+      try {
+        const nextMeta: any = { ...(meta as any) };
+        delete nextMeta.pending_review;
+        delete nextMeta.pending_review_reason;
+        delete nextMeta.split_workflow;
+        const { error: clearErr } = await (supabase.from('shipments') as any)
+          .update({ metadata: nextMeta })
+          .eq('id', shipment.id);
+        if (clearErr) throw clearErr;
+        toast({
+          title: 'Review started',
+          description: 'Pending review cleared for this shipment.',
+        });
+      } catch (err) {
+        console.warn('[ShipmentDetail] failed to clear pending_review metadata:', err);
+      }
     }
     if (!outboundDockLocation?.id) {
       toast({
