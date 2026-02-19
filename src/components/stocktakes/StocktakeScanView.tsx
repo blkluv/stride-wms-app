@@ -39,6 +39,7 @@ import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { formatItemSize } from '@/lib/items/formatItemSize';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -543,7 +544,13 @@ export default function StocktakeScanView() {
               {stocktake.warehouse?.name}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center flex-wrap justify-end">
+            <JobTimerWidget
+              jobType="stocktake"
+              jobId={id}
+              variant="inline"
+              showControls={false}
+            />
             <Button
               variant={viewMode === 'scan' ? 'default' : 'outline'}
               size="sm"

@@ -34,6 +34,8 @@ import { useStocktakeScan, useStocktakeResults, ResultType } from '@/hooks/useSt
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
+import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 const resultConfig: Record<ResultType, {
   color: string;
@@ -241,6 +243,19 @@ export default function StocktakeReport() {
                 </>
               )}
             </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <JobTimerWidget
+              jobType="stocktake"
+              jobId={id}
+              variant="inline"
+              showControls={false}
+            />
+            {stocktake.duration_minutes != null && stocktake.duration_minutes > 0 && (
+              <Badge variant="secondary" className="tabular-nums whitespace-nowrap">
+                Actual {formatMinutesShort(stocktake.duration_minutes)}
+              </Badge>
+            )}
           </div>
           <Button variant="outline" onClick={exportCSV}>
             <MaterialIcon name="download" size="sm" className="mr-2" />

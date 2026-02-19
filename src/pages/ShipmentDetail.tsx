@@ -69,6 +69,7 @@ import { createCharges } from '@/services/billing';
 import { BILLING_DISABLED_ERROR, getEffectiveRate } from '@/lib/billing/chargeTypeUtils';
 import { queueAlert, queueBillingEventAlert } from '@/lib/alertQueue';
 import { mergeServiceTimeActualSnapshot, mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
+import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 import { JobTimerWidget } from '@/components/time/JobTimerWidget';
 
 // ============================================
@@ -2012,6 +2013,19 @@ export default function ShipmentDetail() {
   const canCompleteOutbound = isOutbound && (activeOutboundItems.length === 0 || allReleased);
   const partialReleaseCandidates = activeOutboundItems.filter(item => !isReleasedLocation(item.item?.current_location?.code));
 
+  const serviceTimeSnapshot = ((shipment as any)?.metadata as any)?.service_time as
+    | {
+        estimated_minutes?: number;
+        estimated_snapshot_at?: string;
+        actual_labor_minutes?: number;
+        actual_cycle_minutes?: number;
+        actual_snapshot_at?: string;
+      }
+    | undefined;
+
+  const estimatedMinutes = Number(serviceTimeSnapshot?.estimated_minutes ?? 0);
+  const actualLaborMinutes = Number(serviceTimeSnapshot?.actual_labor_minutes ?? 0);
+
   return (
     <DashboardLayout>
       {/* Header / Billing / Actions (keep stable during sidebar expand/collapse) */}
@@ -2035,6 +2049,24 @@ export default function ShipmentDetail() {
               <StatusIndicator status={shipment.status} label={shipmentStatusLabels[shipment.status]} size="sm" />
               {shipment.release_type && (
                 <Badge variant="outline" className="text-xs capitalize">{shipment.release_type.replace(/_/g, ' ')}</Badge>
+              )}
+              {estimatedMinutes > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs tabular-nums whitespace-nowrap"
+                  title={serviceTimeSnapshot?.estimated_snapshot_at ? `Estimated snapshot: ${serviceTimeSnapshot.estimated_snapshot_at}` : undefined}
+                >
+                  Est. {formatMinutesShort(estimatedMinutes)}
+                </Badge>
+              )}
+              {actualLaborMinutes > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs tabular-nums whitespace-nowrap"
+                  title={serviceTimeSnapshot?.actual_snapshot_at ? `Actual snapshot: ${serviceTimeSnapshot.actual_snapshot_at}` : undefined}
+                >
+                  Actual {formatMinutesShort(actualLaborMinutes)}
+                </Badge>
               )}
             </div>
             <p className="text-muted-foreground text-sm truncate">
