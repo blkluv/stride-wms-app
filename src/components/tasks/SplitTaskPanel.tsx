@@ -140,8 +140,9 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
   const [childScanValue, setChildScanValue] = useState('');
   const [scannedChildCodes, setScannedChildCodes] = useState<Set<string>>(new Set());
 
-  const canPreview = !!profile?.tenant_id && !!parentItemId && typeof leftoverQty === 'number' && leftoverQty > 0;
-  const canApply = canPreview && parentScanned && !!targetLocationId && previewCodes.length === leftoverQty;
+  const splitAlreadyApplied = childItemCodes.length > 0;
+  const canPreview = !splitAlreadyApplied && !!profile?.tenant_id && !!parentItemId && typeof leftoverQty === 'number' && leftoverQty > 0;
+  const canApply = !splitAlreadyApplied && canPreview && parentScanned && !!targetLocationId && previewCodes.length === leftoverQty;
   const allChildrenScanned = childItemCodes.length > 0 && scannedChildCodes.size === childItemCodes.length;
 
   // Load locations + default receiving location
@@ -199,6 +200,80 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, task.warehouse_id]);
+
+  // Hydrate existing child items for this task (supports refresh/reprint/recovery)
+  useEffect(() => {
+    if (!profile?.tenant_id || !taskId) return;
+    if (childItemCodes.length > 0) return;
+
+    // Best-effort: if the task already has child codes in metadata, show them immediately.
+    const metaCodes = Array.isArray(splitMeta?.child_item_codes)
+      ? splitMeta?.child_item_codes.map(String).filter(Boolean)
+      : [];
+    if (metaCodes.length > 0) {
+      setChildItemCodes(metaCodes);
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const { data: childRows, error: childErr } = await (supabase.from('items') as any)
+          .select(`
+            id,
+            item_code,
+            description,
+            vendor,
+            sidemark,
+            room,
+            location:locations!items_current_location_id_fkey(code),
+            account:accounts!items_account_id_fkey(account_name)
+          `)
+          .eq('tenant_id', profile.tenant_id)
+          .is('deleted_at', null)
+          .contains('metadata', { split_task_id: taskId })
+          .order('item_code')
+          .limit(200);
+
+        if (childErr) throw childErr;
+
+        const rows = Array.isArray(childRows) ? childRows : [];
+        if (rows.length === 0) return;
+
+        const ids = rows.map((r: any) => String(r.id));
+        const codes = rows.map((r: any) => String(r.item_code));
+
+        if (cancelled) return;
+
+        setChildItemIds(ids);
+        setChildItemCodes(codes);
+
+        // Build label data from the child items (accurate location + persistent ids)
+        const accountFallback =
+          task.account?.account_name ||
+          parentTaskItem?.item?.account?.account_name ||
+          'Account';
+        const labelData: ItemLabelData[] = rows.map((r: any) => ({
+          id: String(r.id),
+          itemCode: String(r.item_code),
+          description: String(r.description || ''),
+          vendor: String(r.vendor || ''),
+          account: String(r.account?.account_name || accountFallback),
+          sidemark: r.sidemark ? String(r.sidemark) : undefined,
+          room: r.room ? String(r.room) : undefined,
+          warehouseName: task.warehouse?.name || undefined,
+          locationCode: r.location?.code ? String(r.location.code) : undefined,
+        }));
+        setLabelItems(labelData);
+      } catch (err: any) {
+        // Optional: do not block the panel if hydration fails
+        console.warn('[SplitTaskPanel] hydrate child items failed:', err);
+      }
+    };
+
+    void run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.tenant_id, taskId, splitMeta?.child_item_codes]);
 
   const handleParentScan = () => {
     const scanned = normalizeScan(parentScanValue);
@@ -287,6 +362,25 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
       setChildItemCodes(codes);
       setScannedChildCodes(new Set());
 
+      // Persist the generated codes immediately so the task is recoverable after refresh.
+      // (Completion will also store them, but that can happen later.)
+      try {
+        const taskMeta = task.metadata && typeof task.metadata === 'object' ? task.metadata : {};
+        const sw = taskMeta.split_workflow && typeof taskMeta.split_workflow === 'object' ? taskMeta.split_workflow : {};
+        const nextTaskMeta = {
+          ...taskMeta,
+          split_workflow: {
+            ...sw,
+            child_item_codes: codes,
+          },
+        };
+        await (supabase.from('tasks') as any)
+          .update({ metadata: nextTaskMeta })
+          .eq('id', taskId);
+      } catch (err) {
+        console.warn('[SplitTaskPanel] failed to persist child codes in task metadata:', err);
+      }
+
       // Build label data from parent item + target location
       const parent = parentTaskItem?.item;
       const accountName =
@@ -325,6 +419,68 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
       });
     } finally {
       setApplyLoading(false);
+    }
+  };
+
+  const handleReprint = async () => {
+    if (!profile?.tenant_id) {
+      setPrintOpen(true);
+      return;
+    }
+
+    // If we already have label items (with ids), reuse them.
+    if (labelItems.length > 0) {
+      setPrintOpen(true);
+      return;
+    }
+
+    try {
+      const { data: childRows, error: childErr } = await (supabase.from('items') as any)
+        .select(`
+          id,
+          item_code,
+          description,
+          vendor,
+          sidemark,
+          room,
+          location:locations!items_current_location_id_fkey(code),
+          account:accounts!items_account_id_fkey(account_name)
+        `)
+        .eq('tenant_id', profile.tenant_id)
+        .is('deleted_at', null)
+        .contains('metadata', { split_task_id: taskId })
+        .order('item_code')
+        .limit(200);
+
+      if (childErr) throw childErr;
+      const rows = Array.isArray(childRows) ? childRows : [];
+      if (rows.length > 0) {
+        const accountFallback =
+          task.account?.account_name ||
+          parentTaskItem?.item?.account?.account_name ||
+          'Account';
+        const labelData: ItemLabelData[] = rows.map((r: any) => ({
+          id: String(r.id),
+          itemCode: String(r.item_code),
+          description: String(r.description || ''),
+          vendor: String(r.vendor || ''),
+          account: String(r.account?.account_name || accountFallback),
+          sidemark: r.sidemark ? String(r.sidemark) : undefined,
+          room: r.room ? String(r.room) : undefined,
+          warehouseName: task.warehouse?.name || undefined,
+          locationCode: r.location?.code ? String(r.location.code) : undefined,
+        }));
+        setLabelItems(labelData);
+      }
+    } catch (err: any) {
+      console.warn('[SplitTaskPanel] reprint hydration failed:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Could not load labels',
+        description: err?.message || 'Please try again.',
+      });
+    } finally {
+      setPrintOpen(true);
     }
   };
 
@@ -587,6 +743,11 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
                 {previewCodes.join('\n')}
               </div>
             )}
+                  {splitAlreadyApplied && (
+                    <p className="text-xs text-muted-foreground">
+                      This Split task already has child labels created. Reprint labels or scan to complete.
+                    </p>
+                  )}
           </div>
 
           {/* Step 4: Apply split */}
@@ -613,7 +774,7 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
             )}
             {childItemCodes.length > 0 && (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setPrintOpen(true)}>
+                      <Button variant="outline" onClick={handleReprint}>
                   Reprint labels
                 </Button>
               </div>
