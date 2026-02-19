@@ -222,3 +222,7 @@ User decision (cleanup failures do not block):
 - If Resend cleanup/delete fails (API/network error), the tenant must still be able to switch back to platform sender immediately.
 - Cleanup is best-effort; failures should be logged and retried later (or surfaced in Email Ops).
 
+### QA-2026-02-17-ADMINOPS-041
+User decision (Resend cleanup timing):
+- When a tenant cancels custom sender setup, Resend domain cleanup/removal should be handled by a nightly cleanup job (not immediate on toggle-off), to reduce thrash/risk from repeated toggling.
+
