@@ -275,20 +275,18 @@ export default function Dashboard() {
             data-testid="page-header"
           />
           <div className="flex items-center gap-2">
-            {warehouses.length > 1 && (
-              <Select value={selectedWarehouseId ?? ''} onValueChange={(v) => setSelectedWarehouseId(v || null)}>
-                <SelectTrigger className="w-[180px] h-9 text-xs">
-                  <SelectValue placeholder="Warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((wh) => (
-                    <SelectItem key={wh.id} value={wh.id}>
-                      {wh.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <Select value={selectedWarehouseId ?? ''} onValueChange={(v) => setSelectedWarehouseId(v || null)}>
+              <SelectTrigger className="w-[180px] h-9 text-xs">
+                <SelectValue placeholder="Warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((wh) => (
+                  <SelectItem key={wh.id} value={wh.id}>
+                    {wh.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm" onClick={refetch} disabled={loading} data-testid="refresh-button">
               <MaterialIcon name={loading ? "sync" : "refresh"} size="sm" className={cn("mr-2", loading && "animate-spin")} />
               Refresh

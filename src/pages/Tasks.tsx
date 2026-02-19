@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/page-header';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -102,19 +102,17 @@ export default function Tasks() {
     warehouseId: 'all',
   }));
 
-  // If this tenant only has one warehouse, default to it everywhere.
+  // If this tenant only has one warehouse, default the filter to it once.
+  // (Keep the selector visible; user can still switch back to "All" if desired.)
+  const didAutoDefaultWarehouseFilter = useRef(false);
   useEffect(() => {
-    if (warehouses.length === 1 && filters.warehouseId === 'all') {
-      setFilters((f) => ({ ...f, warehouseId: warehouses[0].id }));
-    }
-  }, [warehouses, filters.warehouseId]);
+    if (didAutoDefaultWarehouseFilter.current) return;
+    if (warehouses.length !== 1) return;
+    if (filters.warehouseId !== 'all') return;
 
-  // If a global selected warehouse exists (WarehouseContext), prefer it when appropriate.
-  useEffect(() => {
-    if (selectedWarehouseId && warehouses.length === 1 && filters.warehouseId === 'all') {
-      setFilters((f) => ({ ...f, warehouseId: selectedWarehouseId }));
-    }
-  }, [selectedWarehouseId, warehouses.length, filters.warehouseId]);
+    didAutoDefaultWarehouseFilter.current = true;
+    setFilters((f) => ({ ...f, warehouseId: selectedWarehouseId || warehouses[0].id }));
+  }, [warehouses, selectedWarehouseId, filters.warehouseId]);
 
   // Sync filters from URL params when they change (e.g. Dashboard tile click)
   // Also auto-open dialog when new=true param is present
@@ -510,21 +508,19 @@ export default function Tasks() {
             </SelectContent>
           </Select>
 
-          {warehouses.length > 1 && (
-            <div className="col-span-2 sm:col-span-auto">
-              <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Warehouses</SelectItem>
-                  {warehouses.map(wh => (
-                    <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div className="col-span-2 sm:col-span-auto">
+            <Select value={filters.warehouseId} onValueChange={(value) => setFilters(f => ({ ...f, warehouseId: value }))}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Warehouses</SelectItem>
+                {warehouses.map(wh => (
+                  <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Refresh moved to header to match Dashboard */}
         </div>
