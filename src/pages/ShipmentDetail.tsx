@@ -53,6 +53,7 @@ import { QRScanner } from '@/components/scan/QRScanner';
 import { useLocations } from '@/hooks/useLocations';
 import { useDocuments } from '@/hooks/useDocuments';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
@@ -889,12 +890,34 @@ export default function ShipmentDetail() {
   };
 
   const findShipmentItemByScan = (scanValue: string) => {
-    const normalized = scanValue.trim().toLowerCase();
-    if (!normalized) return null;
-    return activeOutboundItems.find(item =>
-      item.item?.id?.toLowerCase() === normalized
-      || item.item?.item_code?.toLowerCase() === normalized
-    ) || null;
+    const raw = scanValue.trim();
+    if (!raw) return null;
+
+    const payload = parseScanPayload(raw);
+    // Never treat explicit locations as items (even if a location code happens to match an item code).
+    if (payload?.type === 'location') return null;
+
+    const candidates = new Set<string>();
+    const add = (v?: string) => {
+      const t = (v || '').trim();
+      if (!t) return;
+      candidates.add(t.toLowerCase());
+    };
+
+    add(payload?.id);
+    add(payload?.code);
+    add(raw);
+
+    for (const normalized of candidates) {
+      const match =
+        activeOutboundItems.find(item =>
+          item.item?.id?.toLowerCase() === normalized
+          || item.item?.item_code?.toLowerCase() === normalized
+        ) || null;
+      if (match) return match;
+    }
+
+    return null;
   };
 
   const updateItemLocation = async (itemId: string, locationId: string) => {
@@ -945,10 +968,31 @@ export default function ShipmentDetail() {
     setLastScan(null);
 
     try {
+      const payload = parseScanPayload(trimmed);
+      const displayValue = (payload?.code || payload?.id || trimmed).trim();
+
+      if (payload?.type === 'location') {
+        const message = `"${displayValue}" is a location. Please scan an item from this shipment.`;
+        setLastScan({ itemCode: displayValue, result: 'invalid', message });
+        hapticError();
+        toast({
+          variant: 'destructive',
+          title: 'Location scanned',
+          description: message,
+        });
+        await logShipmentAudit('scan_invalid', {
+          scan_value: trimmed,
+          mode,
+          message,
+          parsed_type: payload.type,
+        });
+        return;
+      }
+
       const matched = findShipmentItemByScan(trimmed);
       if (!matched || !matched.item?.id) {
         const message = 'This is the wrong item. Please return the item to its previous location.';
-        setLastScan({ itemCode: trimmed, result: 'invalid', message });
+        setLastScan({ itemCode: displayValue, result: 'invalid', message });
         hapticError();
         toast({
           variant: 'destructive',
@@ -1042,7 +1086,9 @@ export default function ShipmentDetail() {
       await fetchShipment();
     } catch (error) {
       console.error('Error processing scan:', error);
-      setLastScan({ itemCode: trimmed, result: 'error', message: 'Failed to process scan.' });
+      const payload = parseScanPayload(trimmed);
+      const displayValue = (payload?.code || payload?.id || trimmed).trim();
+      setLastScan({ itemCode: displayValue, result: 'error', message: 'Failed to process scan.' });
       hapticError();
       toast({
         variant: 'destructive',

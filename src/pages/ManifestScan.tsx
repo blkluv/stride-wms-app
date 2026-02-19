@@ -43,8 +43,9 @@ import {
   hapticError,
 } from '@/lib/haptics';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { cn } from '@/lib/utils';
+import { cn, isValidUuid } from '@/lib/utils';
 import { format } from 'date-fns';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 
 const scanResultConfig: Record<ManifestScanResult, {
   color: string;
@@ -194,22 +195,63 @@ export default function ManifestScan() {
   }, []);
 
   // Handle scan
-  const handleScan = useCallback(async (itemCode: string) => {
+  const handleScan = useCallback(async (scanValue: string) => {
     if (!activeLocationId || processing || !manifest) return;
 
     setProcessing(true);
     hapticLight();
 
     try {
+      const trimmed = scanValue.trim();
+      if (!trimmed) return;
+
+      const payload = parseScanPayload(trimmed);
+      const displayCode = (payload?.code || payload?.id || trimmed).trim();
+
+      if (payload?.type === 'location') {
+        setLastScan({
+          itemCode: displayCode,
+          result: 'item_not_found',
+          message: 'This is a location barcode. Please scan an item barcode/QR code.',
+          isError: true,
+        });
+
+        hapticError();
+        playAudio('error');
+
+        // Flash the screen red
+        document.body.classList.add('error-flash');
+        if (errorFlashRef.current) clearTimeout(errorFlashRef.current);
+        errorFlashRef.current = setTimeout(() => {
+          document.body.classList.remove('error-flash');
+        }, 500);
+        return;
+      }
+
+      const codeCandidate = (payload?.code || payload?.id || trimmed).trim();
+      const idCandidate =
+        (payload?.type === 'item' && payload.id && isValidUuid(payload.id))
+          ? payload.id
+          : ((payload?.type === 'unknown' || payload?.type === 'item') && isValidUuid(codeCandidate))
+            ? codeCandidate
+            : null;
+
       // Lookup item by code
-      const { data: item } = await supabase
+      let query = supabase
         .from('items')
         .select('id, item_code')
-        .eq('item_code', itemCode.trim())
-        .eq('tenant_id', manifest.tenant_id)
-        .single();
+        .eq('tenant_id', manifest.tenant_id);
+
+      if (idCandidate) {
+        query = query.eq('id', idCandidate);
+      } else {
+        query = query.eq('item_code', codeCandidate);
+      }
+
+      const { data: item } = await query.maybeSingle();
 
       const itemId = item?.id || null;
+      const itemCode = item?.item_code || codeCandidate;
 
       // Record the scan
       const result = await recordScan(activeLocationId, itemId || '', itemCode);
@@ -243,7 +285,7 @@ export default function ManifestScan() {
     } catch (error: any) {
       console.error('Scan error:', error);
       setLastScan({
-        itemCode,
+        itemCode: scanValue.trim(),
         result: 'item_not_found',
         message: error.message || 'Failed to process scan',
         isError: true,
