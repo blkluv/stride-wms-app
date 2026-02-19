@@ -202,6 +202,54 @@ export default function WarehouseMapBuilder() {
     }
   };
 
+  // Duplicate selected rectangle (Ctrl/Cmd + D)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isDuplicate = (e.ctrlKey || e.metaKey) && String(e.key || '').toLowerCase() === 'd';
+      if (!isDuplicate) return;
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isTyping =
+        !!activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          activeEl.isContentEditable);
+      if (isTyping) return;
+
+      if (!activeMap || !selectedNode || !draft) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const width = mapDraft?.width ?? activeMap.width ?? 2000;
+      const height = mapDraft?.height ?? activeMap.height ?? 1200;
+      const grid = mapDraft?.grid_size ?? activeMap.grid_size ?? 20;
+
+      // Duplicates cannot keep zone_id due to (map_id, zone_id) uniqueness.
+      void createNode({
+        x: Math.min(draft.x + grid, Math.max(0, width - draft.width)),
+        y: Math.min(draft.y + grid, Math.max(0, height - draft.height)),
+        width: draft.width,
+        height: draft.height,
+        label: draft.label?.trim() ? draft.label.trim() : null,
+        zone_id: null,
+        sort_order: nodes.length,
+      })
+        .then((created) => {
+          setSelectedNodeId(created.id);
+          toast({ title: 'Duplicated', description: 'Rectangle duplicated.' });
+        })
+        .catch((err) => {
+          console.error(err);
+          toast({ variant: 'destructive', title: 'Duplicate failed', description: 'Failed to duplicate rectangle.' });
+        });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeMap, createNode, draft, mapDraft, nodes.length, selectedNode, toast]);
+
   const isDraftDirty = useMemo(() => {
     if (!selectedNode || !draft) return false;
     const normalizedDraftLabel = draft.label?.trim() ? draft.label.trim() : null;
