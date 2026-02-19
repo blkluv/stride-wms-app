@@ -130,6 +130,7 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
   const [applyLoading, setApplyLoading] = useState(false);
   const [childItemIds, setChildItemIds] = useState<string[]>([]);
   const [childItemCodes, setChildItemCodes] = useState<string[]>([]);
+  const [completeLoading, setCompleteLoading] = useState(false);
 
   // Print dialog
   const [printOpen, setPrintOpen] = useState(false);
@@ -352,6 +353,8 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
 
   const completeSplitTask = async () => {
     if (!profile?.tenant_id || !profile?.id) return;
+    if (completeLoading) return;
+    if (task.status === 'completed') return;
     if (!allChildrenScanned) {
       toast({
         variant: 'destructive',
@@ -364,6 +367,7 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     const originType = splitMeta?.origin_entity_type;
     const originId = splitMeta?.origin_entity_id;
 
+    setCompleteLoading(true);
     try {
       // 1) Unblock originating job (shipment/task) by removing this task id from metadata
       if (originType && originId) {
@@ -439,6 +443,8 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
         title: 'Could not complete split task',
         description: err?.message || 'Please try again.',
       });
+    } finally {
+      setCompleteLoading(false);
     }
   };
 
@@ -652,7 +658,7 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
                   );
                 })}
               </div>
-              <Button onClick={completeSplitTask} disabled={!allChildrenScanned}>
+              <Button onClick={completeSplitTask} disabled={!allChildrenScanned || completeLoading || task.status === 'completed'}>
                 <MaterialIcon name="check_circle" size="sm" className="mr-2" />
                 Complete Split Task
               </Button>

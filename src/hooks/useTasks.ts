@@ -774,15 +774,33 @@ export function useTasks(filters?: {
       }
 
       const linkedIds = (linkedSplitTasks || []).map((t: any) => String(t.id));
-      const totalIds = Array.from(new Set([...metaSplitTaskIds, ...linkedIds]));
+      let metaPendingIds: string[] = [];
+      if (metaSplitTaskIds.length > 0) {
+        const { data: metaPendingTasks, error: metaPendingErr } = await (supabase
+          .from('tasks') as any)
+          .select('id')
+          .eq('tenant_id', profile.tenant_id)
+          .in('id', metaSplitTaskIds)
+          .in('status', ['pending', 'in_progress']);
 
-      if (metaSplitRequired || totalIds.length > 0) {
+        if (metaPendingErr) {
+          return {
+            ok: false,
+            error_code: 'SPLIT_CHECK_FAILED',
+            error_message: metaPendingErr.message || 'Failed to check Split tasks',
+          };
+        }
+
+        metaPendingIds = (metaPendingTasks || []).map((t: any) => String(t.id));
+      }
+
+      const totalIds = Array.from(new Set([...metaPendingIds, ...linkedIds]));
+
+      if (totalIds.length > 0) {
         return {
           ok: false,
           error_code: 'SPLIT_REQUIRED',
-          error_message: totalIds.length > 0
-            ? `This task is blocked until ${totalIds.length} Split task(s) are completed.`
-            : 'This task is blocked until the required Split task is completed.',
+          error_message: `This task is blocked until ${totalIds.length} Split task(s) are completed.`,
         };
       }
     }

@@ -610,7 +610,7 @@ export function TaskDialog({
               `- Parent quantity will be set to ${c.keepQty}.`,
               `- Leftover items will get NEW child labels and should be placed in the default receiving location (unless overridden).`,
               '- Print and attach ALL new labels, then scan each new child label to confirm application.',
-              requestNotes ? '' : '',
+              requestNotes ? ' ' : '',
               requestNotes ? `Notes:\n${requestNotes}` : '',
             ]
               .filter(Boolean)

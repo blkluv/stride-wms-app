@@ -239,7 +239,9 @@ export async function queueSplitManualReviewAlert(
   tenantId: string,
   entityType: 'shipment' | 'task',
   entityId: string,
-  parentItemCode: string
+  parentItemCode: string,
+  bodyText?: string,
+  bodyHtml?: string
 ): Promise<boolean> {
   return queueAlert({
     tenantId,
@@ -247,6 +249,8 @@ export async function queueSplitManualReviewAlert(
     entityType,
     entityId,
     subject: `Pending review — ${parentItemCode}`,
+    bodyText,
+    bodyHtml,
   });
 }
 
