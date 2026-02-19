@@ -418,18 +418,30 @@ export default function Tasks() {
             accentText={isTechnician ? "Tasks" : "Queue"}
             description={isTechnician ? "View and complete your assigned tasks" : "Manage inspections, assemblies, repairs, and other tasks"}
           />
-          {!isTechnician && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate('/billing')}>
-                <span className="mr-2">💲</span>
-                Add Charge
-              </Button>
-              <Button onClick={() => handleCreate()} className="w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refetch}
+              disabled={isRefetching}
+              className="w-full sm:w-auto justify-center"
+              title="Refresh tasks"
+            >
+              <MaterialIcon
+                name={isRefetching ? "sync" : "refresh"}
+                size="sm"
+                className={isRefetching ? "mr-2 animate-spin" : "mr-2"}
+              />
+              Refresh
+            </Button>
+
+            {!isTechnician && (
+              <Button onClick={() => handleCreate()} className="w-full sm:w-auto justify-center">
                 <span className="mr-2">➕</span>
                 Create Task
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -542,9 +554,7 @@ export default function Tasks() {
             </Select>
           </div>
 
-          <Button variant="ghost" size="icon" className="col-span-2 sm:col-span-auto justify-self-start" onClick={refetch} disabled={isRefetching}>
-            <span className={isRefetching ? 'animate-spin inline-block' : ''}>🔄</span>
-          </Button>
+          {/* Refresh moved to header to match Dashboard */}
         </div>
 
         {/* Tasks Table */}

@@ -38,7 +38,6 @@ import { InventoryImportDialog } from '@/components/settings/InventoryImportDial
 import { QuickReleaseDialog } from '@/components/inventory/QuickReleaseDialog';
 import { PrintLabelsDialog } from '@/components/inventory/PrintLabelsDialog';
 import { ClaimCreateDialog } from '@/components/claims/ClaimCreateDialog';
-import type { InventoryFilters } from '@/components/inventory/InventoryFiltersSheet';
 import { CreateManifestFromItemsDialog } from '@/components/inventory/CreateManifestFromItemsDialog';
 import { AddItemDialog } from '@/components/inventory/AddItemDialog';
 import { useWarehouses } from '@/hooks/useWarehouses';
@@ -119,13 +118,6 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('active');
-  const [filters, setFilters] = useState<InventoryFilters>({
-    vendor: '',
-    accountId: '',
-    sidemark: '',
-    locationId: '',
-    warehouseId: '',
-  });
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -331,16 +323,11 @@ export default function Inventory() {
         matchesStatus = item.status === statusFilter;
       }
 
-      // Advanced filters
-      const matchesVendor = !filters.vendor || item.vendor === filters.vendor;
-      const matchesAccount = !filters.accountId || item.account_id === filters.accountId;
-      const matchesSidemark = !filters.sidemark || item.sidemark === filters.sidemark;
       const matchesLocation =
         selectedLocationIds.length === 0 ||
         (!!item.location_id && selectedLocationIds.includes(item.location_id));
-      const matchesWarehouse = !filters.warehouseId || item.warehouse_id === filters.warehouseId;
 
-      return matchesSearch && matchesStatus && matchesVendor && matchesAccount && matchesSidemark && matchesLocation && matchesWarehouse;
+      return matchesSearch && matchesStatus && matchesLocation;
     });
 
     // Sort
@@ -354,7 +341,7 @@ export default function Inventory() {
     }
 
     return result;
-  }, [items, searchQuery, statusFilter, filters, selectedLocationIds, sortField, sortDirection]);
+  }, [items, searchQuery, statusFilter, selectedLocationIds, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -902,7 +889,16 @@ export default function Inventory() {
       </div>
 
       <TaskDialog open={taskDialogOpen} onOpenChange={(open) => { setTaskDialogOpen(open); if (!open) setPreSelectedTaskType(''); }} selectedItemIds={Array.from(selectedItems)} preSelectedTaskType={preSelectedTaskType} onSuccess={handleTaskSuccess} />
-      <InventoryImportDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} file={importFile} warehouses={warehouses} locations={locations} onSuccess={handleImportSuccess} />
+      <InventoryImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        file={importFile}
+        warehouses={warehouses}
+        locations={locations}
+        itemDisplaySettings={itemDisplaySettings}
+        itemDisplayViewId={activeViewId || defaultItemViewId || 'default'}
+        onSuccess={handleImportSuccess}
+      />
       <PrintLabelsDialog open={printLabelsDialogOpen} onOpenChange={setPrintLabelsDialogOpen} items={getSelectedItemsForLabels()} />
       <QuickReleaseDialog open={releaseDialogOpen} onOpenChange={setReleaseDialogOpen} selectedItems={getSelectedItemsData()} onSuccess={handleReleaseSuccess} />
       <ClaimCreateDialog open={claimDialogOpen} onOpenChange={(open) => { setClaimDialogOpen(open); if (!open) setSelectedItems(new Set()); }} itemIds={Array.from(selectedItems)} />
