@@ -29,6 +29,8 @@ export default function WarehouseHeatMap() {
   const { maps, loading: mapsLoading, getDefaultMap } = useWarehouseMaps(warehouseId);
   const defaultMap = getDefaultMap();
 
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+
   const {
     rows: zoneRows,
     loading: zonesLoading,
@@ -41,12 +43,10 @@ export default function WarehouseHeatMap() {
     loading: locationsLoading,
     lastRefreshedAt: locationsRefreshedAt,
     refetch: refetchLocations,
-  } = useWarehouseMapLocationCapacity(defaultMap?.id);
+  } = useWarehouseMapLocationCapacity(defaultMap?.id, selectedZoneId);
 
   const mapWidth = defaultMap?.width ?? 2000;
   const mapHeight = defaultMap?.height ?? 1200;
-
-  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const selectedZoneRow = useMemo(
     () => zoneRows.find((r) => r.zone_id && r.zone_id === selectedZoneId) || null,
     [selectedZoneId, zoneRows]
@@ -55,7 +55,7 @@ export default function WarehouseHeatMap() {
   const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
   const selectedZoneLocations = useMemo(() => {
     if (!selectedZoneId) return [];
-    const all = locationRows.filter((r) => r.zone_id === selectedZoneId);
+    const all = locationRows;
     const filtered = showOnlyAvailable
       ? all.filter((r) => r.utilization_pct !== null && r.utilization_pct < 80)
       : all;
@@ -69,7 +69,11 @@ export default function WarehouseHeatMap() {
   const lastRefreshedAt = zonesRefreshedAt || locationsRefreshedAt;
 
   const handleRefresh = async () => {
-    await Promise.all([refetchZones(), refetchLocations()]);
+    // Refresh zone-level colors; refresh drill-down only if a zone is selected.
+    await refetchZones();
+    if (selectedZoneId) {
+      await refetchLocations();
+    }
   };
 
   const missingDefault = !mapsLoading && maps.length > 0 && !defaultMap;
@@ -236,6 +240,11 @@ export default function WarehouseHeatMap() {
                 {!selectedZoneRow ? (
                   <div className="text-sm text-muted-foreground">
                     Tap/click a zone rectangle to see location-level capacity.
+                  </div>
+                ) : locationsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                    <MaterialIcon name="progress_activity" size="sm" className="animate-spin" />
+                    Loading locations…
                   </div>
                 ) : selectedZoneLocations.length === 0 ? (
                   <div className="text-sm text-muted-foreground">
