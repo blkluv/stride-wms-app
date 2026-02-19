@@ -54,7 +54,7 @@ import { InlineEditableCell } from '@/components/inventory/InlineEditableCell';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTenantPreferences } from '@/hooks/useTenantPreferences';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import {
   type BuiltinItemColumnKey,
   type ItemColumnKey,
@@ -151,11 +151,12 @@ export default function Inventory() {
 
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeViewId, setActiveViewId] = useState<string>('');
 
   useEffect(() => {
@@ -740,8 +741,8 @@ export default function Inventory() {
         <Card>
           <CardHeader><CardTitle>Items</CardTitle><CardDescription>{filteredAndSortedItems.length} items found{selectedItems.size > 0 && ` • ${selectedItems.size} selected`}</CardDescription></CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="relative flex-1">
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center mb-6">
+              <div className="relative col-span-2 sm:flex-1">
                 <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search item code, SKU, description, vendor, sidemark, client..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
               </div>
@@ -775,7 +776,7 @@ export default function Inventory() {
                   <SelectItem value="disposed">Disposed</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="flex w-full sm:w-auto gap-2">
+              <div className="col-span-2 flex w-full gap-2 sm:col-span-auto sm:w-auto">
                 <Select
                   value={activeViewId || defaultItemViewId || 'default'}
                   onValueChange={setActiveViewId}
@@ -799,12 +800,16 @@ export default function Inventory() {
 
                 <ItemColumnsPopover
                   settings={itemDisplaySettings}
+                  baseSettings={tenantItemDisplaySettings}
                   viewId={activeViewId || defaultItemViewId || 'default'}
                   disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                   onSave={saveItemDisplaySettings}
                 />
               </div>
-              <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
+
+              <div className="col-span-2 sm:col-span-auto">
+                <InventoryFiltersSheet filters={filters} onFiltersChange={setFilters} />
+              </div>
             </div>
 
             {loading ? (<div className="flex items-center justify-center h-48"><MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" /></div>

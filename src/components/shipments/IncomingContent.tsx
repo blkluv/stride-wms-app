@@ -29,6 +29,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { DraftQueueList } from '@/components/receiving/DraftQueueList';
+import { cn } from '@/lib/utils';
 
 type TabValue = 'manifests' | 'expected' | 'dock_intakes';
 
@@ -809,26 +810,40 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="flex-wrap h-auto gap-1">
+        {/* Prevent awkward wrapping on mobile: use shorter labels */}
+        <TabsList className="w-full grid grid-cols-3 h-auto gap-1">
           <TabsTrigger value="manifests" className="gap-2">
             <MaterialIcon name="list_alt" size="sm" />
-            Manifests
+            <span className="hidden sm:inline">Manifests</span>
+            <span className="sm:hidden">Manifests</span>
           </TabsTrigger>
           <TabsTrigger value="expected" className="gap-2">
             <MaterialIcon name="schedule" size="sm" />
-            Expected Shipments
+            <span className="hidden sm:inline">Expected Shipments</span>
+            <span className="sm:hidden">Expected</span>
           </TabsTrigger>
           <TabsTrigger value="dock_intakes" className="gap-2">
             <MaterialIcon name="local_shipping" size="sm" />
-            Dock Intakes
+            <span className="hidden sm:inline">Dock Intakes</span>
+            <span className="sm:hidden">Intakes</span>
           </TabsTrigger>
         </TabsList>
 
         {/* Shared toolbar */}
         <Card className="mt-4">
-          <CardContent className="pt-4">
-            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-              <div className="relative flex-1 w-full sm:max-w-xs">
+          <CardContent className="pt-4 relative">
+            <HelpTip
+              tooltip="Filter and search inbound shipments. Click a row to view details, allocate items, or manage references."
+              pageKey="incoming.list"
+              fieldKey="filters_toolbar"
+              className="absolute right-3 top-3"
+            />
+
+            {(() => {
+              const showCta = activeTab === 'manifests' || activeTab === 'expected';
+              return (
+                <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center">
+                  <div className="relative col-span-2 sm:flex-1 w-full sm:max-w-xs">
                 <MaterialIcon
                   name="search"
                   size="sm"
@@ -842,52 +857,59 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
                 />
               </div>
 
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s === 'all' ? 'All statuses' : s.replace(/_/g, ' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <div className="flex gap-2 ml-auto">
-                {activeTab === 'manifests' && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      navigate('/incoming/manifest/new');
-                    }}
-                    disabled={creating}
+                  <div
+                    className={cn(
+                      showCta ? 'col-span-1' : 'col-span-2',
+                      'sm:col-span-auto',
+                    )}
                   >
-                    <MaterialIcon name="add" size="sm" className="mr-1" />
-                    New Manifest
-                  </Button>
-                )}
-                {activeTab === 'expected' && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      navigate('/incoming/expected/new');
-                    }}
-                    disabled={creating}
-                  >
-                    <MaterialIcon name="add" size="sm" className="mr-1" />
-                    New Expected Shipment
-                  </Button>
-                )}
-              </div>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="All statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s === 'all' ? 'All statuses' : s.replace(/_/g, ' ')}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              <HelpTip
-                tooltip="Filter and search inbound shipments. Click a row to view details, allocate items, or manage references."
-                pageKey="incoming.list"
-                fieldKey="filters_toolbar"
-              />
-            </div>
+                  {activeTab === 'manifests' && (
+                    <div className="col-span-1 sm:ml-auto">
+                      <Button
+                        size="sm"
+                        className="w-full sm:w-auto justify-center"
+                        onClick={() => {
+                          navigate('/incoming/manifest/new');
+                        }}
+                        disabled={creating}
+                      >
+                        <MaterialIcon name="add" size="sm" className="mr-1" />
+                        New Manifest
+                      </Button>
+                    </div>
+                  )}
+                  {activeTab === 'expected' && (
+                    <div className="col-span-1 sm:ml-auto">
+                      <Button
+                        size="sm"
+                        className="w-full sm:w-auto justify-center"
+                        onClick={() => {
+                          navigate('/incoming/expected/new');
+                        }}
+                        disabled={creating}
+                      >
+                        <MaterialIcon name="add" size="sm" className="mr-1" />
+                        New Expected Shipment
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 

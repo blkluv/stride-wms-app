@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { queueShipmentReceivedAlert, queueShipmentCompletedAlert } from '@/lib/alertQueue';
+import { calculateShipmentBillingPreview } from '@/lib/billing/billingCalculation';
+import { mergeServiceTimeSnapshot } from '@/lib/time/serviceTimeSnapshot';
 
 interface ReceivingSession {
   id: string;
@@ -175,13 +177,14 @@ export function useReceivingSession(shipmentId: string | undefined) {
 
     setLoading(true);
     const createdItemIds: string[] = [];
+    const nowIso = new Date().toISOString();
     try {
       // Update session
       const { error: sessionError } = await supabase
         .from('receiving_sessions')
         .update({
           status: 'completed' as const,
-          finished_at: new Date().toISOString(),
+          finished_at: nowIso,
           verification_data: JSON.parse(JSON.stringify(verificationData)),
         })
         .eq('id', session.id);
@@ -194,9 +197,38 @@ export function useReceivingSession(shipmentId: string | undefined) {
         .from('shipments')
         .update({ 
           status: hasBackorders ? 'partial' : 'received',
-          received_at: new Date().toISOString(),
+          received_at: nowIso,
         })
         .eq('id', session.shipment_id);
+
+      // Snapshot estimated service time on completion (best-effort; must not block finish)
+      try {
+        const preview = await calculateShipmentBillingPreview(profile.tenant_id, session.shipment_id, 'inbound');
+        const estimatedMinutes = (preview?.lineItems || []).reduce(
+          (sum, li) => sum + (li.estimatedMinutes || 0),
+          0,
+        );
+
+        const { data: shipmentMeta } = await supabase
+          .from('shipments')
+          .select('metadata')
+          .eq('id', session.shipment_id)
+          .maybeSingle();
+
+        const merged = mergeServiceTimeSnapshot(shipmentMeta?.metadata ?? null, {
+          estimated_minutes: Math.round(estimatedMinutes),
+          estimated_snapshot_at: nowIso,
+          estimated_source: 'billing_preview',
+          estimated_version: 1,
+        });
+
+        await supabase
+          .from('shipments')
+          .update({ metadata: merged })
+          .eq('id', session.shipment_id);
+      } catch (err) {
+        console.warn('[useReceivingSession] Failed to snapshot estimated service time:', err);
+      }
 
       // Create inventory items if requested
       if (createItems && verificationData.received_items.length > 0) {

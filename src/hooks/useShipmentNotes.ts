@@ -42,8 +42,8 @@ export function useShipmentNotes(shipmentId: string | undefined) {
 
     try {
       setLoading(true);
-      const { data, error } = await (supabase
-        .from('shipment_notes') as any)
+      const { data, error } = await (supabase as any)
+        .from('shipment_notes')
         .select(
           `
           *,
@@ -95,8 +95,8 @@ export function useShipmentNotes(shipmentId: string | undefined) {
     const visibility = noteType === 'internal' ? 'internal' : 'public';
 
     try {
-      const { data, error } = await (supabase
-        .from('shipment_notes') as any)
+      const { data, error } = await (supabase as any)
+        .from('shipment_notes')
         .insert({
           tenant_id: profile.tenant_id,
           shipment_id: shipmentId,
@@ -153,8 +153,8 @@ export function useShipmentNotes(shipmentId: string | undefined) {
   const deleteNote = async (noteId: string) => {
     if (!profile?.tenant_id) return false;
     try {
-      const { error } = await (supabase
-        .from('shipment_notes') as any)
+      const { error } = await (supabase as any)
+        .from('shipment_notes')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', noteId);
 

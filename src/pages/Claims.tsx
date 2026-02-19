@@ -115,7 +115,7 @@ export default function Claims() {
 
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
             <span className="text-foreground">Manage</span>{" "}
@@ -123,7 +123,7 @@ export default function Claims() {
           </h1>
           <p className="text-muted-foreground">Track and manage damage, loss, and incident claims</p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
+        <Button onClick={() => setCreateDialogOpen(true)} className="w-full sm:w-auto justify-center">
           <MaterialIcon name="add" size="sm" className="mr-2" />
           New Claim
         </Button>
@@ -164,8 +164,8 @@ export default function Claims() {
           {/* Filters */}
           <Card className="mb-6">
             <CardContent className="p-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
+              <div className="grid grid-cols-2 gap-3 md:flex md:flex-row md:flex-wrap md:items-center">
+                <div className="relative col-span-2 md:flex-1 md:min-w-[260px]">
                   <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search claims..."
@@ -175,7 +175,7 @@ export default function Claims() {
                   />
                 </div>
                 <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ClaimStatus | 'all')}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full md:w-[180px]">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -186,7 +186,7 @@ export default function Claims() {
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as ClaimType | 'all')}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full md:w-[180px]">
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -196,8 +196,13 @@ export default function Claims() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="icon" onClick={() => refetch()}>
-                  <MaterialIcon name="refresh" size="sm" />
+                <Button
+                  variant="outline"
+                  className="col-span-2 md:col-span-auto w-full md:w-auto justify-center"
+                  onClick={() => refetch()}
+                >
+                  <MaterialIcon name="refresh" size="sm" className="mr-2 md:mr-0" />
+                  <span className="md:hidden">Refresh</span>
                 </Button>
               </div>
             </CardContent>

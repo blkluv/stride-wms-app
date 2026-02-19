@@ -163,7 +163,7 @@ export default function Accounts() {
             accentText="Directory"
             description="Manage client accounts and billing information"
           />
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -171,11 +171,11 @@ export default function Accounts() {
               onChange={handleFileChange}
               className="hidden"
             />
-            <Button variant="secondary" onClick={handleImportClick}>
+            <Button variant="secondary" onClick={handleImportClick} className="w-full justify-center">
               <MaterialIcon name="upload" size="sm" className="mr-2" />
               Import
             </Button>
-            <Button onClick={() => { setEditingAccountId(null); setDialogOpen(true); }}>
+            <Button onClick={() => { setEditingAccountId(null); setDialogOpen(true); }} className="w-full justify-center">
               <MaterialIcon name="add" size="sm" className="mr-2" />
               New Account
             </Button>
@@ -190,8 +190,8 @@ export default function Accounts() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="relative flex-1">
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center mb-6">
+              <div className="relative col-span-2 sm:flex-1 sm:min-w-[260px]">
                 <MaterialIcon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search by account code, name, or contact..."
@@ -200,20 +200,22 @@ export default function Accounts() {
                   className="pl-9"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-48">
+              <div className="col-span-2 sm:col-span-auto">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-48">
                   <MaterialIcon name="filter_list" size="sm" className="mr-2" />
                   <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {uniqueStatuses.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {uniqueStatuses.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {loading ? (

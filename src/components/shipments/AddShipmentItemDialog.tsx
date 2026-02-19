@@ -159,47 +159,64 @@ export function AddShipmentItemDialog({
 
       // Activity log (best-effort)
       if (profile?.tenant_id && profile?.id) {
-        let shipmentNumber: string | null = null;
-        try {
-          const { data: shipRow } = await (supabase.from('shipments') as any)
-            .select('shipment_number, shipment_type')
-            .eq('id', shipmentId)
-            .maybeSingle();
-          shipmentNumber = shipRow?.shipment_number || null;
-        } catch {
-          // ignore
-        }
+        void (async () => {
+          let shipmentNumber: string | null = null;
+          let shipmentType: string | null = null;
+          try {
+            const { data: shipRow } = await (supabase.from('shipments') as any)
+              .select('shipment_number, shipment_type')
+              .eq('id', shipmentId)
+              .maybeSingle();
+            shipmentNumber = shipRow?.shipment_number || null;
+            shipmentType = shipRow?.shipment_type || null;
+          } catch {
+            // ignore
+          }
 
-        if (itemId) {
-          void logActivity({
-            entityType: 'item',
-            tenantId: profile.tenant_id,
-            entityId: itemId,
-            actorUserId: profile.id,
-            eventType: 'item_shipment_linked',
-            eventLabel: `Added to shipment ${shipmentNumber || 'SHP'}`,
-            details: {
-              shipment_id: shipmentId,
-              shipment_number: shipmentNumber,
-              expected_description: description.trim(),
-              expected_quantity: itemQuantity,
-            },
-          });
-        }
+          const promises: Promise<void>[] = [];
 
-        void logActivity({
-          entityType: 'shipment',
-          tenantId: profile.tenant_id,
-          entityId: shipmentId,
-          actorUserId: profile.id,
-          eventType: 'item_added',
-          eventLabel: `Expected item added: ${description.trim()}`,
-          details: {
-            item_id: itemId,
-            expected_description: description.trim(),
-            expected_quantity: itemQuantity,
-          },
-        });
+          if (itemId) {
+            promises.push(
+              logActivity({
+                entityType: 'item',
+                tenantId: profile.tenant_id,
+                entityId: itemId,
+                actorUserId: profile.id,
+                eventType: 'item_shipment_linked',
+                eventLabel: `Added to shipment ${shipmentNumber || 'SHP'}`,
+                details: {
+                  shipment_id: shipmentId,
+                  shipment_number: shipmentNumber,
+                  shipment_type: shipmentType,
+                  expected_description: description.trim(),
+                  expected_vendor: vendor.trim() || null,
+                  expected_quantity: itemQuantity,
+                  expected_class_id: matchedClass?.id || null,
+                },
+              })
+            );
+          }
+
+          promises.push(
+            logActivity({
+              entityType: 'shipment',
+              tenantId: profile.tenant_id,
+              entityId: shipmentId,
+              actorUserId: profile.id,
+              eventType: 'item_added',
+              eventLabel: `Expected item added: ${description.trim()}`,
+              details: {
+                item_id: itemId,
+                expected_description: description.trim(),
+                expected_vendor: vendor.trim() || null,
+                expected_quantity: itemQuantity,
+                expected_class_id: matchedClass?.id || null,
+              },
+            })
+          );
+
+          await Promise.allSettled(promises);
+        })();
       }
 
       // Record field usage for future suggestions

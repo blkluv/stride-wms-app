@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect, SelectOption } from '@/components/ui/searchable-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PhotoScannerButton } from '@/components/common/PhotoScannerButton';
 import { PhotoUploadButton } from '@/components/common/PhotoUploadButton';
 import { TaggablePhotoGrid, TaggablePhoto, getPhotoUrls } from '@/components/common/TaggablePhotoGrid';
@@ -38,7 +39,7 @@ import { deriveLegacyReleaseTypeFromOutboundTypeName } from '@/lib/outboundRelea
 import { logActivity } from '@/lib/activity/logActivity';
 import { queueSplitRequiredAlert } from '@/lib/alertQueue';
 import { EntityActivityFeed } from '@/components/activity/EntityActivityFeed';
-import { useItemDisplaySettings } from '@/hooks/useItemDisplaySettings';
+import { useItemDisplaySettingsForUser } from '@/hooks/useItemDisplaySettingsForUser';
 import { ItemColumnsPopover } from '@/components/items/ItemColumnsPopover';
 import { ItemPreviewCard } from '@/components/items/ItemPreviewCard';
 import { formatItemSize } from '@/lib/items/formatItemSize';
@@ -93,11 +94,12 @@ export default function OutboundCreate() {
   // Item table view (tenant-managed)
   const {
     settings: itemDisplaySettings,
+    tenantSettings: tenantItemDisplaySettings,
     defaultViewId: defaultItemViewId,
     loading: itemDisplayLoading,
     saving: itemDisplaySaving,
     saveSettings: saveItemDisplaySettings,
-  } = useItemDisplaySettings();
+  } = useItemDisplaySettingsForUser();
   const [activeItemViewId, setActiveItemViewId] = useState<string>('');
 
   useEffect(() => {
@@ -1432,6 +1434,7 @@ export default function OutboundCreate() {
 
                       <ItemColumnsPopover
                         settings={itemDisplaySettings}
+                        baseSettings={tenantItemDisplaySettings}
                         viewId={activeItemViewId || defaultItemViewId || 'default'}
                         disabled={itemDisplayLoading || itemDisplaySaving || itemDisplaySettings.views.length === 0}
                         onSave={saveItemDisplaySettings}

@@ -29,12 +29,36 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Authenticate the caller
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    const userId = claimsData.claims.sub;
+
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     if (!twilioAuthToken) {
       throw new Error("TWILIO_AUTH_TOKEN not configured in Supabase secrets.");
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -43,6 +67,20 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!tenant_id || !to_phone || !messageBody) {
       throw new Error("Missing required fields: tenant_id, to_phone, body");
+    }
+
+    // Verify the caller belongs to the specified tenant
+    const { data: userProfile, error: profileError } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", userId)
+      .single();
+
+    if (profileError || !userProfile || userProfile.tenant_id !== tenant_id) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: Cannot send SMS for other tenants" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     // Get tenant's Twilio config

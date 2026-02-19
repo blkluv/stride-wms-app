@@ -759,7 +759,7 @@ export async function queueReceivingDiscrepancyAlert(
       .eq('trigger_event', 'receiving.discrepancy_created')
       .maybeSingle();
 
-    if (!trigger || !trigger.is_enabled || trigger.channels?.email !== true) {
+    if (!trigger || !trigger.is_enabled || (trigger.channels as any)?.email !== true) {
       return false;
     }
   } catch {
@@ -793,7 +793,7 @@ export async function queueReceivingExceptionAlert(
       .eq('trigger_event', 'receiving.exception_noted')
       .maybeSingle();
 
-    if (!trigger || !trigger.is_enabled || trigger.channels?.email !== true) {
+    if (!trigger || !trigger.is_enabled || (trigger.channels as any)?.email !== true) {
       return false;
     }
   } catch {

@@ -207,7 +207,7 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     const items = Array.isArray(subscription.items?.data) ? subscription.items.data : [];
-    const perUserItem = items.find((item) => {
+    const perUserItem = items.find((item: any) => {
       const anyItem = item as unknown as { price?: any };
       const priceId = typeof anyItem?.price === "string" ? anyItem.price : anyItem?.price?.id ?? null;
       return priceId === perUserPriceId;
@@ -228,7 +228,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     } else {
       // Add a new per-user subscription item while preserving existing items.
-      const updateItems: any[] = items.map((item) => ({
+      const updateItems: any[] = items.map((item: any) => ({
         id: item.id,
         quantity: typeof item.quantity === "number" ? item.quantity : 1,
       }));

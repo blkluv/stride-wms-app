@@ -156,7 +156,7 @@ serve(async (req: Request): Promise<Response> => {
       failures,
     };
 
-    return jsonResponse(result);
+    return jsonResponse(result as unknown as Record<string, unknown>);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("process-sms-sender-queue error:", message);

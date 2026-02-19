@@ -62,7 +62,7 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-async function authenticateAdminDev(req: Request, serviceClient: ReturnType<typeof createClient>) {
+async function authenticateAdminDev(req: Request, serviceClient: any) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     throw new Error("UNAUTHORIZED");
