@@ -902,8 +902,9 @@ export function IncomingContent({ initialSubTab, onStartDockIntake }: IncomingCo
                         }}
                         disabled={creating}
                       >
-                        <MaterialIcon name="add" size="sm" className="mr-1" />
-                        New Expected Shipment
+                        <MaterialIcon name="add" size="sm" className="mr-1 hidden sm:inline" />
+                        <span className="hidden sm:inline">New Expected Shipment</span>
+                        <span className="sm:hidden">+ Expected</span>
                       </Button>
                     </div>
                   )}
