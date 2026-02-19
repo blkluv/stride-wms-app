@@ -531,13 +531,13 @@ export default function ClientOutboundCreate() {
             const manualReviewBodyText = [
               'A client requested a partial quantity from one or more grouped items, but automated split tasks are disabled for this tenant.',
               'This shipment is marked Pending review.',
-              '',
+              ' ',
               'Requested grouped items:',
               ...splitItemsForMeta.map(
                 (c) =>
                   `- ${c.parent_item_code}: requested ${c.keep_qty} of ${c.grouped_qty} (leftover ${c.leftover_qty})`
               ),
-              '',
+              ' ',
               `Origin Job: Shipment ${effectiveShipmentNumber || shipment.id}`,
               requestNotes ? `Notes: ${requestNotes}` : '',
             ]
