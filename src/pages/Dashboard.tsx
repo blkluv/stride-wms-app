@@ -8,6 +8,15 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -21,6 +30,24 @@ import { useDashboardStats, PutAwayItem, TaskItem, ShipmentItem } from '@/hooks/
 import { useCountUp } from '@/hooks/useCountUp';
 import { CapacityCard } from '@/components/dashboard/CapacityCard';
 import { HeatMapHeroTile } from '@/components/dashboard/HeatMapHeroTile';
+import { SortableDashboardTile } from '@/components/dashboard/SortableDashboardTile';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useDashboardPreferences } from '@/hooks/useDashboardPreferences';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
 
 /** Animated count display for dashboard tiles */
 function AnimatedCount({ value, delay = 0, className }: { value: number; delay?: number; className?: string }) {
@@ -42,6 +69,33 @@ function formatTimeEstimate(minutes: number): string {
 }
 
 type ExpandedCard = 'put_away' | 'inspection' | 'assembly' | 'incoming_shipments' | 'repairs' | 'repair_quotes' | null;
+
+type DashboardCardId =
+  | 'heat_map'
+  | 'warehouse_capacity'
+  | Exclude<ExpandedCard, null>;
+
+const DASHBOARD_CARD_LABELS: Record<DashboardCardId, string> = {
+  heat_map: 'Heat Map (Preview)',
+  warehouse_capacity: 'Warehouse Capacity',
+  put_away: 'Put Away',
+  inspection: 'Needs Inspection',
+  assembly: 'Needs Assembly',
+  incoming_shipments: 'Expected Shipments',
+  repairs: 'Repairs',
+  repair_quotes: 'Repair Quotes',
+};
+
+const DEFAULT_DASHBOARD_CARD_ORDER: DashboardCardId[] = [
+  'heat_map',
+  'warehouse_capacity',
+  'put_away',
+  'inspection',
+  'assembly',
+  'incoming_shipments',
+  'repairs',
+  'repair_quotes',
+];
 
 /**
  * Phase 2 Dashboard (Command Center)
@@ -66,6 +120,29 @@ export default function Dashboard() {
   } = useDashboardStats();
   const { warehouses, selectedWarehouseId, setSelectedWarehouseId } = useSelectedWarehouse();
   const [expandedCard, setExpandedCard] = useState<ExpandedCard>(null);
+
+  const isMobile = useIsMobile();
+  const layoutKey = isMobile ? 'mobile' : 'desktop';
+
+  const {
+    cardOrder,
+    hiddenCards,
+    loading: dashboardPrefsLoading,
+    updateCardOrder,
+    toggleCardVisibility,
+    resetToDefault,
+  } = useDashboardPreferences({
+    layout: layoutKey,
+    availableCardIds: DEFAULT_DASHBOARD_CARD_ORDER,
+    defaultCardOrder: DEFAULT_DASHBOARD_CARD_ORDER,
+  });
+
+  const hiddenSet = useMemo(() => new Set(hiddenCards), [hiddenCards]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const toggleCard = (key: ExpandedCard) => {
     setExpandedCard(expandedCard === key ? null : key);
@@ -261,6 +338,167 @@ export default function Dashboard() {
     );
   };
 
+  const tileById = useMemo(() => {
+    const m = new Map<string, (typeof tiles)[number]>();
+    for (const t of tiles) m.set(t.key, t);
+    return m;
+  }, [tiles]);
+
+  const orderedCardIds = useMemo(() => {
+    const saved = (cardOrder as string[]).filter((id) => DEFAULT_DASHBOARD_CARD_ORDER.includes(id as DashboardCardId)) as DashboardCardId[];
+    const missing = DEFAULT_DASHBOARD_CARD_ORDER.filter((id) => !saved.includes(id));
+    return [...saved, ...missing];
+  }, [cardOrder]);
+
+  const visibleOrderedCardIds = useMemo(
+    () => orderedCardIds.filter((id) => !hiddenSet.has(id)),
+    [hiddenSet, orderedCardIds]
+  );
+
+  const renderDashboardCard = (id: DashboardCardId, index: number) => {
+    if (id === 'heat_map') {
+      if (!selectedWarehouseId) return null;
+      return <HeatMapHeroTile warehouseId={selectedWarehouseId} />;
+    }
+
+    if (id === 'warehouse_capacity') {
+      return <CapacityCard warehouseId={selectedWarehouseId ?? undefined} />;
+    }
+
+    const t = tileById.get(id);
+    if (!t) return null;
+
+    const isExpanded = expandedCard === t.key;
+    const items = getExpandedItems(t.key);
+    const timeStr = t.timeEstimate ? formatTimeEstimate(t.timeEstimate) : '';
+
+    return (
+      <Card className="hover:shadow-lg transition-shadow relative" data-testid={`dashboard-tile-${t.key}`}>
+        {/* Expand/Collapse Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 h-6 w-6 z-10"
+          data-testid={`dashboard-expand-${t.key}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleCard(t.key);
+          }}
+        >
+          <MaterialIcon
+            name="expand_more"
+            size="sm"
+            className={cn("transition-transform duration-200", isExpanded && "rotate-180")}
+          />
+        </Button>
+
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-10">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+              {t.title}
+            </CardTitle>
+            {typeof t.urgent === 'number' && t.urgent > 0 && (
+              <Badge className="bg-red-500 text-white text-[10px]">
+                ⚠️ {t.urgent}
+              </Badge>
+            )}
+          </div>
+          <div className={`emoji-tile emoji-tile-lg rounded-lg ${t.bgColor}`}>
+            {t.emoji}
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          <div
+            className="flex items-baseline gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={t.onClick}
+            role="button"
+          >
+            <AnimatedCount
+              value={t.count ?? 0}
+              delay={index * 80}
+              className={`text-3xl font-bold ${t.countColor}`}
+            />
+            {timeStr && t.count > 0 && (
+              <span className="text-sm text-muted-foreground">
+                ⏱️ ~{timeStr}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
+
+          {/* Expandable Items List */}
+          {isExpanded && items.length > 0 && (
+            <div className="mt-4 border-t pt-3">
+              <ScrollArea className="max-h-64">
+                <div className="space-y-1">
+                  {items.slice(0, 10).map((item) => renderItemRow(item, t.key))}
+                </div>
+              </ScrollArea>
+              {items.length > 10 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs mt-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    t.onClick();
+                  }}
+                >
+                  View all {t.count} items
+                </Button>
+              )}
+            </div>
+          )}
+
+          {isExpanded && items.length === 0 && (
+            <div className="mt-4 border-t pt-3 text-center text-sm text-muted-foreground">
+              No items to display
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderedCards = visibleOrderedCardIds.flatMap((id, index) => {
+    const element = renderDashboardCard(id, index);
+    if (!element) return [];
+    const spanClass = id === 'heat_map' ? 'md:col-span-2 lg:col-span-3' : undefined;
+    return [{ id, element: (
+      <SortableDashboardTile key={id} id={id} className={spanClass}>
+        {element}
+      </SortableDashboardTile>
+    ) }];
+  });
+
+  const sortableIds = renderedCards.map((c) => c.id);
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id) as DashboardCardId;
+    const overId = String(over.id) as DashboardCardId;
+
+    const oldIndex = sortableIds.indexOf(activeId);
+    const newIndex = sortableIds.indexOf(overId);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const nextSortableOrder = arrayMove(sortableIds, oldIndex, newIndex);
+
+    // Merge reorder back into the full order list, leaving hidden/non-rendered cards in place.
+    const movable = new Set(sortableIds);
+    let nextIdx = 0;
+    const nextFullOrder = orderedCardIds.map((id) => {
+      if (!movable.has(id)) return id;
+      const replacement = nextSortableOrder[nextIdx++];
+      return replacement ?? id;
+    });
+
+    await updateCardOrder(nextFullOrder);
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6 pb-20">
@@ -286,6 +524,47 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <MaterialIcon name="tune" size="sm" className="mr-2" />
+                  Customize
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>
+                  Dashboard cards ({layoutKey})
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {DEFAULT_DASHBOARD_CARD_ORDER.map((id) => {
+                  const isVisible = !hiddenSet.has(id);
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={id}
+                      checked={isVisible}
+                      onCheckedChange={(checked) => {
+                        if (checked === isVisible) return;
+                        if (expandedCard === (id as ExpandedCard)) setExpandedCard(null);
+                        void toggleCardVisibility(id);
+                      }}
+                    >
+                      {DASHBOARD_CARD_LABELS[id]}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    setExpandedCard(null);
+                    void resetToDefault();
+                  }}
+                  disabled={dashboardPrefsLoading}
+                >
+                  <MaterialIcon name="restart_alt" size="sm" className="mr-2" />
+                  Reset to default
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" size="sm" onClick={refetch} disabled={loading} data-testid="refresh-button">
               <MaterialIcon name={loading ? "sync" : "refresh"} size="sm" className={cn("mr-2", loading && "animate-spin")} />
               Refresh
@@ -298,103 +577,25 @@ export default function Dashboard() {
             <MaterialIcon name="progress_activity" size="xl" className="animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {selectedWarehouseId && (
-              <HeatMapHeroTile
-                warehouseId={selectedWarehouseId}
-                className="md:col-span-2 lg:col-span-3"
-              />
-            )}
-            <CapacityCard warehouseId={selectedWarehouseId ?? undefined} />
-            {tiles.map((t, tileIndex) => {
-              const isExpanded = expandedCard === t.key;
-              const items = getExpandedItems(t.key);
-              const timeStr = t.timeEstimate ? formatTimeEstimate(t.timeEstimate) : '';
-
-              return (
-                <Card key={t.key} className="hover:shadow-lg transition-shadow relative" data-testid={`dashboard-tile-${t.key}`}>
-                  {/* Expand/Collapse Button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 right-2 h-6 w-6 z-10"
-                    data-testid={`dashboard-expand-${t.key}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleCard(t.key);
-                    }}
-                  >
-                    <MaterialIcon name="expand_more" size="sm" className={cn(
-                      "transition-transform duration-200",
-                      isExpanded && "rotate-180"
-                    )} />
-                  </Button>
-
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-10">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-[11px] font-semibold tracking-wide text-muted-foreground">
-                        {t.title}
-                      </CardTitle>
-                      {typeof t.urgent === 'number' && t.urgent > 0 && (
-                        <Badge className="bg-red-500 text-white text-[10px]">
-                          ⚠️ {t.urgent}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className={`emoji-tile emoji-tile-lg rounded-lg ${t.bgColor}`}>
-                      {t.emoji}
-                    </div>
-                  </CardHeader>
-
-                  <CardContent>
-                    <div
-                      className={`flex items-baseline gap-2 cursor-pointer hover:opacity-80 transition-opacity`}
-                      onClick={t.onClick}
-                      role="button"
-                    >
-                      <AnimatedCount value={t.count ?? 0} delay={tileIndex * 80} className={`text-3xl font-bold ${t.countColor}`} />
-                      {timeStr && t.count > 0 && (
-                        <span className="text-sm text-muted-foreground">
-                          ⏱️ ~{timeStr}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
-
-                    {/* Expandable Items List */}
-                    {isExpanded && items.length > 0 && (
-                      <div className="mt-4 border-t pt-3">
-                        <ScrollArea className="max-h-64">
-                          <div className="space-y-1">
-                            {items.slice(0, 10).map((item) => renderItemRow(item, t.key))}
-                          </div>
-                        </ScrollArea>
-                        {items.length > 10 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full text-xs mt-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              t.onClick();
-                            }}
-                          >
-                            View all {t.count} items
-                          </Button>
-                        )}
-                      </div>
-                    )}
-
-                    {isExpanded && items.length === 0 && (
-                      <div className="mt-4 border-t pt-3 text-center text-sm text-muted-foreground">
-                        No items to display
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={sortableIds} strategy={rectSortingStrategy}>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {renderedCards.length === 0 ? (
+                  <Card className="md:col-span-2 lg:col-span-3">
+                    <CardContent className="py-10 text-center text-muted-foreground">
+                      No dashboard cards selected.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  renderedCards.map((c) => c.element)
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </DashboardLayout>
