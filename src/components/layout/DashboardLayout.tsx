@@ -71,6 +71,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: 'dashboard' },
   { label: 'Shipments', href: '/shipments', icon: 'local_shipping' },
   { label: 'Inventory', href: '/inventory', icon: 'inventory_2' },
+  { label: 'Containers', href: '/containers', icon: 'all_inbox' },
   { label: 'Map Builder', href: '/warehouse-map', icon: 'map', requiredRole: ['admin', 'tenant_admin', 'manager'] },
   { label: 'Heat Map', href: '/heatmap', icon: 'whatshot', requiredRole: ['admin', 'tenant_admin', 'manager', 'warehouse', 'warehouse_staff'] },
   { label: 'Tasks', href: '/tasks', icon: 'task_alt' },

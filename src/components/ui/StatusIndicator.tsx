@@ -1,6 +1,12 @@
 import { cn } from '@/lib/utils';
 
 const statusStyles = {
+  // Common lifecycle states (used by containers and other resources)
+  archived: {
+    bg: 'bg-red-500/10 dark:bg-red-400/15',
+    text: 'text-red-700 dark:text-red-400',
+    dot: 'bg-red-500',
+  },
   pending: {
     bg: 'bg-yellow-500/10 dark:bg-yellow-400/15',
     text: 'text-yellow-700 dark:text-yellow-400',

@@ -77,6 +77,8 @@ import ClientOutboundCreate from "./pages/ClientOutboundCreate";
 import ClientTaskCreate from "./pages/ClientTaskCreate";
 import ScanHub from "./pages/ScanHub";
 import ScanItemRedirect from "./pages/ScanItemRedirect";
+import ScanLocationRedirect from "./pages/ScanLocationRedirect";
+import ScanContainerRedirect from "./pages/ScanContainerRedirect";
 import ScanShipmentRedirect from "./pages/ScanShipmentRedirect";
 import WarehouseMapRedirect from "./pages/WarehouseMapRedirect";
 import WarehouseMapBuilder from "./pages/WarehouseMapBuilder";
@@ -97,6 +99,7 @@ import Messages from "./pages/Messages";
 import ComponentsDemo from "./pages/ComponentsDemo";
 import MaterialIconsSample from "./pages/MaterialIconsSample";
 import LocationDetail from "./pages/LocationDetail";
+import Containers from "./pages/Containers";
 import ContainerDetail from "./pages/ContainerDetail";
 import IncomingManager from "./pages/IncomingManager";
 import InboundManifestDetail from "./pages/InboundManifestDetail";
@@ -131,6 +134,7 @@ const App = () => (
             <Route path="/inventory" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Inventory /></RequireRole></ProtectedRoute>} />
             <Route path="/inventory/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ItemDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><LocationDetail /></RequireRole></ProtectedRoute>} />
+            <Route path="/containers" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Containers /></RequireRole></ProtectedRoute>} />
             <Route path="/containers/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ContainerDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/warehouses/:warehouseId/map" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><WarehouseMapBuilder /></RequireRole></ProtectedRoute>} />
             <Route path="/warehouses/:warehouseId/zones" element={<ProtectedRoute><RequireRole role={['admin', 'tenant_admin', 'manager']}><WarehouseZones /></RequireRole></ProtectedRoute>} />
@@ -159,6 +163,8 @@ const App = () => (
             <Route path="/tasks/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><TaskDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/scan" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanHub /></RequireRole></ProtectedRoute>} />
             <Route path="/scan/item/:codeOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanItemRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/scan/location/:codeOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanLocationRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/scan/container/:codeOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanContainerRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/scan/shipment/:numberOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanShipmentRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Messages /></RequireRole></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><RequireRole role="tenant_admin"><Billing /></RequireRole></ProtectedRoute>} />

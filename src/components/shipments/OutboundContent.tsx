@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,7 @@ interface OutboundShipment {
   id: string;
   shipment_number: string;
   status: string;
+  metadata?: Record<string, unknown> | null;
   carrier: string | null;
   tracking_number: string | null;
   expected_arrival_date: string | null;
@@ -66,6 +67,28 @@ export function OutboundContent() {
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  const getDisplayStatus = useCallback((shipment: OutboundShipment): { status: string; label: string } => {
+    const baseLabel = statusLabels[shipment.status] || shipment.status;
+
+    // For terminal states, trust the primary status.
+    if (['released', 'shipped', 'completed', 'cancelled'].includes(shipment.status)) {
+      return { status: shipment.status, label: baseLabel };
+    }
+
+    const meta = shipment.metadata && typeof shipment.metadata === 'object' ? shipment.metadata : null;
+    const pendingReview = !!(meta && (meta as any).pending_review === true);
+    if (pendingReview) {
+      return { status: 'pending_review', label: 'Pending review' };
+    }
+
+    const splitRequired = !!(meta && (meta as any).split_required === true);
+    if (splitRequired) {
+      return { status: 'waiting_split', label: 'Waiting for split' };
+    }
+
+    return { status: shipment.status, label: baseLabel };
+  }, []);
+
   useEffect(() => {
     if (!profile?.tenant_id) return;
 
@@ -78,6 +101,7 @@ export function OutboundContent() {
             id,
             shipment_number,
             status,
+            metadata,
             carrier,
             tracking_number,
             expected_arrival_date,
@@ -114,6 +138,7 @@ export function OutboundContent() {
           id: s.id,
           shipment_number: s.shipment_number,
           status: s.status,
+          metadata: (s.metadata && typeof s.metadata === 'object') ? s.metadata : null,
           carrier: s.carrier,
           tracking_number: s.tracking_number,
           expected_arrival_date: s.expected_arrival_date,
@@ -153,7 +178,7 @@ export function OutboundContent() {
     return shipments.filter(shipment => {
       if (searchQuery) {
         const query = searchQuery.trim().toLowerCase();
-        const statusLabel = statusLabels[shipment.status]?.toLowerCase() || '';
+        const statusLabel = getDisplayStatus(shipment).label.toLowerCase();
 
         const matchesAnyField =
           statusLabel.includes(query) ||
@@ -171,7 +196,7 @@ export function OutboundContent() {
       if (accountFilter !== 'all' && shipment.account_name !== accountFilter) return false;
       return true;
     });
-  }, [shipments, searchQuery, statusFilter, accountFilter]);
+  }, [shipments, searchQuery, statusFilter, accountFilter, getDisplayStatus]);
 
   const uniqueStatuses = useMemo(() => [...new Set(shipments.map(s => s.status))], [shipments]);
   const uniqueAccounts = useMemo(() => [...new Set(shipments.map(s => s.account_name).filter(Boolean))] as string[], [shipments]);
@@ -200,11 +225,11 @@ export function OutboundContent() {
       add(s.po_number, 'PO');
       add(s.carrier, 'Carrier');
       add(s.outbound_type_name, 'Type');
-      add(s.status, 'Status');
+      add(getDisplayStatus(s).label, 'Status');
     }
 
     return out;
-  }, [searchQuery, shipments]);
+  }, [searchQuery, shipments, getDisplayStatus]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -233,7 +258,7 @@ export function OutboundContent() {
           cmp = compareString(a.outbound_type_name, b.outbound_type_name);
           break;
         case 'status':
-          cmp = compareString(statusLabels[a.status] || a.status, statusLabels[b.status] || b.status);
+          cmp = compareString(getDisplayStatus(a).label, getDisplayStatus(b).label);
           break;
         case 'created_at':
         default:
@@ -242,7 +267,7 @@ export function OutboundContent() {
       }
       return cmp * dir;
     });
-  }, [filteredShipments, sortField, sortDirection]);
+  }, [filteredShipments, sortField, sortDirection, getDisplayStatus]);
 
   if (loading) {
     return (
@@ -314,7 +339,10 @@ export function OutboundContent() {
                         shipmentNumber={shipment.shipment_number}
                         exceptionType={shipment.shipment_exception_type}
                       />
-                      <StatusIndicator status={shipment.status} label={statusLabels[shipment.status]} size="sm" />
+                      {(() => {
+                        const d = getDisplayStatus(shipment);
+                        return <StatusIndicator status={d.status} label={d.label} size="sm" />;
+                      })()}
                     </div>
                     <div className="text-sm text-muted-foreground">{shipment.account_name || 'No account'}</div>
                     <div className="text-xs text-muted-foreground">
@@ -368,7 +396,10 @@ export function OutboundContent() {
                         ) : '-'}
                       </TableCell>
                       <TableCell>
-                        <StatusIndicator status={shipment.status} label={statusLabels[shipment.status]} size="sm" />
+                        {(() => {
+                          const d = getDisplayStatus(shipment);
+                          return <StatusIndicator status={d.status} label={d.label} size="sm" />;
+                        })()}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {format(new Date(shipment.created_at), 'MMM d, yyyy')}

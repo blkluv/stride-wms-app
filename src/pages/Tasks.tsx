@@ -164,6 +164,26 @@ export default function Tasks() {
   const [completionBlockedOpen, setCompletionBlockedOpen] = useState(false);
   const [completionValidationResult, setCompletionValidationResult] = useState<TaskCompletionValidationResult | null>(null);
 
+  const getDisplayStatus = (task: Task): { status: string; label: string } => {
+    const baseLabel = statusLabels[task.status] || task.status;
+    if (['completed', 'unable_to_complete', 'cancelled'].includes(task.status)) {
+      return { status: task.status, label: baseLabel };
+    }
+
+    const meta = task.metadata && typeof task.metadata === 'object' ? task.metadata : null;
+    const pendingReview = !!(meta && (meta as any).pending_review === true);
+    if (pendingReview) {
+      return { status: 'pending_review', label: 'Pending review' };
+    }
+
+    const splitRequired = !!(meta && (meta as any).split_required === true);
+    if (splitRequired && task.task_type !== 'Split') {
+      return { status: 'waiting_split', label: 'Waiting for split' };
+    }
+
+    return { status: task.status, label: baseLabel };
+  };
+
   // Fetch ALL tasks for stable tile counts (no filters, but respect technician filter)
   const { tasks: allTasks } = useTasks({
     // Technicians only see their assigned tasks
@@ -650,11 +670,10 @@ export default function Tasks() {
                         <Badge variant="outline">{task.task_type}</Badge>
                       </TableCell>
                       <TableCell>
-                        <StatusIndicator
-                          status={task.status}
-                          label={statusLabels[task.status]}
-                          size="sm"
-                        />
+                        {(() => {
+                          const d = getDisplayStatus(task);
+                          return <StatusIndicator status={d.status} label={d.label} size="sm" />;
+                        })()}
                       </TableCell>
                       <TableCell>
                         <StatusIndicator

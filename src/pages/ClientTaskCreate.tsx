@@ -438,13 +438,13 @@ export default function ClientTaskCreate() {
           const manualReviewBodyText = [
             'A client requested a partial quantity from one or more grouped items, but automated split tasks are disabled for this tenant.',
             'This task is marked Pending review.',
-            '',
+            ' ',
             'Requested grouped items:',
             ...splitItemsForMeta.map(
               (c) =>
                 `- ${c.parent_item_code}: requested ${c.keep_qty} of ${c.grouped_qty} (leftover ${c.leftover_qty})`
             ),
-            '',
+            ' ',
             `Origin Job: Task ${title || task.id}`,
             requestNotes ? `Notes: ${requestNotes}` : '',
           ]

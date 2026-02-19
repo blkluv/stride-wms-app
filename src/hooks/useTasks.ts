@@ -41,6 +41,7 @@ export interface Task {
   task_type: string;
   task_type_id: string | null;
   status: string;
+  metadata?: Record<string, unknown> | null;
   priority: string | null;
   due_date: string | null;
   assigned_to: string | null;

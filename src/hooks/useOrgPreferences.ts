@@ -14,6 +14,17 @@ export interface OrgPreferences {
   inventory_group_mode: InventoryGroupMode;
   inventory_line_format: InventoryLineFormat;
   /**
+   * When enabled, scanning a container label in an item-only scan flow (ex: outbound scan,
+   * stocktake scan) will offer a shortcut to open the container detail page instead of
+   * showing a generic "wrong item" error.
+   */
+  scan_shortcuts_open_container_enabled: boolean;
+  /**
+   * When enabled, scanning a location label in an item-only scan flow will offer a shortcut
+   * to open the location detail page.
+   */
+  scan_shortcuts_open_location_enabled: boolean;
+  /**
    * Client portal only:
    * When true, clients may request partial quantities from grouped items (qty > 1),
    * which creates a warehouse "Split" task and blocks the job until completed.
@@ -27,6 +38,9 @@ const DEFAULTS: OrgPreferences = {
   space_tracking_mode: 'none',
   inventory_group_mode: 'none',
   inventory_line_format: 'single_line',
+  // Keep shortcuts on by default (matches current UX behavior).
+  scan_shortcuts_open_container_enabled: true,
+  scan_shortcuts_open_location_enabled: true,
   // Conservative default: require manual review unless explicitly enabled.
   client_partial_grouped_enabled: false,
 };
@@ -51,6 +65,8 @@ export function useOrgPreferences() {
           'space_tracking_mode',
           'inventory_group_mode',
           'inventory_line_format',
+          'scan_shortcuts_open_container_enabled',
+          'scan_shortcuts_open_location_enabled',
           'client_partial_grouped_enabled',
         ]);
 
@@ -78,6 +94,26 @@ export function useOrgPreferences() {
             prefs.client_partial_grouped_enabled = v.trim().toLowerCase() === 'true';
           } else {
             prefs.client_partial_grouped_enabled = DEFAULTS.client_partial_grouped_enabled;
+          }
+        }
+        if (row.setting_key === 'scan_shortcuts_open_container_enabled') {
+          const v = row.setting_value as unknown;
+          if (typeof v === 'boolean') {
+            prefs.scan_shortcuts_open_container_enabled = v;
+          } else if (typeof v === 'string') {
+            prefs.scan_shortcuts_open_container_enabled = v.trim().toLowerCase() === 'true';
+          } else {
+            prefs.scan_shortcuts_open_container_enabled = DEFAULTS.scan_shortcuts_open_container_enabled;
+          }
+        }
+        if (row.setting_key === 'scan_shortcuts_open_location_enabled') {
+          const v = row.setting_value as unknown;
+          if (typeof v === 'boolean') {
+            prefs.scan_shortcuts_open_location_enabled = v;
+          } else if (typeof v === 'string') {
+            prefs.scan_shortcuts_open_location_enabled = v.trim().toLowerCase() === 'true';
+          } else {
+            prefs.scan_shortcuts_open_location_enabled = DEFAULTS.scan_shortcuts_open_location_enabled;
           }
         }
       });

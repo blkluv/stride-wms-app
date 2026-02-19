@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchableSelect, type SelectOption } from '@/components/ui/searchable-select';
 import {
   Table,
   TableBody,
@@ -203,6 +204,19 @@ export function LocationsSettingsTab({
   }, [searchQuery]);
 
   const warehouseMap = new Map(warehouses.map((w) => [w.id, w]));
+
+  const activeLocationOptions = useMemo((): SelectOption[] => {
+    const opts = locations
+      .filter((l) => (l as any).is_active !== false)
+      .map((loc) => ({
+        value: loc.id,
+        label: loc.code,
+        subtitle: loc.name || undefined,
+      }));
+
+    // Keep the existing "None" sentinel to preserve behavior.
+    return [{ value: '_none_', label: 'None (no default)' }, ...opts];
+  }, [locations]);
 
   // Filter locations
   const filteredLocations = locations.filter((loc) => {
@@ -614,27 +628,20 @@ export function LocationsSettingsTab({
                   <Label htmlFor="default-recv-location">
                     Default Shipment Locations <span className="text-red-500">*</span>
                   </Label>
-                  <Select
+                  <SearchableSelect
                     value={defaultRecvLocationId || '_none_'}
-                    onValueChange={(val) => {
+                    onChange={(val) => {
                       setDefaultRecvLocationId(val === '_none_' ? '' : val);
-                      setLocationValidationErrors(prev => ({ ...prev, inbound: undefined }));
+                      setLocationValidationErrors((prev) => ({ ...prev, inbound: undefined }));
                     }}
-                  >
-                    <SelectTrigger id="default-recv-location" className={locationValidationErrors.inbound ? 'border-red-500' : ''}>
-                      <SelectValue placeholder="Select a location..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none_">None (no default)</SelectItem>
-                      {locations
-                        .filter(l => (l as any).is_active !== false)
-                        .map((loc) => (
-                          <SelectItem key={loc.id} value={loc.id}>
-                            {loc.code}{loc.name ? ` — ${loc.name}` : ''}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                    options={activeLocationOptions}
+                    placeholder="Select a location…"
+                    searchPlaceholder="Search by code or name…"
+                    emptyText="No locations found."
+                    disabled={savingDefaultLocation}
+                    error={locationValidationErrors.inbound}
+                    recentKey={`default-recv-location:${selectedWarehouse}`}
+                  />
                   {locationValidationErrors.inbound && (
                     <p className="text-xs text-red-500">{locationValidationErrors.inbound}</p>
                   )}
@@ -647,27 +654,20 @@ export function LocationsSettingsTab({
                   <Label htmlFor="default-outbound-location">
                     Default Outbound Location <span className="text-red-500">*</span>
                   </Label>
-                  <Select
+                  <SearchableSelect
                     value={defaultOutboundLocationId || '_none_'}
-                    onValueChange={(val) => {
+                    onChange={(val) => {
                       setDefaultOutboundLocationId(val === '_none_' ? '' : val);
-                      setLocationValidationErrors(prev => ({ ...prev, outbound: undefined }));
+                      setLocationValidationErrors((prev) => ({ ...prev, outbound: undefined }));
                     }}
-                  >
-                    <SelectTrigger id="default-outbound-location" className={locationValidationErrors.outbound ? 'border-red-500' : ''}>
-                      <SelectValue placeholder="Select a location..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none_">None (no default)</SelectItem>
-                      {locations
-                        .filter(l => (l as any).is_active !== false)
-                        .map((loc) => (
-                          <SelectItem key={loc.id} value={loc.id}>
-                            {loc.code}{loc.name ? ` — ${loc.name}` : ''}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                    options={activeLocationOptions}
+                    placeholder="Select a location…"
+                    searchPlaceholder="Search by code or name…"
+                    emptyText="No locations found."
+                    disabled={savingDefaultLocation}
+                    error={locationValidationErrors.outbound}
+                    recentKey={`default-outbound-location:${selectedWarehouse}`}
+                  />
                   {locationValidationErrors.outbound && (
                     <p className="text-xs text-red-500">{locationValidationErrors.outbound}</p>
                   )}
