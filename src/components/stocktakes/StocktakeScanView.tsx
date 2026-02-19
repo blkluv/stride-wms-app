@@ -99,6 +99,12 @@ const scanResultConfig: Record<ScanResult, {
   },
 };
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUuid(str: string): boolean {
+  return UUID_REGEX.test(str);
+}
+
 interface LastScanResult {
   itemCode: string;
   result: ScanResult;
@@ -414,6 +420,39 @@ export default function StocktakeScanView() {
     return data;
   };
 
+  const lookupContainer = async (input: string): Promise<{ id: string; container_code: string } | null> => {
+    const payload = parseScanPayload(input);
+    const raw = input.trim();
+    if (!payload || !raw) return null;
+
+    // Only treat as container if explicitly typed or code matches CNT- pattern
+    const isExplicit = payload.type === 'container';
+    const code = (payload.code || raw).trim();
+    const looksLikeContainerCode = /^CNT-[0-9]+$/i.test(code);
+    if (!isExplicit && !looksLikeContainerCode) return null;
+
+    // Prefer UUID lookup if it looks like one
+    if (payload.id && isValidUuid(payload.id)) {
+      const { data } = await supabase
+        .from('containers')
+        .select('id, container_code')
+        .eq('id', payload.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (data) return { id: data.id, container_code: data.container_code };
+    }
+
+    // Fallback by container_code
+    const { data } = await supabase
+      .from('containers')
+      .select('id, container_code')
+      .eq('container_code', code.toUpperCase())
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    return data ? { id: data.id, container_code: data.container_code } : null;
+  };
+
   const handleScan = useCallback(async (data: string) => {
     if (processing || !activeLocationId || !id) return;
 
@@ -421,6 +460,25 @@ export default function StocktakeScanView() {
     const input = data.trim();
 
     try {
+      const scannedContainer = await lookupContainer(input);
+      if (scannedContainer) {
+        hapticMedium();
+        const ok = window.confirm(
+          `Scanned container ${scannedContainer.container_code}.\n\nOpen container details? (This will leave stocktake scanning.)`
+        );
+        if (ok) {
+          navigate(`/containers/${scannedContainer.id}`);
+          return;
+        }
+        setLastScan({
+          itemCode: scannedContainer.container_code,
+          result: 'duplicate',
+          message: 'Container scan ignored.',
+          autoFixed: false,
+        });
+        return;
+      }
+
       const item = await lookupItem(input);
 
       if (!item) {
@@ -470,7 +528,7 @@ export default function StocktakeScanView() {
     } finally {
       setProcessing(false);
     }
-  }, [processing, activeLocationId, id, recordScan]);
+  }, [processing, activeLocationId, id, recordScan, navigate]);
 
   const handleManualSubmit = async () => {
     if (!manualItemCode.trim()) return;

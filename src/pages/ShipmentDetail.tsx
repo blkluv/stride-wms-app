@@ -55,6 +55,7 @@ import { QRScanner } from '@/components/scan/QRScanner';
 import { useLocations } from '@/hooks/useLocations';
 import { useDocuments } from '@/hooks/useDocuments';
 import { hapticError, hapticSuccess } from '@/lib/haptics';
+import { parseScanPayload } from '@/lib/scan/parseScanPayload';
 import { HelpButton, usePromptContextSafe } from '@/components/prompts';
 import { SOPValidationDialog, SOPBlocker } from '@/components/common/SOPValidationDialog';
 import { ShipmentExceptionBadge } from '@/components/shipments/ShipmentExceptionBadge';
@@ -984,6 +985,86 @@ export default function ShipmentDetail() {
     try {
       const matched = findShipmentItemByScan(trimmed);
       if (!matched || !matched.item?.id) {
+        // Helpful handling for scanning non-item labels (containers/locations) in outbound scan.
+        // This screen expects item codes.
+        try {
+          const payload = parseScanPayload(trimmed);
+
+          // Container scan -> optionally open container detail
+          if (payload?.type === 'container' || /^CNT-[0-9]+$/i.test(payload?.code || trimmed)) {
+            const code = (payload?.code || trimmed).trim();
+            let containerId: string | null = null;
+
+            if (payload?.id && isValidUuid(payload.id)) {
+              const { data } = await supabase
+                .from('containers')
+                .select('id')
+                .eq('id', payload.id)
+                .is('deleted_at', null)
+                .maybeSingle();
+              containerId = data?.id || null;
+            }
+
+            if (!containerId) {
+              const { data } = await supabase
+                .from('containers')
+                .select('id')
+                .eq('container_code', code.toUpperCase())
+                .is('deleted_at', null)
+                .maybeSingle();
+              containerId = data?.id || null;
+            }
+
+            const ok = window.confirm(
+              `This screen expects item codes.\n\nYou scanned a container (${code}).\n\nOpen container details?`
+            );
+            if (ok) {
+              if (containerId) {
+                navigate(`/containers/${containerId}`);
+                return;
+              }
+              toast({
+                variant: 'destructive',
+                title: 'Container not found',
+                description: `No container found with code "${code}".`,
+              });
+              return;
+            }
+          }
+
+          // Location scan -> optionally open location detail
+          if (payload?.type === 'location') {
+            const code = (payload?.code || payload?.id || trimmed).trim();
+            const ok = window.confirm(
+              `This screen expects item codes.\n\nYou scanned a location (${code}).\n\nOpen location details?`
+            );
+            if (ok) {
+              if (payload?.id && isValidUuid(payload.id)) {
+                navigate(`/locations/${payload.id}`);
+                return;
+              }
+              const { data } = await supabase
+                .from('locations')
+                .select('id')
+                .eq('code', code)
+                .is('deleted_at', null)
+                .maybeSingle();
+              if (data?.id) {
+                navigate(`/locations/${data.id}`);
+                return;
+              }
+              toast({
+                variant: 'destructive',
+                title: 'Location not found',
+                description: `No location found with code "${code}".`,
+              });
+              return;
+            }
+          }
+        } catch {
+          // ignore; fall back to wrong item message below
+        }
+
         const message = 'This is the wrong item. Please return the item to its previous location.';
         setLastScan({ itemCode: trimmed, result: 'invalid', message });
         hapticError();
