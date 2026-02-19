@@ -79,10 +79,10 @@ Legend:
 
 ## Dashboard visibility
 
-- [ ] Dashboard tile/card: list all currently active jobs across the tenant (Q20/Q21)
-  - [ ] Shows elapsed time for each active job
-  - [ ] Clickable row opens job details page (Q28/Q29)
-  - [ ] Indicates paused vs active (Q30)
+- [x] Dashboard tile/card: list all currently active jobs across the tenant (Q20/Q21)
+  - [x] Shows elapsed time for each active job
+  - [x] Clickable row opens job details page (Q28/Q29)
+  - [x] Indicates paused vs active (Q30)
 
 ---
 

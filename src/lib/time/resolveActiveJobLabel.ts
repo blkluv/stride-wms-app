@@ -26,6 +26,15 @@ export async function resolveActiveJobLabel(
       return s?.shipment_number ? `Shipment ${s.shipment_number}` : 'another shipment';
     }
 
+    if (jobType === 'stocktake') {
+      const { data: st } = await (supabase.from('stocktakes') as any)
+        .select('stocktake_number, name')
+        .eq('tenant_id', tenantId)
+        .eq('id', jobId)
+        .maybeSingle();
+      return st?.name || (st?.stocktake_number ? `Stocktake ${st.stocktake_number}` : 'another stocktake');
+    }
+
     return `${jobType} job`;
   } catch {
     return 'another job';
