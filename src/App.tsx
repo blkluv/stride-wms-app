@@ -77,6 +77,8 @@ import ClientOutboundCreate from "./pages/ClientOutboundCreate";
 import ClientTaskCreate from "./pages/ClientTaskCreate";
 import ScanHub from "./pages/ScanHub";
 import ScanItemRedirect from "./pages/ScanItemRedirect";
+import ScanLocationRedirect from "./pages/ScanLocationRedirect";
+import ScanContainerRedirect from "./pages/ScanContainerRedirect";
 import ScanShipmentRedirect from "./pages/ScanShipmentRedirect";
 import PrintPreview from "./pages/PrintPreview";
 import Diagnostics from "./pages/Diagnostics";
@@ -151,6 +153,8 @@ const App = () => (
             <Route path="/tasks/:id" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><TaskDetail /></RequireRole></ProtectedRoute>} />
             <Route path="/scan" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanHub /></RequireRole></ProtectedRoute>} />
             <Route path="/scan/item/:codeOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanItemRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/scan/location/:codeOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanLocationRedirect /></RequireRole></ProtectedRoute>} />
+            <Route path="/scan/container/:codeOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanContainerRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/scan/shipment/:numberOrId" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><ScanShipmentRedirect /></RequireRole></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><RequireRole role={INTERNAL_ROLES}><Messages /></RequireRole></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><RequireRole role="tenant_admin"><Billing /></RequireRole></ProtectedRoute>} />
