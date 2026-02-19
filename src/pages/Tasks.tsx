@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/page-header';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -43,6 +43,7 @@ import { useWarehouses } from '@/hooks/useWarehouses';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { formatMinutesShort } from '@/lib/time/serviceTimeEstimate';
 import { resolveActiveJobLabel } from '@/lib/time/resolveActiveJobLabel';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -100,6 +101,7 @@ export default function Tasks() {
   const { toast } = useToast();
   const { hasRole, isAdmin } = usePermissions();
   const { warehouses } = useWarehouses();
+  const { selectedWarehouseId } = useSelectedWarehouse();
   const { taskTypes } = useTaskTypes();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -111,6 +113,18 @@ export default function Tasks() {
     taskType: searchParams.get('type') || 'all',
     warehouseId: 'all',
   }));
+
+  // If this tenant only has one warehouse, default the filter to it once.
+  // (Keep the selector visible; user can still switch back to "All" if desired.)
+  const didAutoDefaultWarehouseFilter = useRef(false);
+  useEffect(() => {
+    if (didAutoDefaultWarehouseFilter.current) return;
+    if (warehouses.length !== 1) return;
+    if (filters.warehouseId !== 'all') return;
+
+    didAutoDefaultWarehouseFilter.current = true;
+    setFilters((f) => ({ ...f, warehouseId: selectedWarehouseId || warehouses[0].id }));
+  }, [warehouses, selectedWarehouseId, filters.warehouseId]);
 
   // Sync filters from URL params when they change (e.g. Dashboard tile click)
   // Also auto-open dialog when new=true param is present

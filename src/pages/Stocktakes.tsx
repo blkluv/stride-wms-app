@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,7 @@ import {
 import { CreateStocktakeDialog } from '@/components/stocktakes/CreateStocktakeDialog';
 import { useStocktakes, StocktakeStatus, CreateStocktakeData } from '@/hooks/useStocktakes';
 import { useWarehouses } from '@/hooks/useWarehouses';
+import { useSelectedWarehouse } from '@/contexts/WarehouseContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { format } from 'date-fns';
@@ -83,6 +84,19 @@ export default function Stocktakes() {
 
   const isMobile = useIsMobile();
   const { warehouses } = useWarehouses();
+  const { selectedWarehouseId } = useSelectedWarehouse();
+
+  // If this tenant only has one warehouse, default filters to it once.
+  // (Keep the selector visible; user can still switch back to "All" if desired.)
+  const didAutoDefaultWarehouseFilter = useRef(false);
+  useEffect(() => {
+    if (didAutoDefaultWarehouseFilter.current) return;
+    if (warehouses.length !== 1) return;
+    if (warehouseFilter !== 'all') return;
+
+    didAutoDefaultWarehouseFilter.current = true;
+    setWarehouseFilter(selectedWarehouseId || warehouses[0].id);
+  }, [warehouses, warehouseFilter, selectedWarehouseId]);
   const {
     stocktakes,
     loading,

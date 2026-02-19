@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@/components/ui/page-header';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -8,6 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -44,6 +52,24 @@ import { QATestConsoleTab } from '@/components/settings/QATestConsoleTab';
 import { OnboardingChecklistTab } from '@/components/settings/OnboardingChecklistTab';
 import { FieldHelpSettingsTab } from '@/components/settings/FieldHelpSettingsTab';
 import packageJson from '../../package.json';
+import { cn } from '@/lib/utils';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface TenantInfo {
   id: string;
@@ -57,14 +83,57 @@ const TAB_OPTIONS = [
   { value: 'profile', label: 'Profile' },
   { value: 'organization', label: 'Organization' },
   { value: 'alerts', label: 'Alerts' },
-  { value: 'operations', label: 'Operations', adminOnly: true },
-  { value: 'field-help', label: 'Field Help', adminOnly: true },
+  { value: 'operations', label: 'Users', adminOnly: true },
+  { value: 'field-help', label: 'Help Tool', adminOnly: true },
   { value: 'service-rates', label: 'Service Rates', adminOnly: true },
   { value: 'integrations', label: 'Integrations', adminOnly: true },
   { value: 'warehouses', label: 'Warehouses' },
   { value: 'locations', label: 'Locations' },
   { value: 'qa', label: 'QA Tests', adminOnly: true },
 ];
+
+type TabOption = (typeof TAB_OPTIONS)[number];
+
+function SortableTabRow({ tab, disabled }: { tab: TabOption; disabled?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.value,
+    disabled,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5"
+    >
+      <button
+        type="button"
+        className={cn(
+          "cursor-grab touch-none text-muted-foreground hover:text-foreground",
+          disabled && "cursor-default opacity-40"
+        )}
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        disabled={disabled}
+      >
+        <MaterialIcon name="drag_indicator" size="sm" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm truncate">{tab.label}</div>
+      </div>
+      {tab.adminOnly && (
+        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Admin</span>
+      )}
+    </div>
+  );
+}
 
 export default function Settings() {
   const { profile } = useAuth();
@@ -116,6 +185,42 @@ export default function Settings() {
   } = useUsers();
   const { hasRole } = usePermissions();
   const isAdmin = hasRole('admin') || hasRole('tenant_admin');
+
+  const settingsTabOrderKey = useMemo(() => {
+    if (!profile?.id) return null;
+    return `stride.settingsTabOrder.${profile.id}`;
+  }, [profile?.id]);
+
+  const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const skipNextTabOrderPersistRef = useRef(false);
+  const [reorderTabsOpen, setReorderTabsOpen] = useState(false);
+
+  // Load saved tab order per user
+  useEffect(() => {
+    if (!settingsTabOrderKey) return;
+    // Prevent overwriting the saved value with the initial `[]` before this effect's state update lands.
+    skipNextTabOrderPersistRef.current = true;
+    const saved = localStorage.getItem(settingsTabOrderKey);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        setTabOrder(parsed.filter((v) => typeof v === 'string'));
+      }
+    } catch {
+      // ignore
+    }
+  }, [settingsTabOrderKey]);
+
+  // Persist tab order per user
+  useEffect(() => {
+    if (!settingsTabOrderKey) return;
+    if (skipNextTabOrderPersistRef.current) {
+      skipNextTabOrderPersistRef.current = false;
+      return;
+    }
+    localStorage.setItem(settingsTabOrderKey, JSON.stringify(tabOrder));
+  }, [settingsTabOrderKey, tabOrder]);
 
   useEffect(() => {
     if (profile?.tenant_id) {
@@ -272,8 +377,42 @@ export default function Settings() {
     refetchWarehouses();
   };
 
-  // Filter tabs based on admin status
-  const visibleTabs = TAB_OPTIONS.filter(tab => !tab.adminOnly || isAdmin);
+  const baseVisibleTabs = useMemo(
+    () => TAB_OPTIONS.filter((tab) => !tab.adminOnly || isAdmin),
+    [isAdmin]
+  );
+
+  const visibleTabs = useMemo(() => {
+    if (tabOrder.length === 0) return baseVisibleTabs;
+    const map = new Map(baseVisibleTabs.map((t) => [t.value, t] as const));
+    const ordered = tabOrder.map((v) => map.get(v)).filter(Boolean) as TabOption[];
+    const remaining = baseVisibleTabs.filter((t) => !tabOrder.includes(t.value));
+    return [...ordered, ...remaining];
+  }, [baseVisibleTabs, tabOrder]);
+
+  // If current tab becomes unavailable (e.g. role change), fall back to first visible tab.
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.some((t) => t.value === activeTab)) {
+      setActiveTab(visibleTabs[0].value);
+    }
+  }, [visibleTabs, activeTab]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleTabReorder = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ids = visibleTabs.map((t) => t.value);
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const next = arrayMove(ids, oldIndex, newIndex);
+    setTabOrder(next);
+  };
 
   if (loading) {
     return (
@@ -321,18 +460,26 @@ export default function Settings() {
 
           {/* Desktop: Tab navigation */}
           <TabsList className="hidden sm:flex flex-wrap h-auto gap-1">
-            {isAdmin && <TabsTrigger value="onboarding">Onboarding</TabsTrigger>}
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="organization">Organization</TabsTrigger>
-            <TabsTrigger value="alerts">Alerts</TabsTrigger>
-            {isAdmin && <TabsTrigger value="operations">Operations</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="field-help">Field Help</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="service-rates">Service Rates</TabsTrigger>}
-            {isAdmin && <TabsTrigger value="integrations">Integrations</TabsTrigger>}
-            <TabsTrigger value="warehouses">Warehouses</TabsTrigger>
-            <TabsTrigger value="locations">Locations</TabsTrigger>
-            {isAdmin && <TabsTrigger value="qa">QA Tests</TabsTrigger>}
+            {visibleTabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
           </TabsList>
+
+          {/* Reorder tabs */}
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setReorderTabsOpen(true)}
+            >
+              <MaterialIcon name="swap_vert" size="sm" />
+              Reorder Tabs
+            </Button>
+          </div>
 
           {isAdmin && (
             <TabsContent value="onboarding">
@@ -510,6 +657,46 @@ export default function Settings() {
           )}
         </Tabs>
       </div>
+
+      {/* Tab reorder dialog (persists locally per user) */}
+      <Dialog open={reorderTabsOpen} onOpenChange={setReorderTabsOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Reorder Settings Tabs</DialogTitle>
+            <DialogDescription>
+              Drag tabs to change their order. This is saved for your user on this device.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleTabReorder}
+            >
+              <SortableContext
+                items={visibleTabs.map((t) => t.value)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2">
+                  {visibleTabs.map((tab) => (
+                    <SortableTabRow key={tab.value} tab={tab} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+
+          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <Button type="button" variant="outline" onClick={() => setTabOrder([])}>
+              Reset
+            </Button>
+            <Button type="button" onClick={() => setReorderTabsOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Location Dialog */}
       <LocationDialog

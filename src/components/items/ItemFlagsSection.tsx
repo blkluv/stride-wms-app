@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,7 @@ import { BILLING_DISABLED_ERROR } from '@/lib/billing/chargeTypeUtils';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { logItemActivity } from '@/lib/activity/logItemActivity';
 import { BUILTIN_ITEM_EXCEPTION_FLAGS } from '@/lib/items/builtinItemExceptionFlags';
+import { cn } from '@/lib/utils';
 
 interface ItemFlagsSectionProps {
   itemId: string;
@@ -41,6 +43,7 @@ export function ItemFlagsSection({
   const [enabledBillingFlags, setEnabledBillingFlags] = useState<Set<string>>(new Set());
   const [enabledIndicatorFlags, setEnabledIndicatorFlags] = useState<Set<string>>(new Set());
   const [loadingFlags, setLoadingFlags] = useState(true);
+  const [expanded, setExpanded] = useState(true);
 
   // Fetch flags from Price List (service_events with add_flag = true)
   const { flagServiceEvents, getServiceRate, loading: serviceEventsLoading } = useServiceEvents();
@@ -457,12 +460,30 @@ export function ItemFlagsSection({
     return (
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <MaterialIcon name="flag" size="md" />
-            Item Flags
-          </CardTitle>
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <MaterialIcon name="flag" size="md" />
+              Item Flags
+            </CardTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setExpanded((v) => !v)}
+              aria-label={expanded ? 'Collapse flags' : 'Expand flags'}
+              aria-expanded={expanded}
+            >
+              <MaterialIcon
+                name="expand_more"
+                size="sm"
+                className={cn("transition-transform duration-200", expanded && "rotate-180")}
+              />
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
+        {expanded && (
+          <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="flex items-center gap-3 p-2">
@@ -471,7 +492,8 @@ export function ItemFlagsSection({
               </div>
             ))}
           </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
     );
   }
@@ -498,18 +520,36 @@ export function ItemFlagsSection({
   return (
     <Card data-active-indicators={JSON.stringify(activeIndicatorForData)}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <MaterialIcon name="flag" size="md" />
-          Item Flags
-          {hasDamage && (
-            <Badge variant="destructive" className="ml-2">
-              <MaterialIcon name="warning" className="text-[12px] mr-1" />
-              Attention Required
-            </Badge>
-          )}
-        </CardTitle>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <MaterialIcon name="flag" size="md" />
+            Item Flags
+            {hasDamage && (
+              <Badge variant="destructive" className="ml-2">
+                <MaterialIcon name="warning" className="text-[12px] mr-1" />
+                Attention Required
+              </Badge>
+            )}
+          </CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? 'Collapse flags' : 'Expand flags'}
+            aria-expanded={expanded}
+          >
+            <MaterialIcon
+              name="expand_more"
+              size="sm"
+              className={cn("transition-transform duration-200", expanded && "rotate-180")}
+            />
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent>
+      {expanded && (
+        <CardContent>
         <div className="space-y-4">
           {/* Built-in exception flags (always available) */}
           <div className="space-y-2">
@@ -662,7 +702,8 @@ export function ItemFlagsSection({
             Flags can only be modified by warehouse staff.
           </p>
         )}
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }

@@ -326,6 +326,9 @@ export function TaskDialog({
   const handleTaskTypeChange = (value: string) => {
     if (value === 'new') {
       setShowNewTaskType(true);
+      setNewTaskTypeName('');
+      // Prevent accidentally saving with a previously-selected type while in "new type" mode.
+      setFormData((prev) => ({ ...prev, task_type: '', task_type_id: null }));
       return;
     }
     if (value === 'Will Call') {
@@ -931,18 +934,43 @@ export function TaskDialog({
             <div className="space-y-2">
               <Label>Task Type *</Label>
               {showNewTaskType ? (
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Input
                     value={newTaskTypeName}
                     onChange={(e) => setNewTaskTypeName(e.target.value)}
                     placeholder="New task type name"
+                    className="sm:flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleCreateTaskType();
+                      }
+                    }}
                   />
-                  <Button onClick={handleCreateTaskType} size="sm">
-                    <MaterialIcon name="add" size="sm" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setShowNewTaskType(false)}>
-                    Cancel
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto">
+                    <Button
+                      type="button"
+                      onClick={handleCreateTaskType}
+                      size="sm"
+                      className="w-full justify-center"
+                      disabled={!newTaskTypeName.trim()}
+                    >
+                      <MaterialIcon name="add" size="sm" className="mr-1" />
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-center"
+                      onClick={() => {
+                        setNewTaskTypeName('');
+                        setShowNewTaskType(false);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <Select value={formData.task_type} onValueChange={handleTaskTypeChange}>

@@ -192,14 +192,14 @@ export default function Dashboard() {
       },
       {
         key: 'incoming_shipments' as ExpandedCard,
-        title: 'EXPECTED SHIPMENTS',
+        title: 'EXPECTED TODAY',
         emoji: '🚚',
         count: stats.incomingShipments,
         urgent: stats.incomingShipmentsUrgentCount,
-        description: 'Expected / not received',
+        description: 'Inbound shipments expected today',
         bgColor: 'bg-card border border-border shadow-sm',
         countColor: 'text-orange-500 dark:text-orange-400',
-        onClick: () => navigate('/incoming/manager?tab=expected'),
+        onClick: () => navigate('/shipments'),
         timeEstimate: stats.incomingShipmentsTimeEstimate,
       },
       {
@@ -519,20 +519,18 @@ export default function Dashboard() {
             data-testid="page-header"
           />
           <div className="flex items-center gap-2">
-            {warehouses.length > 1 && (
-              <Select value={selectedWarehouseId ?? ''} onValueChange={(v) => setSelectedWarehouseId(v || null)}>
-                <SelectTrigger className="w-[180px] h-9 text-xs">
-                  <SelectValue placeholder="Warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((wh) => (
-                    <SelectItem key={wh.id} value={wh.id}>
-                      {wh.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <Select value={selectedWarehouseId ?? ''} onValueChange={(v) => setSelectedWarehouseId(v || null)}>
+              <SelectTrigger className="w-[180px] h-9 text-xs">
+                <SelectValue placeholder="Warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((wh) => (
+                  <SelectItem key={wh.id} value={wh.id}>
+                    {wh.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">

@@ -347,7 +347,7 @@ export function AIClientBot() {
 
   if (isMinimized) {
     return (
-      <Card className="fixed bottom-6 right-6 w-72 shadow-lg z-50">
+      <Card className="fixed bottom-3 left-3 right-3 sm:bottom-6 sm:left-auto sm:right-6 sm:w-72 shadow-lg z-50">
         <CardHeader className="p-3 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <MaterialIcon name="smart_toy" size="md" className="text-primary" />
@@ -367,7 +367,7 @@ export function AIClientBot() {
   }
 
   return (
-    <Card className="fixed bottom-6 right-6 w-96 h-[520px] shadow-lg z-50 flex flex-col">
+    <Card className="fixed inset-2 sm:inset-auto sm:bottom-6 sm:right-6 sm:w-96 sm:h-[520px] shadow-lg z-50 flex flex-col">
       <CardHeader className="p-3 border-b flex flex-row items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <MaterialIcon name="smart_toy" size="md" className="text-primary" />
