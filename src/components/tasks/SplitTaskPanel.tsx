@@ -201,6 +201,53 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, task.warehouse_id]);
 
+  const fetchChildItemsWithLabels = async (
+    tenantId: string,
+    splitTaskId: string
+  ): Promise<{ ids: string[]; codes: string[]; labelData: ItemLabelData[] }> => {
+    const { data: childRows, error: childErr } = await (supabase.from('items') as any)
+      .select(`
+        id,
+        item_code,
+        description,
+        vendor,
+        sidemark,
+        room,
+        location:locations!items_current_location_id_fkey(code),
+        account:accounts!items_account_id_fkey(account_name)
+      `)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .contains('metadata', { split_task_id: splitTaskId })
+      .order('item_code')
+      .limit(200);
+
+    if (childErr) throw childErr;
+
+    const rows = Array.isArray(childRows) ? childRows : [];
+    const ids = rows.map((r: any) => String(r.id));
+    const codes = rows.map((r: any) => String(r.item_code));
+
+    const accountFallback =
+      task.account?.account_name ||
+      parentTaskItem?.item?.account?.account_name ||
+      'Account';
+
+    const labelData: ItemLabelData[] = rows.map((r: any) => ({
+      id: String(r.id),
+      itemCode: String(r.item_code),
+      description: String(r.description || ''),
+      vendor: String(r.vendor || ''),
+      account: String(r.account?.account_name || accountFallback),
+      sidemark: r.sidemark ? String(r.sidemark) : undefined,
+      room: r.room ? String(r.room) : undefined,
+      warehouseName: task.warehouse?.name || undefined,
+      locationCode: r.location?.code ? String(r.location.code) : undefined,
+    }));
+
+    return { ids, codes, labelData };
+  };
+
   // Hydrate existing child items for this task (supports refresh/reprint/recovery)
   useEffect(() => {
     if (!profile?.tenant_id || !taskId) return;
@@ -217,52 +264,12 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     let cancelled = false;
     const run = async () => {
       try {
-        const { data: childRows, error: childErr } = await (supabase.from('items') as any)
-          .select(`
-            id,
-            item_code,
-            description,
-            vendor,
-            sidemark,
-            room,
-            location:locations!items_current_location_id_fkey(code),
-            account:accounts!items_account_id_fkey(account_name)
-          `)
-          .eq('tenant_id', profile.tenant_id)
-          .is('deleted_at', null)
-          .contains('metadata', { split_task_id: taskId })
-          .order('item_code')
-          .limit(200);
-
-        if (childErr) throw childErr;
-
-        const rows = Array.isArray(childRows) ? childRows : [];
-        if (rows.length === 0) return;
-
-        const ids = rows.map((r: any) => String(r.id));
-        const codes = rows.map((r: any) => String(r.item_code));
-
+        const { ids, codes, labelData } = await fetchChildItemsWithLabels(profile.tenant_id, taskId);
         if (cancelled) return;
+        if (codes.length === 0) return;
 
         setChildItemIds(ids);
         setChildItemCodes(codes);
-
-        // Build label data from the child items (accurate location + persistent ids)
-        const accountFallback =
-          task.account?.account_name ||
-          parentTaskItem?.item?.account?.account_name ||
-          'Account';
-        const labelData: ItemLabelData[] = rows.map((r: any) => ({
-          id: String(r.id),
-          itemCode: String(r.item_code),
-          description: String(r.description || ''),
-          vendor: String(r.vendor || ''),
-          account: String(r.account?.account_name || accountFallback),
-          sidemark: r.sidemark ? String(r.sidemark) : undefined,
-          room: r.room ? String(r.room) : undefined,
-          warehouseName: task.warehouse?.name || undefined,
-          locationCode: r.location?.code ? String(r.location.code) : undefined,
-        }));
         setLabelItems(labelData);
       } catch (err: any) {
         // Optional: do not block the panel if hydration fails
@@ -435,43 +442,8 @@ export function SplitTaskPanel({ taskId, task, taskItems, onRefetch }: SplitTask
     }
 
     try {
-      const { data: childRows, error: childErr } = await (supabase.from('items') as any)
-        .select(`
-          id,
-          item_code,
-          description,
-          vendor,
-          sidemark,
-          room,
-          location:locations!items_current_location_id_fkey(code),
-          account:accounts!items_account_id_fkey(account_name)
-        `)
-        .eq('tenant_id', profile.tenant_id)
-        .is('deleted_at', null)
-        .contains('metadata', { split_task_id: taskId })
-        .order('item_code')
-        .limit(200);
-
-      if (childErr) throw childErr;
-      const rows = Array.isArray(childRows) ? childRows : [];
-      if (rows.length > 0) {
-        const accountFallback =
-          task.account?.account_name ||
-          parentTaskItem?.item?.account?.account_name ||
-          'Account';
-        const labelData: ItemLabelData[] = rows.map((r: any) => ({
-          id: String(r.id),
-          itemCode: String(r.item_code),
-          description: String(r.description || ''),
-          vendor: String(r.vendor || ''),
-          account: String(r.account?.account_name || accountFallback),
-          sidemark: r.sidemark ? String(r.sidemark) : undefined,
-          room: r.room ? String(r.room) : undefined,
-          warehouseName: task.warehouse?.name || undefined,
-          locationCode: r.location?.code ? String(r.location.code) : undefined,
-        }));
-        setLabelItems(labelData);
-      }
+      const { labelData } = await fetchChildItemsWithLabels(profile.tenant_id, taskId);
+      if (labelData.length > 0) setLabelItems(labelData);
     } catch (err: any) {
       console.warn('[SplitTaskPanel] reprint hydration failed:', err);
       toast({

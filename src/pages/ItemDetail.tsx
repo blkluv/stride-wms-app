@@ -667,7 +667,7 @@ export default function ItemDetail() {
         'Split requested from Item Detail.',
         `Keep qty on parent label: ${keepQty} (of ${groupedQty}).`,
         `Leftover qty to relabel: ${leftoverQty}.`,
-        notes ? '' : '',
+        notes ? ' ' : '',
         notes ? `Notes:\n${notes}` : '',
       ]
         .filter(Boolean)
