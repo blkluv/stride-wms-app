@@ -527,10 +527,15 @@ export function ServiceTimeTab() {
 
         enrichedRows = enrichedRows.map((r) => {
           const key = jobKey(r.jobType, r.jobId);
-          const laborCost = includeLaborCost ? (costByJobKey.get(key) ?? 0) : null;
-          const margin = includeLaborCost && includeBillingTotals && laborCost != null
-            ? (r.billedAmount ?? 0) - laborCost
-            : null;
+          const cost = costByJobKey.get(key);
+          const laborCost = includeLaborCost && cost != null ? cost : null;
+          const margin =
+            includeLaborCost
+            && includeBillingTotals
+            && laborCost != null
+            && r.billedAmount != null
+              ? r.billedAmount - laborCost
+              : null;
           return { ...r, laborCost, margin };
         });
       } else {
